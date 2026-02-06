@@ -22,6 +22,13 @@ const List: {
     role: 'test',
     roleId: '2',
     permissions: ['example:dialog:create', 'example:dialog:delete']
+  },
+  {
+    username: 'student',
+    password: 'student',
+    role: 'student',
+    roleId: '3',
+    permissions: []
   }
 ]
 

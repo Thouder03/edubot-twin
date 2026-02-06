@@ -679,6 +679,31 @@ const adminList = [
   }
 ]
 
+// 学生角色路由配置
+const studentList = [
+  {
+    path: '/student',
+    component: '#',
+    redirect: '/student/home',
+    name: 'Student',
+    meta: {},
+    children: [
+      {
+        path: 'home',
+        component: 'views/Student/Home',
+        name: 'StudentHome',
+        meta: {
+          title: 'router.studentHome',
+          icon: 'vi-carbon:home',
+          noCache: true,
+          affix: true
+        }
+      }
+    ]
+  }
+]
+
+
 const testList: string[] = [
   '/dashboard',
   '/dashboard/analysis',
@@ -1185,7 +1210,16 @@ export default [
     url: '/mock/role/list',
     method: 'get',
     timeout,
-    response: () => {
+    response: ({ query }) => {
+      const { roleName } = query
+      // 根据角色名称返回不同的路由配置
+      if (roleName === 'student') {
+        return {
+          code: SUCCESS_CODE,
+          data: studentList
+        }
+      }
+      // 默认返回 admin 路由
       return {
         code: SUCCESS_CODE,
         data: adminList

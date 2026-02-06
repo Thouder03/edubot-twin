@@ -11,7 +11,6 @@ export const constantRouterMap: AppRouteRecordRaw[] = [
   {
     path: '/',
     component: Layout,
-    redirect: '/dashboard/analysis',
     name: 'Root',
     meta: {
       hidden: true
@@ -724,6 +723,28 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         name: 'Role',
         meta: {
           title: t('router.role')
+        }
+      }
+    ]
+  },
+  {
+    path: '/student',
+    component: Layout,
+    redirect: '/student/home',
+    name: 'Student',
+    meta: {
+      alwaysShow: true
+    },
+    children: [
+      {
+        path: 'home',
+        component: () => import('@/views/Student/Home.vue'),
+        name: 'StudentHome',
+        meta: {
+          title: t('router.studentHome'),
+          icon: 'vi-carbon:home',
+          noCache: true,
+          affix: true
         }
       }
     ]

@@ -20,9 +20,31 @@ router.beforeEach(async (to, from, next) => {
   const userStore = useUserStoreWithOut()
   if (userStore.getUserInfo) {
     if (to.path === '/login') {
-      next({ path: '/' })
+      if (permissionStore.getAddRouters.length > 0) {
+        const firstRoute = permissionStore.getAddRouters[0]
+        if (firstRoute.children && firstRoute.children.length > 0) {
+          next({ path: firstRoute.path + '/' + firstRoute.children[0].path, replace: true })
+        } else {
+          next({ path: firstRoute.path, replace: true })
+        }
+      } else {
+        next({ path: '/' })
+      }
     } else {
       if (permissionStore.getIsAddRouters) {
+        if (to.path === '/') {
+          if (permissionStore.getAddRouters.length > 0) {
+            const firstRoute = permissionStore.getAddRouters[0]
+            if (firstRoute.children && firstRoute.children.length > 0) {
+              next({ path: firstRoute.path + '/' + firstRoute.children[0].path, replace: true })
+            } else {
+              next({ path: firstRoute.path, replace: true })
+            }
+          } else {
+            next()
+          }
+          return
+        }
         next()
         return
       }

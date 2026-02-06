@@ -191,7 +191,8 @@ export default {
     personal: 'Personal',
     avatars: 'Avatars',
     iAgree: 'I agree',
-    tree: 'Tree'
+    tree: 'Tree',
+    studentHome: 'Home'
   },
   permission: {
     hasPermission: 'Please set the operation permission value'
