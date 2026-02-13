@@ -188,7 +188,8 @@ export default {
     avatars: '头像列表',
     iAgree: '我同意',
     tree: 'Tree 树形控件',
-    studentHome: '首页'
+    studentHome: '首页',
+    simulation: '机器人仿真'
   },
   permission: {
     hasPermission: '请设置操作权限值'

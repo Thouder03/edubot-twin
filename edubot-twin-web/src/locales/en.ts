@@ -192,7 +192,8 @@ export default {
     avatars: 'Avatars',
     iAgree: 'I agree',
     tree: 'Tree',
-    studentHome: 'Home'
+    studentHome: 'Home',
+    simulation: 'Robot Simulation'
   },
   permission: {
     hasPermission: 'Please set the operation permission value'

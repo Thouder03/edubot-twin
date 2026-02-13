@@ -54,9 +54,8 @@ router.beforeEach(async (to, from, next) => {
 
       // 是否使用动态路由
       if (appStore.getDynamicRouter) {
-        appStore.serverDynamicRouter
-          ? await permissionStore.generateRoutes('server', roleRouters as AppCustomRouteRecordRaw[])
-          : await permissionStore.generateRoutes('frontEnd', roleRouters as string[])
+        // 统一使用前端动态路由模式
+        await permissionStore.generateRoutes('frontEnd', roleRouters as string[])
       } else {
         await permissionStore.generateRoutes('static')
       }
@@ -71,6 +70,40 @@ router.beforeEach(async (to, from, next) => {
       next(nextData)
     }
   } else {
+    // 没有用户信息，检查是否有 Token（实现"记住登录状态"）
+    const token = userStore.getToken
+    if (token && NO_REDIRECT_WHITE_LIST.indexOf(to.path) === -1) {
+      // 有 Token，尝试自动登录
+      try {
+        const { getUserInfoByTokenApi, getUserRoutesApi } = await import('@/api/login')
+        const userInfoRes = await getUserInfoByTokenApi(token)
+
+        if (userInfoRes && userInfoRes.data) {
+          // Token 有效，恢复用户信息
+          userStore.setUserInfo(userInfoRes.data)
+
+          // 获取路由权限
+          const routesRes = await getUserRoutesApi({ role: userInfoRes.data.role })
+          if (routesRes && routesRes.data) {
+            userStore.setRoleRouters(routesRes.data)
+            await permissionStore.generateRoutes('frontEnd', routesRes.data as string[])
+            permissionStore.getAddRouters.forEach((route) => {
+              router.addRoute(route as unknown as RouteRecordRaw)
+            })
+            permissionStore.setIsAddRouters(true)
+            next({ ...to, replace: true })
+            return
+          }
+        }
+      } catch (error) {
+        // Token 无效或过期，清除并跳转登录
+        console.warn('Token 验证失败，需要重新登录', error)
+        userStore.setToken('')
+        userStore.setUserInfo(undefined)
+      }
+    }
+
+    // 无 Token 或 Token 验证失败，跳转登录
     if (NO_REDIRECT_WHITE_LIST.indexOf(to.path) !== -1) {
       next()
     } else {

@@ -703,7 +703,6 @@ const studentList = [
   }
 ]
 
-
 const testList: string[] = [
   '/dashboard',
   '/dashboard/analysis',
@@ -1213,7 +1212,7 @@ export default [
     response: ({ query }) => {
       const { roleName } = query
       // 根据角色名称返回不同的路由配置
-      if (roleName === 'student') {
+      if (roleName === 'student' || roleName === 'student001') {
         return {
           code: SUCCESS_CODE,
           data: studentList

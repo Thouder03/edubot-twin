@@ -2,9 +2,9 @@
 import { reactive, ref, watch, onMounted, unref } from 'vue'
 import { Form, FormSchema } from '@/components/Form'
 import { useI18n } from '@/hooks/web/useI18n'
-import { ElCheckbox, ElLink } from 'element-plus'
+import { ElCheckbox, ElLink, ElMessage } from 'element-plus'
 import { useForm } from '@/hooks/web/useForm'
-import { loginApi, getTestRoleApi, getAdminRoleApi } from '@/api/login'
+import { loginApi, getUserRoutesApi, getTokenApi } from '@/api/login'
 import { useAppStore } from '@/store/modules/app'
 import { usePermissionStore } from '@/store/modules/permission'
 import { useRouter } from 'vue-router'
@@ -198,8 +198,9 @@ const remember = ref(userStore.getRememberMe)
 const initLoginInfo = () => {
   const loginInfo = userStore.getLoginInfo
   if (loginInfo) {
-    const { username, password } = loginInfo
-    setValues({ username, password })
+    // 只自动填充用户名（不再填充密码）
+    const { username } = loginInfo
+    setValues({ username })
   }
 }
 onMounted(() => {
@@ -239,17 +240,34 @@ const signIn = async () => {
         const res = await loginApi(formData)
 
         if (res) {
-          // 是否记住我
-          if (unref(remember)) {
-            userStore.setLoginInfo({
+          // 存储用户信息
+          userStore.setUserInfo(res.data)
+
+          // 获取 JWT Token
+          try {
+            const tokenRes = await getTokenApi({
               username: formData.username,
               password: formData.password
+            })
+            if (tokenRes && tokenRes.data) {
+              // 存储 Token
+              userStore.setToken(tokenRes.data.access_token)
+            }
+          } catch (error) {
+            console.error('获取 Token 失败:', error)
+            // Token 获取失败不影响登录流程，但会影响后续 API 调用
+          }
+
+          // 记住登录状态：只保存用户名（不保存密码）
+          if (unref(remember)) {
+            userStore.setLoginInfo({
+              username: formData.username
             })
           } else {
             userStore.setLoginInfo(undefined)
           }
           userStore.setRememberMe(unref(remember))
-          userStore.setUserInfo(res.data)
+
           // 是否使用动态路由
           if (appStore.getDynamicRouter) {
             getRole()
@@ -271,20 +289,21 @@ const signIn = async () => {
 
 // 获取角色信息
 const getRole = async () => {
-  const formData = await getFormData<UserType>()
-  const params = {
-    roleName: formData.username
+  const userInfo = userStore.getUserInfo
+  if (!userInfo || !userInfo.role) {
+    ElMessage.error(t('login.getUserInfoError')) // TODO: I18N 暂时没有这个
+    return
   }
-  const res =
-    appStore.getDynamicRouter && appStore.getServerDynamicRouter
-      ? await getAdminRoleApi(params)
-      : await getTestRoleApi(params)
+
+  // 统一调用后端路由接口
+  const res = await getUserRoutesApi({ role: userInfo.role })
+
   if (res) {
-    const routers = res.data || []
-    userStore.setRoleRouters(routers)
-    appStore.getDynamicRouter && appStore.getServerDynamicRouter
-      ? await permissionStore.generateRoutes('server', routers).catch(() => {})
-      : await permissionStore.generateRoutes('frontEnd', routers).catch(() => {})
+    const routes = res.data || []
+    userStore.setRoleRouters(routes)
+
+    // 强制使用前端动态路由模式
+    await permissionStore.generateRoutes('frontEnd', routes).catch(() => {})
 
     permissionStore.getAddRouters.forEach((route) => {
       addRoute(route as RouteRecordRaw) // 动态添加可访问路由表

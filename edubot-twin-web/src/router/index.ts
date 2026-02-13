@@ -67,6 +67,17 @@ export const constantRouterMap: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/simulation',
+    component: () => import('@/views/Simulation/Simulation.vue'),
+    name: 'Simulation',
+    meta: {
+      hidden: true,
+      title: t('router.simulation'),
+      noTagsView: true,
+      noCache: true
+    }
+  },
+  {
     path: '/404',
     component: () => import('@/views/Error/404.vue'),
     name: 'NoFind',
@@ -732,9 +743,7 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
     component: Layout,
     redirect: '/student/home',
     name: 'Student',
-    meta: {
-      alwaysShow: true
-    },
+    meta: {},
     children: [
       {
         path: 'home',
