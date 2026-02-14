@@ -1,26 +1,18 @@
 <script setup lang="ts">
 /**
- * ROS 3D 视图面板 - 真实 Three.js 3D 渲染
+ * ROS 3D 视图面板 — 基于 Lichtblick Renderer-Extension 架构
  *
  * 核心功能:
- * 1. Three.js 3D 场景渲染（网格/坐标轴/相机控制）
+ * 1. Renderer 驱动的 Three.js 3D 场景渲染
  * 2. ROS WebSocket 连接管理
- * 3. TF 坐标帧订阅（连接后自动激活）
+ * 3. TF / 消息自动路由到 SceneExtension 体系
  * 4. 设置树集成（侧栏实时控制）
  */
-import { ref, computed, toRef, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Icon } from '@/components/Icon'
 import { usePanelState } from '../../stores/panelState'
-import {
-  defaultConfig,
-  buildSettingsTree,
-  createActionHandler,
-  type ROS3DViewerConfig
-} from './settings'
-import { useThreeScene } from './composables/useThreeScene'
+import { useRenderer } from './composables/useRenderer'
 import { useRosConnection } from './composables/useRosConnection'
-import { useTfManager } from './composables/useTfManager'
-import { useDisplayManager } from './composables/useDisplayManager'
 
 // ---------- Props ----------
 interface Props {
@@ -31,35 +23,22 @@ const props = defineProps<Props>()
 
 // ---------- 面板设置集成 ----------
 const { registerPanel, unregisterPanel, updateSettingsTree } = usePanelState()
-const config = ref<ROS3DViewerConfig>({ ...defaultConfig })
+
+// ---------- ROS 连接配置 ----------
+const rosUrl = ref('ws://localhost:9090')
+const autoConnect = ref(false)
 
 // ---------- Composables ----------
-
-// 响应式配置引用（传入 composable）
-const showGrid = computed(() => config.value.showGrid)
-const showAxes = computed(() => config.value.showAxes)
-const backgroundColor = computed(() => config.value.backgroundColor)
-const gridSize = computed(() => config.value.gridSize)
-const gridDivisions = computed(() => config.value.gridDivisions)
-const rosUrl = computed(() => config.value.rosUrl)
-
 const {
-  scene,
   sceneReady,
-  mount: mountScene,
-  dispose: disposeScene
-} = useThreeScene({
-  showGrid: showGrid,
-  showAxes: showAxes,
-  backgroundColor: backgroundColor,
-  gridSize: gridSize,
-  gridDivisions: gridDivisions
-})
+  settingsTreeVersion,
+  mount: mountRenderer,
+  dispose: disposeRenderer,
+  handleSettingsAction,
+  getSettingsTree
+} = useRenderer()
 
-const { status, errorMessage, getRos, connect, disconnect } = useRosConnection(rosUrl)
-
-const tfManager = useTfManager(getRos, status, scene)
-const displayManager = useDisplayManager(getRos, status, scene)
+const { status, errorMessage, connect, disconnect } = useRosConnection(rosUrl)
 
 // ---------- 模板引用 ----------
 const canvasContainer = ref<HTMLElement>()
@@ -86,65 +65,49 @@ const statusConfig = computed(() => {
 function handleConnectionToggle() {
   if (status.value === 'connected' || status.value === 'connecting') {
     disconnect()
-    tfManager.unsubscribe()
   } else {
     connect()
   }
 }
 
-// 连接成功后自动订阅 TF
-watch(status, (newStatus) => {
-  if (newStatus === 'connected') {
-    tfManager.subscribe()
-  } else if (newStatus === 'disconnected' || newStatus === 'error') {
-    tfManager.unsubscribe()
-  }
-})
-
-// ---------- 设置树 ----------
-function saveConfig(newConfig: ROS3DViewerConfig) {
-  config.value = newConfig
-  refreshSettingsTree()
-}
-
+// ---------- 设置树同步 ----------
 function refreshSettingsTree() {
-  updateSettingsTree(props.panelId, {
-    actionHandler: createActionHandler(config.value, saveConfig),
-    nodes: buildSettingsTree(config.value, tfManager.availableFrames.value)
-  })
+  const tree = getSettingsTree()
+  if (tree) {
+    updateSettingsTree(props.panelId, {
+      actionHandler: (action) => handleSettingsAction(action),
+      nodes: tree
+    })
+  }
 }
+
+// settingsTree 版本变化时同步到面板设置系统
+watch(settingsTreeVersion, refreshSettingsTree)
 
 // ---------- 生命周期 ----------
 onMounted(() => {
   registerPanel(props.panelId, 'ROS3DViewer')
-  refreshSettingsTree()
 
-  // 挂载 Three.js 场景
+  // 挂载 Renderer + Three.js
   nextTick(() => {
     if (canvasContainer.value) {
-      mountScene(canvasContainer.value)
+      mountRenderer(canvasContainer.value)
+      // 首次生成设置树
+      refreshSettingsTree()
     }
   })
 
   // 自动连接
-  if (config.value.autoConnect) {
+  if (autoConnect.value) {
     connect()
   }
 })
 
 onBeforeUnmount(() => {
-  displayManager.dispose()
-  tfManager.dispose()
   disconnect()
-  disposeScene()
+  disposeRenderer()
   unregisterPanel(props.panelId)
 })
-
-// TF 帧列表变化时更新设置树
-watch(() => tfManager.availableFrames.value, refreshSettingsTree, { deep: true })
-
-// 配置变更时更新设置树
-watch(config, refreshSettingsTree, { deep: true })
 </script>
 
 <template>

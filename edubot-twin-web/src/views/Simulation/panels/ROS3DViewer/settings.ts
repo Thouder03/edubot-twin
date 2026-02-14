@@ -13,6 +13,7 @@ export interface ROS3DViewerConfig {
   autoConnect: boolean
   showGrid: boolean
   showAxes: boolean
+  showTfFrames: boolean
   backgroundColor: string
   gridSize: number
   gridDivisions: number
@@ -24,6 +25,7 @@ export const defaultConfig: ROS3DViewerConfig = {
   autoConnect: false,
   showGrid: true,
   showAxes: true,
+  showTfFrames: true,
   backgroundColor: '#1e1e2e',
   gridSize: 20,
   gridDivisions: 20
@@ -80,6 +82,12 @@ export function buildSettingsTree(
           label: '显示坐标轴',
           input: 'boolean',
           value: config.showAxes
+        },
+        showTfFrames: {
+          label: '显示 TF 帧',
+          input: 'boolean',
+          value: config.showTfFrames,
+          help: '连接 ROS 后在每个 TF 帧显示坐标轴和名称'
         },
         backgroundColor: {
           label: '背景色',

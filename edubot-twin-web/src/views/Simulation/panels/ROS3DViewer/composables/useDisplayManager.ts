@@ -31,8 +31,8 @@ export interface DisplayEntry {
 }
 
 export function useDisplayManager(
-  getRos: () => Ros | null,
-  connectionStatus: Ref<RosConnectionStatus>,
+  _getRos: () => Ros | null,
+  _connectionStatus: Ref<RosConnectionStatus>,
   scene: THREE.Scene
 ) {
   const displays = ref<DisplayEntry[]>([])
