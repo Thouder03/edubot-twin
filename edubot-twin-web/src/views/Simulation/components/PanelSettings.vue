@@ -29,15 +29,17 @@ const hasSettings = computed(() => {
 
 const settingsNodes = computed(() => {
   if (!selectedSettingsTree.value) return []
-  return Object.entries(selectedSettingsTree.value.nodes).map(([key, node]) => ({
-    key,
-    label: node.label ?? key,
-    fields: Object.entries(node.fields).map(([fieldKey, field]) => ({
-      key: fieldKey,
-      groupKey: key,
-      ...field
+  return Object.entries(selectedSettingsTree.value.nodes)
+    .filter(([, node]) => node != null)
+    .map(([key, node]) => ({
+      key,
+      label: node!.label ?? key,
+      fields: Object.entries(node!.fields ?? {}).map(([fieldKey, field]) => ({
+        key: fieldKey,
+        groupKey: key,
+        ...field
+      }))
     }))
-  }))
 })
 
 // ---------- 字段变更处理 ----------

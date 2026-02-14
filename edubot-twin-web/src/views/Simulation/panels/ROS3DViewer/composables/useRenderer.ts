@@ -14,6 +14,8 @@ import type { SceneExtensionConfig } from '../core/SceneExtensionConfig'
 import type { MessageEvent, Topic } from '../core/lichtblick-shim'
 import type { CameraState } from '../core/camera'
 import { SceneSettings } from '../extensions/SceneSettings'
+import { Grids } from '../extensions/Grids'
+import { FrameAxes } from '../extensions/FrameAxes'
 
 /** 默认 RendererConfig */
 function defaultRendererConfig(): RendererConfig {
@@ -45,7 +47,22 @@ function defaultRendererConfig(): RendererConfig {
     },
     transforms: {},
     topics: {},
-    layers: {}
+    layers: {
+      // 默认显示一个 Grid 层
+      'default-grid': {
+        layerId: 'foxglove.Grid',
+        label: 'Grid',
+        visible: true,
+        frameLocked: true,
+        size: 10,
+        divisions: 10,
+        lineWidth: 1,
+        color: '#4a4a6acc',
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        order: 1
+      } as any
+    }
   }
 }
 
@@ -55,6 +72,12 @@ function createExtensionConfig(): SceneExtensionConfig {
     extensionsById: {
       [SceneSettings.extensionId]: {
         init: (renderer) => new SceneSettings(renderer)
+      },
+      [Grids.extensionId]: {
+        init: (renderer) => new Grids(renderer)
+      },
+      [FrameAxes.extensionId]: {
+        init: (renderer) => new FrameAxes(renderer, {})
       }
     }
   }
@@ -89,9 +112,20 @@ export function useRenderer() {
       sceneExtensionConfig
     })
 
-    // 监听事件
+    // 监听事件（使用 rAF 节流避免相机移动时的渲染风暴）
+    let settingsUpdatePending = false
     r.on('settingsTreeChange', () => {
-      settingsTreeVersion.value++
+      if (!settingsUpdatePending) {
+        settingsUpdatePending = true
+        requestAnimationFrame(() => {
+          settingsTreeVersion.value++
+          settingsUpdatePending = false
+        })
+      }
+    })
+    // 相机移动时触发重新渲染
+    r.on('cameraMove', () => {
+      r.queueAnimationFrame()
     })
 
     // 设置默认颜色方案

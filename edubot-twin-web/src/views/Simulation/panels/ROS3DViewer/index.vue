@@ -10,6 +10,7 @@
  */
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Icon } from '@/components/Icon'
+import { Topic as RosTopic } from 'roslib'
 import { usePanelState } from '../../stores/panelState'
 import { useRenderer } from './composables/useRenderer'
 import { useRosConnection } from './composables/useRosConnection'
@@ -35,13 +36,82 @@ const {
   mount: mountRenderer,
   dispose: disposeRenderer,
   handleSettingsAction,
-  getSettingsTree
+  getSettingsTree,
+  addMessageEvent,
+  renderer
 } = useRenderer()
 
-const { status, errorMessage, connect, disconnect } = useRosConnection(rosUrl)
+const { status, errorMessage, getRos, connect, disconnect } = useRosConnection(rosUrl)
 
 // ---------- 模板引用 ----------
 const canvasContainer = ref<HTMLElement>()
+
+// ---------- ROS TF 订阅桥接 ----------
+let tfSubscriptions: RosTopic[] = []
+
+function subscribeTfTopics() {
+  unsubscribeTfTopics()
+
+  const ros = getRos()
+  if (!ros || !renderer.value) return
+
+  const tfTopics = [
+    { name: '/tf', type: 'tf2_msgs/TFMessage' },
+    { name: '/tf_static', type: 'tf2_msgs/TFMessage' }
+  ]
+
+  // 通知 Renderer 可用的 topics
+  renderer.value.setTopics(
+    tfTopics.map((t) => ({
+      name: t.name,
+      schemaName: t.type,
+      datatype: t.type
+    }))
+  )
+
+  for (const topicDef of tfTopics) {
+    const rosTopic = new RosTopic({
+      ros,
+      name: topicDef.name,
+      messageType: topicDef.type
+    })
+
+    rosTopic.subscribe((msg: any) => {
+      const now = BigInt(Date.now()) * 1_000_000n // ms → ns
+      addMessageEvent({
+        topic: topicDef.name,
+        schemaName: topicDef.type,
+        receiveTime: { sec: Number(now / 1_000_000_000n), nsec: Number(now % 1_000_000_000n) },
+        message: msg,
+        sizeInBytes: 0
+      })
+    })
+
+    tfSubscriptions.push(rosTopic)
+  }
+
+  console.log('[ROS3D] TF 订阅已启动:', tfTopics.map((t) => t.name).join(', '))
+}
+
+function unsubscribeTfTopics() {
+  for (const sub of tfSubscriptions) {
+    try {
+      sub.unsubscribe()
+    } catch {
+      /* ignore */
+    }
+  }
+  tfSubscriptions = []
+}
+
+// 监听连接状态变化 → 自动订阅/取消 TF
+watch(status, (newStatus) => {
+  if (newStatus === 'connected') {
+    subscribeTfTopics()
+  } else {
+    unsubscribeTfTopics()
+  }
+})
 
 // ---------- 连接状态显示 ----------
 const statusConfig = computed(() => {
@@ -104,6 +174,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  unsubscribeTfTopics()
   disconnect()
   disposeRenderer()
   unregisterPanel(props.panelId)
