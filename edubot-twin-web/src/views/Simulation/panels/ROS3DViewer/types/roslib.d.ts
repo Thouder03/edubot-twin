@@ -32,7 +32,7 @@ declare module 'roslib' {
     queue_size?: number
   }
 
-  export class Topic<T = any> {
+  export class Topic<T = any> extends EventEmitter {
     constructor(options: TopicOptions)
     subscribe(callback: (message: T) => void): void
     unsubscribe(callback?: (message: T) => void): void

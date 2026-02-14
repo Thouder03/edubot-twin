@@ -94,11 +94,20 @@ function subscribeTfTopics() {
 }
 
 function unsubscribeTfTopics() {
+  // 仅在连接状态正常时尝试取消订阅
+  const ros = getRos()
+  const isConnected = ros && ros.isConnected
+
   for (const sub of tfSubscriptions) {
     try {
-      sub.unsubscribe()
-    } catch {
-      /* ignore */
+      if (isConnected) {
+        sub.unsubscribe()
+      } else {
+        // 如果已断开，直接销毁订阅对象（清理本地监听器），不再向后端发送取消订阅请求
+        sub.removeAllListeners()
+      }
+    } catch (e) {
+      console.warn('[ROS3D] Error unsubscribing:', e)
     }
   }
   tfSubscriptions = []

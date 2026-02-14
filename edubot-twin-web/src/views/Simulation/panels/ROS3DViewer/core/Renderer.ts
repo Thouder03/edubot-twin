@@ -260,6 +260,7 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
   // --- IRenderer: setFollowFrameId ---
 
   public setFollowFrameId(frameId: string | undefined): void {
+    if (this.followFrameId === frameId) return
     this.followFrameId = frameId
     if (frameId) {
       const frame = this.transformTree.frame(frameId)

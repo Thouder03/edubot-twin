@@ -282,6 +282,9 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
         this.renderer.updateConfig((draft) => _.set(draft, path, value))
       }
 
+      // Settings -> View: Update camera from new config
+      this.setCameraState(this.renderer.config.cameraState)
+
       this.updateSettingsTree()
     }
 
@@ -388,6 +391,11 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
   }
 
   #handleCameraMove = (): void => {
+    // View -> Settings: Update config from current camera state
+    const currentState = this.getCameraState()
+    this.renderer.updateConfig((draft) => {
+      draft.cameraState = currentState
+    })
     this.updateSettingsTree()
   }
 
@@ -478,10 +486,17 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
     const config = this.renderer.config
     return {
       perspective: config.cameraState.perspective,
-      distance: this.#controls.getDistance(),
-      phi: THREE.MathUtils.radToDeg(this.#controls.getPolarAngle()),
-      thetaOffset: THREE.MathUtils.radToDeg(-this.#controls.getAzimuthalAngle()),
-      targetOffset: [this.#controls.target.x, this.#controls.target.y, this.#controls.target.z],
+      distance: round(this.#controls.getDistance(), PRECISION_DISTANCE),
+      phi: round(THREE.MathUtils.radToDeg(this.#controls.getPolarAngle()), PRECISION_DEGREES),
+      thetaOffset: round(
+        THREE.MathUtils.radToDeg(-this.#controls.getAzimuthalAngle()),
+        PRECISION_DEGREES
+      ),
+      targetOffset: [
+        round(this.#controls.target.x, PRECISION_DISTANCE),
+        round(this.#controls.target.y, PRECISION_DISTANCE),
+        round(this.#controls.target.z, PRECISION_DISTANCE)
+      ],
       target: config.cameraState.target,
       targetOrientation: config.cameraState.targetOrientation,
       fovy: config.cameraState.fovy,
@@ -549,4 +564,8 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
       this.#orthographicCamera.updateProjectionMatrix()
     }
   }
+}
+
+function round(x: number, precision: number): number {
+  return Number(x.toFixed(precision))
 }

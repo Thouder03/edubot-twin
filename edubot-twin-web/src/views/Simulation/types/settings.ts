@@ -9,7 +9,7 @@
 /** 单个字段 */
 export interface SettingsTreeField {
   label: string
-  input: 'string' | 'number' | 'boolean' | 'select' | 'rgb'
+  input: 'string' | 'number' | 'boolean' | 'select' | 'rgb' | 'vec3'
   value: any
   placeholder?: string
   help?: string
@@ -21,16 +21,25 @@ export interface SettingsTreeField {
   min?: number
   max?: number
   step?: number
+  /** input='vec3' 时使用 */
+  labels?: string[]
+  precision?: number
 }
 
 /** 一组字段 */
 export interface SettingsTreeNode {
   label?: string
   fields: Record<string, SettingsTreeField>
+  /** 是否可折叠（默认 true） */
+  collapsible?: boolean
+  /** 默认展开状态（默认 false） */
+  defaultExpanded?: boolean
+  /** 分组图标 */
+  icon?: string
 }
 
 /** 完整设置节点映射 */
-export type SettingsTreeNodes = Record<string, SettingsTreeNode>
+export type SettingsTreeNodes = Record<string, SettingsTreeNode | undefined>
 
 /** 设置变更动作 */
 export interface SettingsTreeAction {
