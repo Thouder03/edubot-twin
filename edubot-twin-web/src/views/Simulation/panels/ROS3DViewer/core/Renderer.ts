@@ -25,7 +25,8 @@ import {
   RosTime,
   toNanoSec,
   palette,
-  Asset
+  Asset,
+  t
 } from './lichtblick-shim'
 
 import {
@@ -455,12 +456,12 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
     this.settings.setNodesForKey(RENDERER_ID, [
       {
         path: ['topics'],
-        node: { label: 'Topics' }
+        node: { label: t('threeDee:topics') }
       },
       {
         path: ['layers'],
         node: {
-          label: `Custom Layers${layerCount > 0 ? ` (${layerCount})` : ''}`,
+          label: `${t('threeDee:customLayers')}${layerCount > 0 ? ` (${layerCount})` : ''}`,
           actions
         }
       }
@@ -771,11 +772,11 @@ function normalizeFrameId(frameId: string): string {
 function baseSettingsTree(): SettingsTreeNodes {
   return {
     general: {
-      label: 'General',
+      label: t('threeDee:frame'),
       icon: 'Settings',
       fields: {
         followTf: {
-          label: 'Follow TF',
+          label: t('threeDee:displayFrame'),
           input: 'autocomplete',
           value: ''
         }

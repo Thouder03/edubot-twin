@@ -9,6 +9,7 @@
  * 4. 设置树集成（侧栏实时控制）
  */
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/Icon'
 import { Topic as RosTopic } from 'roslib'
 import { usePanelState } from '../../stores/panelState'
@@ -21,6 +22,8 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+const { t } = useI18n()
 
 // ---------- 面板设置集成 ----------
 const { registerPanel, unregisterPanel, updateSettingsTree } = usePanelState()
@@ -126,17 +129,21 @@ watch(status, (newStatus) => {
 const statusConfig = computed(() => {
   switch (status.value) {
     case 'connected':
-      return { color: '#a6e3a1', label: '已连接', icon: 'vi-carbon:checkmark-filled' }
+      return {
+        color: '#a6e3a1',
+        label: t('threeDee.connected'),
+        icon: 'vi-carbon:checkmark-filled'
+      }
     case 'connecting':
-      return { color: '#f9e2af', label: '连接中...', icon: 'vi-carbon:in-progress' }
+      return { color: '#f9e2af', label: t('threeDee.connecting'), icon: 'vi-carbon:in-progress' }
     case 'error':
       return {
         color: '#f38ba8',
-        label: `错误: ${errorMessage.value || '连接失败'}`,
+        label: `${t('threeDee.error')}: ${errorMessage.value || t('threeDee.disconnected')}`,
         icon: 'vi-carbon:warning-alt-filled'
       }
     default:
-      return { color: '#6c7086', label: '未连接', icon: 'vi-carbon:subtract' }
+      return { color: '#6c7086', label: t('threeDee.disconnected'), icon: 'vi-carbon:subtract' }
   }
 })
 
@@ -199,7 +206,9 @@ onBeforeUnmount(() => {
       <div
         class="hud-status"
         @click="handleConnectionToggle"
-        :title="status === 'connected' ? '点击断开' : '点击连接'"
+        :title="
+          status === 'connected' ? t('threeDee.clickToDisconnect') : t('threeDee.clickToConnect')
+        "
       >
         <span class="status-dot" :style="{ backgroundColor: statusConfig.color }"></span>
         <Icon :icon="statusConfig.icon" :size="12" :style="{ color: statusConfig.color }" />
@@ -211,7 +220,7 @@ onBeforeUnmount(() => {
     <!-- 加载状态 -->
     <div v-if="!sceneReady" class="ros3d-loading">
       <Icon icon="vi-carbon:cube" :size="36" class="loading-icon" />
-      <span>初始化 3D 场景...</span>
+      <span>{{ t('threeDee.initializing') }}</span>
     </div>
   </div>
 </template>

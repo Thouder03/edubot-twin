@@ -5,11 +5,10 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { t } from 'i18next'
 import * as _ from 'lodash-es'
 
 import { Logger } from '../core/lichtblick-shim'
-import { SettingsTreeAction, SettingsTreeFields } from '../core/lichtblick-shim'
+import { SettingsTreeAction, SettingsTreeFields, t } from '../core/lichtblick-shim'
 
 import type { IRenderer } from '../core/IRenderer'
 import { BaseUserData, Renderable } from '../core/Renderable'
@@ -111,13 +110,13 @@ export class Grids extends SceneExtension<GridRenderable> {
 
       const config = layerConfig as Partial<LayerSettingsGrid>
       const frameIdOptions = [
-        { label: '<Display frame>', value: undefined },
+        { label: '<' + t('threeDee:displayFrame') + '>', value: '__default__' },
         ...this.renderer.coordinateFrameList
       ]
 
       // prettier-ignore
       const fields: SettingsTreeFields = {
-        frameId: { label: t("threeDee:frame"), input: "select", options: frameIdOptions, value: config.frameId }, // options is extended in `settings.ts:buildTopicNode()`
+        frameId: { label: t("threeDee:frame"), input: "select", options: frameIdOptions, value: config.frameId ?? '__default__' }, // options is extended in `settings.ts:buildTopicNode()`
         size: { label: t("threeDee:size"), input: "number", min: 0, step: 0.5, precision: PRECISION_DISTANCE, value: config.size, placeholder: String(DEFAULT_SIZE) },
         divisions: { label: t("threeDee:divisions"), input: "number", min: 1, max: MAX_DIVISIONS, step: 1, precision: 0, value: config.divisions, placeholder: String(DEFAULT_DIVISIONS) },
         lineWidth: { label: t("threeDee:lineWidth"), input: "number", min: 0, step: 0.5, precision: 1, value: config.lineWidth, placeholder: String(DEFAULT_LINE_WIDTH) },
@@ -154,7 +153,9 @@ export class Grids extends SceneExtension<GridRenderable> {
   ): void {
     // Set the `frameId` to use for `updatePose()`
     for (const renderable of this.renderables.values()) {
-      renderable.userData.frameId = renderable.userData.settings.frameId ?? renderFrameId
+      const frameId = renderable.userData.settings.frameId
+      renderable.userData.frameId =
+        frameId && frameId !== '' && frameId !== '__default__' ? frameId : renderFrameId
     }
     super.startFrame(currentTime, renderFrameId, fixedFrameId)
   }

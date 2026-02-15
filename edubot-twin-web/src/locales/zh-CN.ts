@@ -570,5 +570,117 @@ export default {
   },
   avatarsDemo: {
     title: '头像列表组件，基于element-plus的Avatar组件二次封装'
+  },
+  threeDee: {
+    // Common
+    color: '颜色',
+    colorMode: '颜色模式',
+    frame: '坐标系',
+    lineWidth: '线宽',
+    position: '位置',
+    reset: '重置',
+    rotation: '旋转',
+    scale: '缩放',
+    gradient: '渐变',
+    type: '类型',
+    topic: '话题',
+
+    // Frame
+    age: '时延',
+    axisScale: '轴缩放',
+    displayFrame: '参考坐标系',
+    displayFrameHelp: '放置相机的坐标系。相机的位置和方向将相对于此坐标系的原点。',
+    editable: '可编辑',
+    enablePreloading: '预加载',
+    enablePreloadingTooltip: '请注意，开启预加载可能会影响性能。',
+    fixed: '固定',
+    followMode: '跟随模式',
+    followModeHelp: '在播放过程中更改相机跟随显示坐标系的行为。',
+    frameNotFound: '未找到坐标系',
+    hideAll: '隐藏全部',
+    historySize: '历史大小',
+    labels: '标签',
+    labelSize: '标签大小',
+    lineColor: '线条颜色',
+    noCoordinateFramesFound: '未找到坐标系',
+    parent: '父级',
+    pose: '位姿',
+    rotationOffset: '旋转偏移',
+    settings: '设置',
+    showAll: '显示全部',
+    transforms: '变换',
+    translation: '平移',
+    translationOffset: '平移偏移',
+
+    // Scene
+    background: '背景',
+    debugPicking: '调试拾取',
+    ignoreColladaUpAxis: '忽略 up_axis',
+    ignoreColladaUpAxisHelp: '通过忽略 COLLADA 文件中的 up_axis 标签来匹配 rviz 的行为',
+    labelScale: '标签缩放',
+    labelScaleHelp: '应用于所有标签的缩放因子',
+    meshUpAxis: '网格朝向',
+    meshUpAxisHelp: '加载没有方向信息（STL 和 OBJ）的网格时用作“向上”的方向',
+    renderStats: '渲染统计',
+    scene: '场景',
+    takeEffectAfterReboot: '此设置需要重启生效',
+    YUp: 'Y-轴向上',
+    ZUp: 'Z-轴向上',
+
+    // Camera
+    distance: '距离',
+    far: '远裁面',
+    fovy: '垂直视野',
+    near: '近裁面',
+    perspective: '3D视图',
+    phi: '极角 (Phi)',
+    planarProjectionFactor: '平面投影',
+    syncCamera: '同步相机',
+    syncCameraHelp: '与其他也启用了此设置的面板同步相机。',
+    target: '目标点',
+    theta: '方位角 (Theta)',
+    view: '视图',
+
+    // Topics
+    topics: '话题',
+
+    // Custom layers
+    addGrid: '添加网格',
+    addURDF: '添加 URDF',
+    customLayers: '自定义图层',
+    delete: '删除',
+    divisions: '细分',
+    grid: '网格',
+    size: '尺寸',
+
+    // Additions
+    misc: '杂项',
+    resetToDefault: '重置为默认',
+    collapseAll: '折叠全部',
+    selectPanelToViewSettings: '选择一个面板以查看设置',
+
+    // Panel Settings (settings.ts)
+    connection: '连接设置',
+    rosUrl: 'ROS WebSocket URL',
+    fixedFrame: '参考坐标系',
+    autoConnect: '自动连接',
+    autoConnectHelp: '面板加载后自动连接 ROS',
+    display: '显示设置',
+    showGrid: '显示网格',
+    showAxes: '显示坐标轴',
+    showTfFrames: '显示 TF 帧',
+    showTfFramesHelp: '连接 ROS 后在每个 TF 帧显示坐标轴和名称',
+    backgroundColor: '背景色',
+    gridSize: '网格大小',
+    gridDivisions: '网格分段',
+
+    // Status (index.vue)
+    connected: '已连接',
+    connecting: '连接中...',
+    error: '错误',
+    disconnected: '未连接',
+    clickToDisconnect: '点击断开',
+    clickToConnect: '点击连接',
+    initializing: '初始化 3D 场景...'
   }
 }

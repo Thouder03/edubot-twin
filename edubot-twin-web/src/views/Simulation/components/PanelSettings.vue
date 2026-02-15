@@ -5,15 +5,9 @@
  * Lichtblick 风格的可折叠分组设置面板
  */
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   ElForm,
-  ElFormItem,
-  ElInput,
-  ElInputNumber,
-  ElSwitch,
-  ElSelect,
-  ElOption,
-  ElColorPicker,
   ElCollapse,
   ElCollapseItem,
   ElDropdown,
@@ -23,9 +17,11 @@ import {
 import { Icon } from '@/components/Icon'
 import { usePanelState } from '../stores/panelState'
 import type { SettingsTreeAction } from '../types/settings'
+import SettingsNestedGroup from './SettingsNestedGroup.vue'
 
 // ---------- 状态 ----------
 const { state, selectedSettingsTree } = usePanelState()
+const { t } = useI18n()
 
 const hasSettings = computed(() => {
   return selectedSettingsTree.value !== null
@@ -37,16 +33,11 @@ const settingsNodes = computed(() => {
     .filter(([, node]) => node != null)
     .map(([key, node]) => ({
       key,
-      label: node!.label || (key === 'undefined' ? 'Misc' : key),
+      label: node!.label || (key === 'undefined' ? t('threeDee.misc') : key),
       icon: node!.icon,
       collapsible: node!.collapsible ?? true,
       defaultExpanded: node!.defaultExpanded ?? false,
-      fields: Object.entries(node!.fields ?? {}).map(([fieldKey, field]) => ({
-        key: fieldKey,
-        groupKey: key,
-        ...field,
-        label: field.label ?? fieldKey
-      }))
+      rawNode: node
     }))
 })
 
@@ -56,12 +47,12 @@ const expandedGroups = ref<string[]>(
 )
 
 // ---------- 字段变更处理 ----------
-function handleFieldChange(groupKey: string, fieldKey: string, value: any, input: string) {
+function handleFieldChange(path: string[], value: any, input: string) {
   if (!selectedSettingsTree.value) return
   const action: SettingsTreeAction = {
     action: 'update',
     payload: {
-      path: [groupKey, fieldKey],
+      path,
       value,
       input
     }
@@ -91,9 +82,6 @@ function handleGroupAction(groupKey: string, action: string) {
             <div class="group-header">
               <Icon v-if="group.icon" :icon="group.icon" :size="16" class="group-icon" />
               <span class="group-label">{{ group.label }}</span>
-              <span v-if="group.fields.length > 0" class="group-count"
-                >({{ group.fields.length }})</span
-              >
               <div class="group-actions">
                 <ElDropdown @command="(cmd) => handleGroupAction(group.key, cmd)">
                   <Icon
@@ -104,8 +92,12 @@ function handleGroupAction(groupKey: string, action: string) {
                   />
                   <template #dropdown>
                     <ElDropdownMenu>
-                      <ElDropdownItem command="reset">Reset to default</ElDropdownItem>
-                      <ElDropdownItem command="collapse-all">Collapse all</ElDropdownItem>
+                      <ElDropdownItem command="reset">{{
+                        t('threeDee.resetToDefault')
+                      }}</ElDropdownItem>
+                      <ElDropdownItem command="collapse-all">{{
+                        t('threeDee.collapseAll')
+                      }}</ElDropdownItem>
                     </ElDropdownMenu>
                   </template>
                 </ElDropdown>
@@ -113,101 +105,15 @@ function handleGroupAction(groupKey: string, action: string) {
             </div>
           </template>
 
-          <!-- 字段表单 -->
-          <ElForm label-position="left" label-width="90px" size="small" class="settings-form">
-            <ElFormItem
-              v-for="field in group.fields"
-              :key="field.key"
-              :label="field.label"
-              :error="field.error"
-              class="settings-field"
-            >
-              <!-- 文本输入 -->
-              <ElInput
-                v-if="field.input === 'string'"
-                :model-value="field.value"
-                :placeholder="field.placeholder"
-                :disabled="field.disabled"
-                @update:model-value="
-                  handleFieldChange(field.groupKey, field.key, $event, field.input)
-                "
-              />
-
-              <!-- 颜色选择器 -->
-              <ElColorPicker
-                v-else-if="field.input === 'rgb'"
-                :model-value="field.value"
-                :show-alpha="true"
-                @change="(val) => handleFieldChange(field.groupKey, field.key, val, field.input)"
-              />
-
-              <!-- 数字输入 -->
-              <ElInputNumber
-                v-else-if="field.input === 'number'"
-                :model-value="field.value"
-                :min="field.min"
-                :max="field.max"
-                :step="field.step ?? 1"
-                :disabled="field.disabled"
-                controls-position="right"
-                @update:model-value="
-                  handleFieldChange(field.groupKey, field.key, $event, field.input)
-                "
-              />
-
-              <!-- 布尔开关 -->
-              <ElSwitch
-                v-else-if="field.input === 'boolean'"
-                :model-value="field.value"
-                :disabled="field.disabled"
-                @update:model-value="
-                  handleFieldChange(field.groupKey, field.key, $event, field.input)
-                "
-              />
-
-              <!-- 选择框 -->
-              <ElSelect
-                v-else-if="field.input === 'select'"
-                :model-value="field.value"
-                :disabled="field.disabled"
-                @update:model-value="
-                  handleFieldChange(field.groupKey, field.key, $event, field.input)
-                "
-              >
-                <ElOption
-                  v-for="opt in field.options ?? []"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </ElSelect>
-
-              <!-- Vec3 输入 -->
-              <div v-else-if="field.input === 'vec3'" class="vec3-input">
-                <div v-for="(label, idx) in ['X', 'Y', 'Z']" :key="label" class="vec3-item">
-                  <span class="vec3-label">{{ field.labels?.[idx] ?? label }}</span>
-                  <ElInputNumber
-                    :model-value="field.value?.[idx] ?? 0"
-                    :precision="field.precision ?? 3"
-                    :step="field.step ?? 0.1"
-                    :disabled="field.disabled"
-                    controls-position="right"
-                    @update:model-value="
-                      (val) => {
-                        const newValue = [...(field.value ?? [0, 0, 0])]
-                        newValue[idx] = val
-                        handleFieldChange(field.groupKey, field.key, newValue, field.input)
-                      }
-                    "
-                  />
-                </div>
-              </div>
-
-              <!-- help text -->
-              <template v-if="field.help" #help>
-                <span class="field-help">{{ field.help }}</span>
-              </template>
-            </ElFormItem>
+          <!-- 递归渲染分组内容 -->
+          <ElForm label-position="left" label-width="100px" size="small" class="settings-form">
+            <SettingsNestedGroup
+              :node-key="group.key"
+              :node="group.rawNode as any"
+              :path="[group.key]"
+              :depth="0"
+              @field-change="handleFieldChange"
+            />
           </ElForm>
         </ElCollapseItem>
       </ElCollapse>
@@ -216,7 +122,7 @@ function handleGroupAction(groupKey: string, action: string) {
     <!-- 空状态 -->
     <div v-else class="settings-empty">
       <Icon icon="vi-carbon:settings-adjust" :size="32" class="empty-icon" />
-      <p>选择一个面板以查看设置</p>
+      <p>{{ t('threeDee.selectPanelToViewSettings') }}</p>
     </div>
   </div>
 </template>
@@ -229,6 +135,22 @@ function handleGroupAction(groupKey: string, action: string) {
   overflow-y: auto;
   padding: 0;
   user-select: none;
+
+  // Custom Scrollbar
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #45475a;
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: #585b70;
+  }
 
   // Element Plus Collapse 暗色适配
   .settings-collapse {
@@ -330,11 +252,6 @@ function handleGroupAction(groupKey: string, action: string) {
     font-weight: 500;
   }
 
-  .group-count {
-    color: #6c7086;
-    font-size: 11px;
-  }
-
   .group-actions {
     margin-left: auto;
     display: flex;
@@ -362,34 +279,6 @@ function handleGroupAction(groupKey: string, action: string) {
   }
 }
 
-.vec3-input {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-
-  .vec3-item {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0; // 防止 flex item 溢出
-
-    .vec3-label {
-      font-size: 10px;
-      color: #6c7086;
-      text-transform: uppercase;
-    }
-
-    :deep(.el-input-number) {
-      width: 100%;
-      .el-input__wrapper {
-        padding-left: 0;
-        padding-right: 0;
-      }
-    }
-  }
-}
-
 .settings-empty {
   width: 100%;
   height: 100%;
@@ -405,10 +294,5 @@ function handleGroupAction(groupKey: string, action: string) {
   p {
     font-size: 13px;
   }
-}
-
-.field-help {
-  color: #6c7086;
-  font-size: 11px;
 }
 </style>

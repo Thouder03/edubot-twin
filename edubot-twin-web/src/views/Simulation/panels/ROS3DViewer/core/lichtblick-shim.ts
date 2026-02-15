@@ -4,6 +4,22 @@
  * 使得从 Lichtblick 移植的源代码无需安装 @lichtblick 生态依赖。
  */
 
+import { i18n } from '@/plugins/vueI18n'
+
+/**
+ * t - i18next 兼容的翻译函数，内部桥接到 vue-i18n
+ */
+export function t(key: string, options?: any): string {
+  if (!i18n) {
+    console.warn('[lichtblick-shim] i18n not initialized yet, returning key:', key)
+    return key
+  }
+  // Convert 'namespace:key' to 'namespace.key' for vue-i18n
+  const vueKey = key.replace(':', '.')
+  // @ts-ignore: i18n.global type complexity
+  return i18n.global.t(vueKey, options)
+}
+
 // ============= @lichtblick/suite 类型 =============
 
 /** 不可变包装类型 */

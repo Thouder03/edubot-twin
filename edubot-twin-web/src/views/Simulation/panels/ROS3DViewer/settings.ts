@@ -5,6 +5,7 @@
  * 每当需要扩展设置时，只需修改此文件
  */
 import type { SettingsTreeNodes, SettingsTreeAction } from '../../types/settings'
+import { t } from './core/lichtblick-shim'
 
 /** 默认配置 */
 export interface ROS3DViewerConfig {
@@ -48,54 +49,54 @@ export function buildSettingsTree(
 
   return {
     connection: {
-      label: '连接设置',
+      label: t('threeDee:connection'),
       fields: {
         rosUrl: {
-          label: 'ROS WebSocket URL',
+          label: t('threeDee:rosUrl'),
           input: 'string',
           value: config.rosUrl,
           placeholder: 'ws://host:port'
         },
         fixedFrame: {
-          label: 'Fixed Frame',
+          label: t('threeDee:fixedFrame'),
           input: 'select',
           value: config.fixedFrame,
           options: frameOptions
         },
         autoConnect: {
-          label: '自动连接',
+          label: t('threeDee:autoConnect'),
           input: 'boolean',
           value: config.autoConnect,
-          help: '面板加载后自动连接 ROS'
+          help: t('threeDee:autoConnectHelp')
         }
       }
     },
     display: {
-      label: '显示设置',
+      label: t('threeDee:display'),
       fields: {
         showGrid: {
-          label: '显示网格',
+          label: t('threeDee:showGrid'),
           input: 'boolean',
           value: config.showGrid
         },
         showAxes: {
-          label: '显示坐标轴',
+          label: t('threeDee:showAxes'),
           input: 'boolean',
           value: config.showAxes
         },
         showTfFrames: {
-          label: '显示 TF 帧',
+          label: t('threeDee:showTfFrames'),
           input: 'boolean',
           value: config.showTfFrames,
-          help: '连接 ROS 后在每个 TF 帧显示坐标轴和名称'
+          help: t('threeDee:showTfFramesHelp')
         },
         backgroundColor: {
-          label: '背景色',
+          label: t('threeDee:backgroundColor'),
           input: 'rgb',
           value: config.backgroundColor
         },
         gridSize: {
-          label: '网格大小',
+          label: t('threeDee:gridSize'),
           input: 'number',
           value: config.gridSize,
           min: 1,
@@ -103,7 +104,7 @@ export function buildSettingsTree(
           step: 1
         },
         gridDivisions: {
-          label: '网格分段',
+          label: t('threeDee:gridDivisions'),
           input: 'number',
           value: config.gridDivisions,
           min: 1,

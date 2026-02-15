@@ -36,6 +36,8 @@ export interface SettingsTreeNode {
   defaultExpanded?: boolean
   /** 分组图标 */
   icon?: string
+  /** 子节点（嵌套分组） */
+  children?: SettingsTreeNodes
 }
 
 /** 完整设置节点映射 */

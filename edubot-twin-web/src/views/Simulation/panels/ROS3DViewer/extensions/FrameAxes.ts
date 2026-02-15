@@ -5,7 +5,6 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { t } from 'i18next'
 import * as _ from 'lodash-es'
 import * as THREE from 'three'
 import { Line2 } from 'three/examples/jsm/lines/Line2'
@@ -16,7 +15,8 @@ import {
   Immutable,
   SettingsTreeAction,
   SettingsTreeChildren,
-  SettingsTreeFields
+  SettingsTreeFields,
+  t
 } from '../core/lichtblick-shim'
 import type { RosValue } from '../core/lichtblick-shim'
 import { Label } from '../core/lichtblick-shim'

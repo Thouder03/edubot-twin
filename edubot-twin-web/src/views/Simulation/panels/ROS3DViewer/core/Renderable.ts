@@ -96,7 +96,6 @@ export class Renderable<
   /**
    * Return topic if one exists on the userData.
    */
-  // eslint-disable-next-line no-restricted-syntax
   public get topic(): TUserData['topic'] {
     return this.userData.topic
   }
@@ -104,7 +103,6 @@ export class Renderable<
   /**
    * Return pose as defined in userData
    */
-  // eslint-disable-next-line no-restricted-syntax
   public get pose(): Pose {
     return this.userData.pose
   }

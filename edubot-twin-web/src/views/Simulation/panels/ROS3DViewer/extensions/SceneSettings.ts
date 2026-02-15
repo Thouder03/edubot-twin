@@ -5,10 +5,9 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { t } from 'i18next'
 import * as _ from 'lodash-es'
 
-import { SettingsTreeAction, SettingsTreeFields } from '../core/lichtblick-shim'
+import { SettingsTreeAction, SettingsTreeFields, t } from '../core/lichtblick-shim'
 
 import type { IRenderer } from '../core/IRenderer'
 import { DEFAULT_MESH_UP_AXIS } from '../core/ModelCache'
