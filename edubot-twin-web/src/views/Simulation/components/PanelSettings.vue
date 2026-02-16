@@ -83,7 +83,7 @@ function handleGroupAction(groupKey: string, action: string) {
               <Icon v-if="group.icon" :icon="group.icon" :size="16" class="group-icon" />
               <span class="group-label">{{ group.label }}</span>
               <div class="group-actions">
-                <ElDropdown @command="(cmd) => handleGroupAction(group.key, cmd)">
+                <ElDropdown trigger="click" @command="(cmd) => handleGroupAction(group.key, cmd)">
                   <Icon
                     icon="vi-carbon:overflow-menu-vertical"
                     :size="16"
@@ -106,7 +106,7 @@ function handleGroupAction(groupKey: string, action: string) {
           </template>
 
           <!-- 递归渲染分组内容 -->
-          <ElForm label-position="left" label-width="100px" size="small" class="settings-form">
+          <ElForm label-position="right" size="small" class="settings-form">
             <SettingsNestedGroup
               :node-key="group.key"
               :node="group.rawNode as any"
@@ -134,7 +134,6 @@ function handleGroupAction(groupKey: string, action: string) {
   background: #1e1e2e;
   overflow-y: auto;
   padding: 0;
-  user-select: none;
 
   // Custom Scrollbar
   &::-webkit-scrollbar {
@@ -178,6 +177,7 @@ function handleGroupAction(groupKey: string, action: string) {
     :deep(.el-collapse-item__wrap) {
       background: transparent;
       border: none;
+      transition: none !important; /* Disable animation */
     }
 
     :deep(.el-collapse-item__content) {
@@ -187,32 +187,62 @@ function handleGroupAction(groupKey: string, action: string) {
 
     :deep(.el-collapse-item__arrow) {
       color: #6c7086;
+      transition: none !important;
     }
   }
 
   // Element Plus Form 暗色适配
+  :deep(.el-form-item) {
+    display: flex;
+    margin-bottom: 8px;
+    align-items: center; /* 垂直居中 */
+  }
+
   :deep(.el-form-item__label) {
     color: #a6adc8 !important;
     font-size: 12px;
     padding-right: 12px;
     line-height: 28px;
+
+    /* 标签对齐与尺寸 */
+    flex: 0 0 35%; /* 固定 35% 宽度用于对齐 */
+    max-width: 150px;
+    display: inline-block; /* 确保 text-overflow 生效 */
+    text-align: right; /* 文本右对齐 */
+    display: flex;
+    align-items: center;
+
+    /* 省略号溢出处理 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    /* 允许文本选择 */
+    user-select: text;
+    cursor: text;
+  }
+
+  :deep(.el-form-item__content) {
+    flex: 1;
+    min-width: 0; /* 允许收缩 */
   }
 
   :deep(.el-input__wrapper) {
     background-color: #313244;
     box-shadow: none;
     border: 1px solid #45475a;
-    max-width: 140px; /* Limit input width */
+    // max-width: 140px; /* 移除固定宽度限制以填充空间 */
+    width: 100%;
     .el-input__inner {
       color: #cdd6f4;
-      text-align: right; /* Align text to right like properties panel */
+      text-align: right; /* 像属性面板一样文本右对齐 */
     }
   }
 
   :deep(.el-input-number) {
     width: 100%;
     .el-input__wrapper {
-      max-width: 100%; /* InputNumber wrapper handles width differently */
+      max-width: 100%; /* InputNumber wrapper 处理宽度方式不同 */
       padding-left: 0;
       padding-right: 0;
     }
@@ -227,12 +257,8 @@ function handleGroupAction(groupKey: string, action: string) {
       background-color: #313244;
       box-shadow: none;
       border: 1px solid #45475a;
-      // max-width: 140px; /* Limit select width */
+      // max-width: 140px; /* 限制选择框宽度 */
     }
-  }
-
-  :deep(.el-form-item) {
-    margin-bottom: 12px;
   }
 }
 
@@ -241,6 +267,7 @@ function handleGroupAction(groupKey: string, action: string) {
   align-items: center;
   gap: 8px;
   width: 100%;
+  height: 15px;
   user-select: none;
 
   .group-icon {

@@ -4,11 +4,14 @@ import {
   ElFormItem,
   ElInput,
   ElInputNumber,
-  ElSwitch,
+  ElRadioGroup,
+  ElRadioButton,
   ElSelect,
   ElOption,
-  ElColorPicker
+  ElColorPicker,
+  ElTooltip
 } from 'element-plus'
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { Icon } from '@/components/Icon'
 import { SettingsTreeNode } from '../types/settings'
 
@@ -86,7 +89,7 @@ function handleFieldChange(path: string[], value: any, input: string) {
 
     <!-- Content (Fields + Children) -->
     <div
-      v-show="depth === 0 || isExpanded"
+      v-if="depth === 0 || isExpanded"
       class="nested-content"
       :class="{ 'is-root': depth === 0 }"
     >
@@ -99,22 +102,49 @@ function handleFieldChange(path: string[], value: any, input: string) {
           :error="field.error"
           class="settings-field"
         >
+          <template #label>
+            <ElTooltip
+              :content="field.label"
+              placement="top-start"
+              :show-after="500"
+              effect="light"
+            >
+              <span>{{ field.label }}</span>
+            </ElTooltip>
+          </template>
           <!-- Text Input -->
           <ElInput
             v-if="field.input === 'string'"
             :model-value="field.value"
             :placeholder="field.placeholder"
             :disabled="field.disabled"
+            :input-style="{ textAlign: 'center' }"
             @update:model-value="handleFieldChange(field.path, $event, field.input)"
           />
 
-          <!-- Color Picker -->
-          <ElColorPicker
-            v-else-if="field.input === 'rgb'"
-            :model-value="field.value"
-            :show-alpha="true"
-            @change="(val) => handleFieldChange(field.path, val, field.input)"
-          />
+          <!-- Color Picker Custom -->
+          <div v-else-if="field.input === 'rgb'" class="custom-color-input">
+            <ElInput
+              :model-value="field.value"
+              placeholder="#RRGGBB"
+              :disabled="field.disabled"
+              :input-style="{ textAlign: 'center' }"
+              @update:model-value="handleFieldChange(field.path, $event, field.input)"
+            >
+              <template #prefix>
+                <div class="color-preview">
+                  <ElColorPicker
+                    :model-value="field.value"
+                    size="small"
+                    class="embedded-picker"
+                    @change="(val) => handleFieldChange(field.path, val, field.input)"
+                  />
+                  <!-- Cover element to show color -->
+                  <div class="color-cover" :style="{ backgroundColor: field.value }"></div>
+                </div>
+              </template>
+            </ElInput>
+          </div>
 
           <!-- Number Input -->
           <ElInputNumber
@@ -124,17 +154,23 @@ function handleFieldChange(path: string[], value: any, input: string) {
             :max="field.max"
             :step="field.step ?? 1"
             :disabled="field.disabled"
-            controls-position="right"
+            class="custom-input-number"
+            :decrease-icon="ArrowLeft"
+            :increase-icon="ArrowRight"
             @update:model-value="handleFieldChange(field.path, $event, field.input)"
           />
 
-          <!-- Boolean Switch -->
-          <ElSwitch
+          <!-- Boolean Switch / Toggle -->
+          <ElRadioGroup
             v-else-if="field.input === 'boolean'"
             :model-value="field.value"
             :disabled="field.disabled"
-            @update:model-value="handleFieldChange(field.path, $event, field.input)"
-          />
+            class="custom-boolean-toggle"
+            @change="(val) => handleFieldChange(field.path, val, field.input)"
+          >
+            <ElRadioButton :label="false">Off</ElRadioButton>
+            <ElRadioButton :label="true">On</ElRadioButton>
+          </ElRadioGroup>
 
           <!-- Select -->
           <ElSelect
@@ -160,7 +196,9 @@ function handleFieldChange(path: string[], value: any, input: string) {
                 :precision="field.precision ?? 3"
                 :step="field.step ?? 0.1"
                 :disabled="field.disabled"
-                controls-position="right"
+                class="custom-input-number"
+                :decrease-icon="ArrowLeft"
+                :increase-icon="ArrowRight"
                 @update:model-value="
                   (val) => {
                     const newValue = [...(field.value ?? [0, 0, 0])]
@@ -241,9 +279,8 @@ export default {
 }
 
 .nested-content {
-  margin-left: 12px; // Indent children
+  margin-left: 8px; // Indent children
   border-left: 1px solid #313244;
-  padding-left: 12px;
 
   &.is-root {
     margin-left: 0;
@@ -267,6 +304,7 @@ export default {
 
 .vec3-input {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   width: 100%;
 
@@ -293,8 +331,116 @@ export default {
   }
 }
 
+.custom-boolean-toggle {
+  width: 100%;
+  display: flex;
+
+  :deep(.el-radio-button) {
+    flex: 1;
+    .el-radio-button__inner {
+      width: 100%;
+      padding: 5px 0; /* Compact padding */
+      background-color: #313244;
+      border-color: #45475a;
+      color: #cdd6f4;
+      box-shadow: none;
+    }
+    &.is-active .el-radio-button__inner {
+      background-color: #cdd6f4;
+      color: #1e1e2e;
+      border-color: #cdd6f4;
+    }
+  }
+}
+
+.custom-color-input {
+  width: 100%;
+
+  :deep(.el-input__prefix) {
+    padding-left: 5px;
+    display: flex;
+    align-items: center;
+  }
+
+  .color-preview {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    border-radius: 2px;
+    overflow: hidden;
+    border: 1px solid #45475a;
+    cursor: pointer;
+
+    /* The picker is hidden but clickable */
+    .embedded-picker {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      z-index: 10;
+      padding: 0;
+
+      :deep(.el-color-picker__trigger) {
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        border: none;
+      }
+    }
+
+    .color-cover {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none; /* Let clicks pass to picker */
+    }
+  }
+
+  :deep(.el-input__wrapper) {
+    padding-left: 0;
+  }
+}
+
 .field-help {
   color: #6c7086;
   font-size: 11px;
+}
+
+.custom-input-number {
+  width: 100%;
+
+  /* Hide controls by default */
+  :deep(.el-input-number__decrease),
+  :deep(.el-input-number__increase) {
+    display: none;
+    background: transparent;
+    border: none;
+    color: #a6adc8;
+
+    &:hover {
+      color: #cdd6f4;
+    }
+  }
+
+  /* Show controls on hover */
+  &:hover {
+    :deep(.el-input-number__decrease),
+    :deep(.el-input-number__increase) {
+      display: flex;
+    }
+  }
+
+  :deep(.el-input__wrapper) {
+    padding-left: 30px !important; /* Space for left arrow */
+    padding-right: 30px !important; /* Space for right arrow */
+  }
+
+  :deep(.el-input__inner) {
+    text-align: center;
+  }
 }
 </style>
