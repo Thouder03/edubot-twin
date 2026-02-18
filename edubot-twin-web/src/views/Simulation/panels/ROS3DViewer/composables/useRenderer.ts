@@ -83,6 +83,60 @@ function createExtensionConfig(): SceneExtensionConfig {
   }
 }
 
+// ============================================================
+// 配置持久化（参照 lichtblick 的 initialState / saveState 模式）
+// ============================================================
+
+const STORAGE_KEY = 'ros3d-renderer-config'
+
+/** 从 localStorage 读取已保存的配置 */
+function loadSavedConfig(): Partial<RendererConfig> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw) as Partial<RendererConfig>
+  } catch {
+    console.warn('[ROS3D] 读取持久化配置失败，使用默认值')
+    return {}
+  }
+}
+
+/**
+ * 将已保存的配置与默认值深度合并
+ * 等效于 lichtblick 的 _.merge(DEFAULT_CAMERA_STATE, partialConfig.cameraState)
+ */
+function mergeWithDefaults(
+  defaults: RendererConfig,
+  saved: Partial<RendererConfig>
+): RendererConfig {
+  return {
+    ...defaults,
+    ...saved,
+    cameraState: { ...defaults.cameraState, ...(saved.cameraState ?? {}) },
+    scene: { ...defaults.scene, ...(saved.scene ?? {}) },
+    transforms: { ...defaults.transforms, ...(saved.transforms ?? {}) },
+    topics: { ...defaults.topics, ...(saved.topics ?? {}) },
+    layers: { ...defaults.layers, ...(saved.layers ?? {}) }
+  }
+}
+
+/**
+ * 防抖保存（500ms 延迟）
+ * 等效于 lichtblick 的 useDebouncedCallback(saveState, 100, { maxWait: 1000 })
+ */
+let _saveTimer: ReturnType<typeof setTimeout> | null = null
+function debouncedSave(config: Readonly<RendererConfig>): void {
+  if (_saveTimer !== null) clearTimeout(_saveTimer)
+  _saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+    } catch (e) {
+      console.warn('[ROS3D] 配置保存失败:', e)
+    }
+    _saveTimer = null
+  }, 500)
+}
+
 export function useRenderer() {
   const renderer = shallowRef<Renderer | null>(null)
   const sceneReady = ref(false)
@@ -103,7 +157,10 @@ export function useRenderer() {
     canvas.style.display = 'block'
     container.appendChild(canvas)
 
-    const config = defaultRendererConfig()
+    // 加载持久化配置，与默认值合并（等效于 lichtblick 的 initialState 逻辑）
+    const saved = loadSavedConfig()
+    const config = mergeWithDefaults(defaultRendererConfig(), saved)
+
     const sceneExtensionConfig = createExtensionConfig()
 
     const r = new Renderer({
@@ -123,6 +180,13 @@ export function useRenderer() {
         })
       }
     })
+
+    // 监听 configChange 事件，防抖保存到 localStorage
+    // 等效于 lichtblick 的 useRendererEvent('configChange', updateConfig) + throttledSave
+    r.on('configChange', (changedRenderer) => {
+      debouncedSave(changedRenderer.config as RendererConfig)
+    })
+
     // 相机移动时触发重新渲染
     r.on('cameraMove', () => {
       r.queueAnimationFrame()
