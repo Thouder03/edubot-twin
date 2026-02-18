@@ -31,13 +31,28 @@ const emit = defineEmits<{
 }>()
 
 // Collapsed state for this nested group
-// Default to respects node.defaultExpanded, or false
 const isExpanded = ref(props.node.defaultExpanded ?? false)
 
 function toggleExpand() {
   if (props.node.collapsible !== false) {
     isExpanded.value = !isExpanded.value
   }
+}
+
+// ---------- 可见性切换 ----------
+/** 节点是否支持可见性切换（visible 字段不为 undefined） */
+const supportsVisibility = computed(() => props.node.visible !== undefined)
+/** 当前是否隐藏 */
+const isHidden = computed(() => props.node.visible === false)
+/** 鼠标是否悬浮在 header 上 */
+const isHovered = ref(false)
+
+/** 点击眼睛图标：切换 visible 状态，通过 field-change 事件上报 */
+function handleVisibilityToggle(event: MouseEvent) {
+  event.stopPropagation() // 不触发折叠/展开
+  const newVisible = isHidden.value ? true : false
+  // 使用特殊 input 标记 '__visible__'，由 PanelSettings 识别并转换为正确的 action
+  emit('field-change', props.path, newVisible, '__visible__')
 }
 
 // Prepare fields with full path
@@ -73,8 +88,10 @@ function handleFieldChange(path: string[], value: any, input: string) {
     <div
       v-if="depth > 0"
       class="nested-header"
-      :class="{ 'is-collapsed': !isExpanded }"
+      :class="{ 'is-collapsed': !isExpanded, 'is-hidden': isHidden }"
       @click="toggleExpand"
+      @mouseenter="isHovered = true"
+      @mouseleave="isHovered = false"
     >
       <Icon
         icon="vi-carbon:chevron-down"
@@ -83,7 +100,21 @@ function handleFieldChange(path: string[], value: any, input: string) {
       />
       <span class="nested-label">{{ node.label || nodeKey }}</span>
       <div class="nested-actions">
-        <!-- Optional: Add menu actions here specifically for this nested node -->
+        <!-- 可见性切换眼睛图标 -->
+        <button
+          v-if="supportsVisibility && (isHovered || isHidden)"
+          type="button"
+          class="visibility-btn"
+          :title="isHidden ? '点击显示' : '点击隐藏'"
+          @click.stop="handleVisibilityToggle"
+        >
+          <Icon
+            :icon="isHidden ? 'vi-carbon:view-off' : 'vi-carbon:view'"
+            :size="14"
+            class="visibility-icon"
+            :class="{ 'is-hidden-icon': isHidden }"
+          />
+        </button>
       </div>
     </div>
 
@@ -261,6 +292,16 @@ export default {
     }
   }
 
+  // 节点隐藏时整体变灰
+  &.is-hidden {
+    .nested-label {
+      opacity: 0.4;
+    }
+    .expand-icon {
+      opacity: 0.4;
+    }
+  }
+
   .expand-icon {
     transition: transform 0.2s;
     margin-right: 4px;
@@ -275,6 +316,37 @@ export default {
   .nested-label {
     flex: 1;
     font-weight: 500;
+  }
+}
+
+// 眼睛图标按钮
+.visibility-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #6c7086;
+  flex-shrink: 0;
+  transition:
+    color 0.15s,
+    background 0.15s;
+
+  &:hover {
+    color: #cdd6f4;
+    background: rgba(137, 180, 250, 0.12);
+  }
+
+  .visibility-icon {
+    // 隐藏状态的图标用更明显的颜色
+    &.is-hidden-icon {
+      color: #585b70;
+    }
   }
 }
 

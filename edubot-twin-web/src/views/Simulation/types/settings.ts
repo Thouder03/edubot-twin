@@ -29,7 +29,7 @@ export interface SettingsTreeField {
 /** 一组字段 */
 export interface SettingsTreeNode {
   label?: string
-  fields: Record<string, SettingsTreeField>
+  fields?: Record<string, SettingsTreeField>
   /** 是否可折叠（默认 true） */
   collapsible?: boolean
   /** 默认展开状态（默认 false） */
@@ -38,21 +38,37 @@ export interface SettingsTreeNode {
   icon?: string
   /** 子节点（嵌套分组） */
   children?: SettingsTreeNodes
+  /**
+   * 节点可见性。undefined 表示不支持可见性切换；
+   * true/false 表示当前显示/隐藏状态，悬浮时会显示眼睛图标。
+   */
+  visible?: boolean
+  /** 节点错误信息 */
+  error?: string
 }
 
 /** 完整设置节点映射 */
 export type SettingsTreeNodes = Record<string, SettingsTreeNode | undefined>
 
 /** 设置变更动作 */
-export interface SettingsTreeAction {
-  action: 'update'
-  payload: {
-    /** 路径: [groupKey, fieldKey] */
-    path: string[]
-    value: any
-    input: string
-  }
-}
+export type SettingsTreeAction =
+  | {
+      action: 'update'
+      payload: {
+        /** 路径: [groupKey, fieldKey] */
+        path: string[]
+        value: any
+        input: string
+      }
+    }
+  | {
+      /** 节点级别的自定义动作（如 show-all / hide-all） */
+      action: 'perform-node-action'
+      payload: {
+        id: string
+        path?: string[]
+      }
+    }
 
 /** 完整设置树: 节点描述 + 动作处理器 */
 export interface SettingsTree {

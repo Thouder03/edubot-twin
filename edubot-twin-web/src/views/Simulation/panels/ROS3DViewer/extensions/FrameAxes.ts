@@ -384,7 +384,30 @@ export class FrameAxes extends SceneExtension<FrameAxisRenderable> {
       return
     }
 
-    if (!path || path.length !== 3) {
+    if (!path || path.length < 2) {
+      return
+    }
+
+    // 处理节点级别的 visible 切换（path 长度为 2：['transforms', 'frame:xxx']）
+    // 由 SettingsNestedGroup 的眼睛图标点击触发
+    if (path.length === 2 && path[0] === 'transforms') {
+      const frameKey = path[1]!
+      const value = action.payload.value as boolean
+      const frameId = frameKey.replace(/^frame:/, '')
+      const renderable = this.renderables.get(frameId)
+      if (renderable) {
+        renderable.userData.settings.visible = value
+        renderable.visible = value
+      }
+      this.renderer.updateConfig((draft) => {
+        const draftTransforms = draft.transforms[frameKey] ?? {}
+        draft.transforms[frameKey] = { ...draftTransforms, visible: value }
+      })
+      this.updateSettingsTree()
+      return
+    }
+
+    if (path.length !== 3) {
       return // Doesn't match the pattern of ["transforms", "settings" | `frame:${frameId}`, field]
     }
 

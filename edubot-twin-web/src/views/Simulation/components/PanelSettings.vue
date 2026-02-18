@@ -49,6 +49,22 @@ const expandedGroups = ref<string[]>(
 // ---------- 字段变更处理 ----------
 function handleFieldChange(path: string[], value: any, input: string) {
   if (!selectedSettingsTree.value) return
+
+  // 特殊处理：__visible__ 是可见性切换的内部标记
+  // 将其转换为标准的 update action，path 去掉最后的 __visible__ 段
+  if (input === '__visible__') {
+    const action: SettingsTreeAction = {
+      action: 'update',
+      payload: {
+        path: path, // path 已经是节点路径（不含 __visible__）
+        value,
+        input: 'boolean'
+      }
+    }
+    selectedSettingsTree.value.actionHandler(action)
+    return
+  }
+
   const action: SettingsTreeAction = {
     action: 'update',
     payload: {
