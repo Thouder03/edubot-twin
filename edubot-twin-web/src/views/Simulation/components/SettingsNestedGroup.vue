@@ -9,7 +9,8 @@ import {
   ElSelect,
   ElOption,
   ElColorPicker,
-  ElTooltip
+  ElTooltip,
+  ElAutocomplete
 } from 'element-plus'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { Icon } from '@/components/Icon'
@@ -241,6 +242,82 @@ function handleFieldChange(path: string[], value: any, input: string) {
             </div>
           </div>
 
+          <!-- Vec2 Input -->
+          <div v-else-if="field.input === 'vec2'" class="vec3-input">
+            <div v-for="(label, idx) in ['X', 'Y']" :key="label" class="vec3-item">
+              <span class="vec3-label">{{ field.labels?.[idx] ?? label }}</span>
+              <ElInputNumber
+                :model-value="field.value?.[idx] ?? 0"
+                :precision="field.precision ?? 3"
+                :step="field.step ?? 0.1"
+                :disabled="field.disabled"
+                class="custom-input-number"
+                :decrease-icon="ArrowLeft"
+                :increase-icon="ArrowRight"
+                @update:model-value="
+                  (val) => {
+                    const newValue = [...(field.value ?? [0, 0])]
+                    newValue[idx] = val
+                    handleFieldChange(field.path, newValue, field.input)
+                  }
+                "
+              />
+            </div>
+          </div>
+
+          <!-- RGBA Color Picker（带透明度） -->
+          <div v-else-if="field.input === 'rgba'" class="custom-color-input">
+            <ElInput
+              :model-value="field.value"
+              placeholder="#RRGGBBAA"
+              :disabled="field.disabled"
+              :input-style="{ textAlign: 'center' }"
+              @update:model-value="handleFieldChange(field.path, $event, field.input)"
+            >
+              <template #prefix>
+                <div class="color-preview">
+                  <ElColorPicker
+                    :model-value="field.value"
+                    size="small"
+                    show-alpha
+                    color-format="hex"
+                    class="embedded-picker"
+                    @change="(val) => handleFieldChange(field.path, val, field.input)"
+                  />
+                  <div class="color-cover" :style="{ backgroundColor: field.value }"></div>
+                </div>
+              </template>
+            </ElInput>
+          </div>
+
+          <!-- Autocomplete（带候选项的文本输入，用于 followTf 等帧选择） -->
+          <ElAutocomplete
+            v-else-if="field.input === 'autocomplete'"
+            :model-value="field.value ?? ''"
+            :fetch-suggestions="
+              (query: string, cb: (results: { value: string }[]) => void) => {
+                const opts = (field.options ?? []).map((o) => ({ value: String(o.value) }))
+                cb(query ? opts.filter((o) => o.value.includes(query)) : opts)
+              }
+            "
+            :placeholder="field.placeholder ?? ''"
+            :disabled="field.disabled"
+            clearable
+            class="autocomplete-input"
+            @select="
+              (item: { value: string }) => handleFieldChange(field.path, item.value, field.input)
+            "
+            @change="(val: string) => handleFieldChange(field.path, val, field.input)"
+          />
+
+          <!-- Readonly 只读文本展示 -->
+          <ElInput
+            v-else-if="field.readonly === true"
+            :model-value="field.value != null ? String(field.value) : '—'"
+            :disabled="true"
+            :input-style="{ textAlign: 'center', color: '#6c7086' }"
+          />
+
           <!-- Help Text -->
           <template v-if="field.help" #help>
             <span class="field-help">{{ field.help }}</span>
@@ -400,6 +477,21 @@ export default {
         padding-right: 0;
       }
     }
+  }
+}
+
+// Autocomplete 输入框
+.autocomplete-input {
+  width: 100%;
+
+  :deep(.el-input__wrapper) {
+    background-color: #313244;
+    border-color: #45475a;
+  }
+
+  :deep(.el-input__inner) {
+    color: #cdd6f4;
+    text-align: center;
   }
 }
 

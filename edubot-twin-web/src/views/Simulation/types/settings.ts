@@ -9,19 +9,31 @@
 /** 单个字段 */
 export interface SettingsTreeField {
   label: string
-  input: 'string' | 'number' | 'boolean' | 'select' | 'rgb' | 'vec3'
+  input:
+    | 'string'
+    | 'number'
+    | 'boolean'
+    | 'select'
+    | 'rgb'
+    | 'rgba'
+    | 'vec2'
+    | 'vec3'
+    | 'autocomplete'
   value: any
   placeholder?: string
   help?: string
+  /** 是否禁用 */
   disabled?: boolean
+  /** 是否只读（只展示，不可编辑） */
+  readonly?: boolean
   error?: string
-  /** input='select' 时使用 */
+  /** input='select' | 'autocomplete' 时使用 */
   options?: Array<{ label: string; value: any }>
   /** input='number' 时使用 */
   min?: number
   max?: number
   step?: number
-  /** input='vec3' 时使用 */
+  /** input='vec2' | 'vec3' 时使用 */
   labels?: string[]
   precision?: number
 }
