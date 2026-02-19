@@ -16,6 +16,7 @@ import type { CameraState } from '../core/camera'
 import { SceneSettings } from '../extensions/SceneSettings'
 import { Grids } from '../extensions/Grids'
 import { FrameAxes } from '../extensions/FrameAxes'
+import { Markers } from '../extensions/Markers'
 
 /** 默认 RendererConfig */
 function defaultRendererConfig(): RendererConfig {
@@ -82,6 +83,9 @@ function createExtensionConfig(): SceneExtensionConfig {
       },
       [FrameAxes.extensionId]: {
         init: (renderer) => new FrameAxes(renderer, {})
+      },
+      [Markers.extensionId]: {
+        init: (renderer) => new Markers(renderer)
       }
     }
   }

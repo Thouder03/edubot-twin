@@ -1,100 +1,99 @@
 // SPDX-License-Identifier: MPL-2.0
-// RenderableLineList — renders LINE_LIST markers as Three.js LineSegments
+// RenderableLineList — LINE_LIST marker (type=5)
+// 将成对点渲染为 LineSegments（每2个点一条线段）
 
 import * as THREE from 'three'
-import type { IRenderer } from '../../core/IRenderer'
-import type { Marker } from '../../core/ros'
 
-/**
- * A renderable that displays `LINE_LIST` type markers using Three.js LineSegments.
- */
-export class RenderableLineList extends THREE.Object3D {
-  readonly #renderer: IRenderer
-  #lineSegments: THREE.LineSegments | null = null
-  #worldUnits: boolean
+import { RenderableMarker } from './RenderableMarker'
+import { markerHasTransparency } from './materials'
+import type { IRenderer } from '../../core/IRenderer'
+import { Marker } from '../../core/ros'
+
+export class RenderableLineList extends RenderableMarker {
+  #geometry: THREE.BufferGeometry
+  #lineSegments: THREE.LineSegments
+  #positionBuffer = new Float32Array()
+  #colorBuffer = new Float32Array()
 
   public constructor(
-    name: string,
+    topic: string,
     marker: Marker,
-    _receiveTime: bigint | undefined,
-    renderer: IRenderer,
-    options?: { worldUnits?: boolean }
+    receiveTime: bigint | undefined,
+    renderer: IRenderer
   ) {
-    super()
-    this.name = name
-    this.#renderer = renderer
-    this.#worldUnits = options?.worldUnits ?? false
-    this.update(marker, _receiveTime)
-  }
+    super(topic, marker, receiveTime, renderer)
 
-  public update(marker: Marker, _receiveTime: bigint | undefined): void {
-    // Clean up previous geometry
-    if (this.#lineSegments) {
-      this.remove(this.#lineSegments)
-      this.#lineSegments.geometry.dispose()
-      ;(this.#lineSegments.material as THREE.Material).dispose()
-      this.#lineSegments = null
-    }
-
-    const points = marker.points
-    if (!points || points.length < 2) return
-
-    // Build position buffer from marker points
-    const positions = new Float32Array(points.length * 3)
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i]!
-      positions[i * 3 + 0] = p.x
-      positions[i * 3 + 1] = p.y
-      positions[i * 3 + 2] = p.z
-    }
-
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-
-    // Use per-vertex colors if available, otherwise use marker color
-    let material: THREE.LineBasicMaterial
-    if (marker.colors && marker.colors.length >= points.length) {
-      const colors = new Float32Array(points.length * 3)
-      for (let i = 0; i < points.length; i++) {
-        const c = marker.colors[i]!
-        colors[i * 3 + 0] = c.r
-        colors[i * 3 + 1] = c.g
-        colors[i * 3 + 2] = c.b
-      }
-      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-      material = new THREE.LineBasicMaterial({
-        vertexColors: true,
-        linewidth: this.#worldUnits ? (marker.scale?.x ?? 1) : 1,
-        transparent: true,
-        opacity: marker.color?.a ?? 1.0,
-        depthWrite: false
-      })
-    } else {
-      const color = marker.color
-        ? new THREE.Color(marker.color.r, marker.color.g, marker.color.b)
-        : new THREE.Color(0.5, 0.5, 0.5)
-      material = new THREE.LineBasicMaterial({
-        color,
-        linewidth: this.#worldUnits ? (marker.scale?.x ?? 1) : 1,
-        transparent: true,
-        opacity: marker.color?.a ?? 1.0,
-        depthWrite: false
-      })
-    }
-
-    this.#lineSegments = new THREE.LineSegments(geometry, material)
+    this.#geometry = new THREE.BufferGeometry()
+    const transparent = markerHasTransparency(marker)
+    const material = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent,
+      depthWrite: !transparent
+    })
+    this.#lineSegments = new THREE.LineSegments(this.#geometry, material)
     this.#lineSegments.frustumCulled = false
     this.add(this.#lineSegments)
 
-    void this.#renderer
+    this.update(marker, receiveTime)
   }
 
-  public dispose(): void {
-    if (this.#lineSegments) {
-      this.#lineSegments.geometry.dispose()
-      ;(this.#lineSegments.material as THREE.Material).dispose()
-      this.remove(this.#lineSegments)
-      this.#lineSegments = null
+  public override dispose(): void {
+    ;(this.#lineSegments.material as THREE.Material).dispose()
+    this.#geometry.dispose()
+    super.dispose()
+  }
+
+  public override update(newMarker: Marker, receiveTime: bigint | undefined): void {
+    const prevMarker = this.userData.marker
+    super.update(newMarker, receiveTime)
+    const marker = this.userData.marker
+
+    let pointsLength = marker.points.length
+    if (pointsLength % 2 !== 0) pointsLength--
+
+    const transparent = markerHasTransparency(marker)
+    const mat = this.#lineSegments.material as THREE.LineBasicMaterial
+    if (transparent !== markerHasTransparency(prevMarker)) {
+      mat.transparent = transparent
+      mat.depthWrite = !transparent
+      mat.needsUpdate = true
     }
+
+    this.#setPositions(marker, pointsLength)
+    this.#setColors(marker, pointsLength)
+  }
+
+  #setPositions(marker: Marker, pointsLength: number): void {
+    if (3 * pointsLength > this.#positionBuffer.length) {
+      this.#positionBuffer = new Float32Array(3 * pointsLength)
+    }
+    const buf = this.#positionBuffer
+    for (let i = 0; i < pointsLength; i++) {
+      const p = marker.points[i]!
+      buf[i * 3 + 0] = p.x
+      buf[i * 3 + 1] = p.y
+      buf[i * 3 + 2] = p.z
+    }
+    this.#geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(buf.subarray(0, pointsLength * 3), 3)
+    )
+  }
+
+  #setColors(marker: Marker, pointsLength: number): void {
+    if (3 * pointsLength > this.#colorBuffer.length) {
+      this.#colorBuffer = new Float32Array(3 * pointsLength)
+    }
+    const buf = this.#colorBuffer
+    this._markerColorsToLinear(marker, pointsLength, (color, i) => {
+      buf[i * 3 + 0] = color[0]
+      buf[i * 3 + 1] = color[1]
+      buf[i * 3 + 2] = color[2]
+    })
+    this.#geometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(buf.subarray(0, pointsLength * 3), 3)
+    )
+    this.#geometry.getAttribute('position').needsUpdate = true
   }
 }

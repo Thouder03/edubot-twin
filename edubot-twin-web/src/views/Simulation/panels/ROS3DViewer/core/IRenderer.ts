@@ -190,4 +190,5 @@ export interface IRenderer extends EventEmitter<RendererEvents> {
   setFollowFrameId(frameId: string | undefined): void
   animationFrame: () => void
   queueAnimationFrame: () => void
+  normalizeFrameId(frameId: string): string
 }

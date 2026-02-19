@@ -759,6 +759,11 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
     // Delegate to settings manager which walks the tree and fires handlers
     this.settings.handleAction(action)
   }
+
+  /** Normalize a ROS frame ID by removing any leading "/" prefix */
+  public normalizeFrameId(frameId: string): string {
+    return this.ros ? (frameId.startsWith('/') ? frameId.slice(1) : frameId) : frameId
+  }
 }
 
 // --- Helper functions ---

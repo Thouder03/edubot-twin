@@ -40,7 +40,6 @@ const DEFAULT_DIVISIONS = 10
 const DEFAULT_LINE_WIDTH = 1
 const DEFAULT_COLOR = '#248eff'
 const MAX_DIVISIONS = 4096 // The JS heap size is a limiting factor
-const LINE_OPTIONS = { worldUnits: false }
 
 const DEFAULT_SETTINGS: LayerSettingsGrid = {
   visible: true,
@@ -266,13 +265,7 @@ export class Grids extends SceneExtension<GridRenderable> {
   #createRenderable(instanceId: string, settings: LayerSettingsGrid): GridRenderable {
     const marker = createMarker(settings)
     const lineListId = `${instanceId}:LINE_LIST`
-    const lineList = new RenderableLineList(
-      lineListId,
-      marker,
-      undefined,
-      this.renderer,
-      LINE_OPTIONS
-    )
+    const lineList = new RenderableLineList(lineListId, marker, undefined, this.renderer)
     const renderable = new GridRenderable(instanceId, this.renderer, {
       receiveTime: 0n,
       messageTime: 0n,
