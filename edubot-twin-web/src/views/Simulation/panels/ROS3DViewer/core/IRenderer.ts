@@ -89,6 +89,11 @@ export type RendererConfig = {
   topics: Record<string, Partial<BaseSettings> | undefined>
   /** instanceId -> settings */
   layers: Record<string, Partial<CustomLayerSettings> | undefined>
+  /** 面板级连接配置（ROS WebSocket） */
+  connection?: {
+    rosUrl?: string
+    autoConnect?: boolean
+  }
 }
 
 export type RendererSubscription<T = unknown> = {

@@ -100,6 +100,28 @@ export class SceneSettings extends SceneExtension {
           defaultExpansionState: 'collapsed',
           handler
         }
+      },
+      {
+        path: ['connection'],
+        node: {
+          label: t('threeDee:connection'),
+          defaultExpansionState: 'collapsed',
+          fields: {
+            rosUrl: {
+              label: t('threeDee:rosUrl'),
+              input: 'string',
+              value: this.renderer.config.connection?.rosUrl ?? 'ws://localhost:9090',
+              placeholder: 'ws://host:9090'
+            },
+            autoConnect: {
+              label: t('threeDee:autoConnect'),
+              input: 'boolean',
+              value: this.renderer.config.connection?.autoConnect ?? false,
+              help: t('threeDee:autoConnectHelp')
+            }
+          },
+          handler
+        }
       }
     ]
   }
@@ -136,6 +158,12 @@ export class SceneSettings extends SceneExtension {
         const labelScaleFactor = value as number | undefined
         this.renderer.labelPool.setScaleFactor(labelScaleFactor ?? DEFAULT_LABEL_SCALE_FACTOR)
       }
+    } else if (category === 'connection') {
+      // 连接配置更新 → 写入 RendererConfig（自动触发 configChange → 持久化）
+      this.renderer.updateConfig((draft) => {
+        if (!draft.connection) draft.connection = {}
+        _.set(draft, path, value)
+      })
     } else {
       return
     }

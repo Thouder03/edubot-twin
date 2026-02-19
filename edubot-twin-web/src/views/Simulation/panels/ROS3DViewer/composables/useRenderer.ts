@@ -62,6 +62,10 @@ function defaultRendererConfig(): RendererConfig {
         rotation: [0, 0, 0],
         order: 1
       } as any
+    },
+    connection: {
+      rosUrl: 'ws://localhost:9090',
+      autoConnect: false
     }
   }
 }
@@ -116,7 +120,8 @@ function mergeWithDefaults(
     scene: { ...defaults.scene, ...(saved.scene ?? {}) },
     transforms: { ...defaults.transforms, ...(saved.transforms ?? {}) },
     topics: { ...defaults.topics, ...(saved.topics ?? {}) },
-    layers: { ...defaults.layers, ...(saved.layers ?? {}) }
+    layers: { ...defaults.layers, ...(saved.layers ?? {}) },
+    connection: { ...defaults.connection, ...(saved.connection ?? {}) }
   }
 }
 

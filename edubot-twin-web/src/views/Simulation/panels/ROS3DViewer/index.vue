@@ -28,9 +28,10 @@ const { t } = useI18n()
 // ---------- 面板设置集成 ----------
 const { registerPanel, unregisterPanel, updateSettingsTree } = usePanelState()
 
-// ---------- ROS 连接配置 ----------
-const rosUrl = ref('ws://localhost:9090')
-const autoConnect = ref(false)
+// ---------- ROS 连接配置（从 RendererConfig.connection 读取，统一持久化）----------
+// 等价于 lichtblick 的 context.initialState 恢复逻辑
+const rosUrl = computed(() => renderer.value?.config.connection?.rosUrl ?? 'ws://localhost:9090')
+const autoConnect = computed(() => renderer.value?.config.connection?.autoConnect ?? false)
 
 // ---------- Composables ----------
 const {
@@ -45,6 +46,17 @@ const {
 } = useRenderer()
 
 const { status, errorMessage, getRos, connect, disconnect } = useRosConnection(rosUrl)
+
+// 监听 configChange：当 rosUrl 变化时更新连接 URL
+// （RendererConfig 的持久化已由 useRenderer 的 debouncedSave 处理）
+watch(
+  () => renderer.value?.config.connection?.rosUrl,
+  (newUrl) => {
+    if (newUrl) {
+      // useRosConnection 内部 watch rosUrl，自动响应
+    }
+  }
+)
 
 // ---------- 模板引用 ----------
 const canvasContainer = ref<HTMLElement>()
