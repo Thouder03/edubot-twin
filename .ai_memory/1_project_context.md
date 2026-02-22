@@ -171,6 +171,58 @@ src/
     - **Settings -> View**: 设置面板修改 `config` 后，必须显式调用对应的 `setXxxState()`（如 `setCameraState`）以应用变更到 3D 场景。
     - **数值精度**: 涉及浮点数同步时，必须进行 `round` 处理（通常保留 3 位小数），防止无效的高精度数值导致的 UI 抖动或存储浪费。
 
+### 5.6 Markers SceneExtension 完整实现（已完成）
+
+#### 文件清单
+
+```
+extensions/
+├── Markers.ts              — 主 SceneExtension，订阅 Marker & MarkerArray，管理设置树
+├── TopicMarkers.ts         — 管理单 topic 下所有 namespace 的 marker 生命周期
+└── markers/
+    ├── materials.ts              — 统一材质工厂（Standard/Instanced/Line）
+    ├── RenderableMarker.ts       — 所有 Marker 渲染类的基类（含颜色覆盖、过期逻辑）
+    ├── MarkerPool.ts             — 按类型缓存 RenderableMarker 实例的对象池
+    ├── RenderableArrow.ts        — ARROW (type=0) 箭头，支持 2点/scale 双模式
+    ├── RenderableCube.ts         — CUBE (type=1)
+    ├── RenderableSphere.ts       — SPHERE (type=2)
+    ├── RenderableCylinder.ts     — CYLINDER (type=3)
+    ├── RenderableLineStrip.ts    — LINE_STRIP (type=4)  THREE.Line
+    ├── RenderableLineList.ts     — LINE_LIST (type=5)   THREE.LineSegments
+    ├── RenderableCubeList.ts     — CUBE_LIST (type=6)   THREE.InstancedMesh
+    ├── RenderableSphereList.ts   — SPHERE_LIST (type=7) THREE.InstancedMesh
+    ├── RenderablePoints.ts       — POINTS (type=8)      THREE.Points
+    ├── RenderableTextViewFacing.ts — TEXT_VIEW_FACING (type=9) CanvasTexture Sprite
+    ├── RenderableTriangleList.ts — TRIANGLE_LIST (type=11) 动态 BufferGeometry
+    └── RenderableMeshResource.ts — MESH_RESOURCE (type=10) ModelCache 异步加载
+```
+
+#### 关键设计决策
+
+1. **材质简化**: 放弃 lichtblick 的 `LineMaterialWithAlphaVertex`（需 `@lichtblick/three-renderer`），改用标准 `THREE.LineBasicMaterial`。
+2. **LayerSettingsMarker 定义位置**: 类型定义在 `RenderableMarker.ts` 中（不在 `TopicMarkers.ts`），防止循环导入。
+3. **normalizeFrameId API**: 在 `IRenderer` 接口中新增 `normalizeFrameId(frameId: string): string` 方法；`Renderer.ts` 实现为：ROS 模式去掉前导 `/`，非 ROS 模式透传。
+4. **对象池 MarkerPool**: 按 `MarkerType` 键缓存实例，避免 GPU 资源频繁 GC。
+5. **注册点**: `composables/useRenderer.ts` 的 `createExtensionConfig()` 中显式注册。
+
+#### 订阅的 ROS Schema
+
+- `visualization_msgs/Marker` (及 ros2/foxglove 变体) → 单个 Marker
+- `visualization_msgs/MarkerArray` (及变体) → 批量 Marker
+
+#### 设置树结构
+
+```
+topics/
+└── /your_marker_topic/
+    ├── visible (boolean)
+    ├── color (rgba override, 可选)
+    ├── showOutlines (boolean)
+    ├── selectedIdVariable (string)
+    └── ns:namespace_name/
+        └── visible (boolean)
+```
+
 ---
 
 ## 6. 角色系统与路由配置 (Role System & Routing)

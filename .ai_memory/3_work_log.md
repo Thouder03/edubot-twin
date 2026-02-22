@@ -168,3 +168,17 @@
 - 分析 lichtblick 原版 3D 面板（React）与本工程 EduBot-Twin（Vue 3）的架构差异
 - 生成差异对比文档：`edubot-twin-web/src/views/Simulation/3D_PANEL_DIFF_CN.md`
 - 文档涵盖：整体架构、核心文件对照、数据源差异、设置面板架构、扩展数量（3/19已实现）、配置持久化、HUD 覆盖层、数据流图、后续开发建议
+
+## 2026-02-19
+
+### ROS Markers SceneExtension 完整实现
+
+- **新增** `extensions/markers/` — 15个文件（materials.ts + MarkerPool.ts + 12种Renderable类 + RenderableMarker基类）
+- **新增** `extensions/TopicMarkers.ts` — 管理单topic下所有namespace/marker生命周期，含过期检测
+- **新增** `extensions/Markers.ts` — 主SceneExtension，订阅Marker/MarkerArray，管理设置树和命名空间visibility
+- **修改** `core/IRenderer.ts` — 新增 `normalizeFrameId(frameId): string` 接口声明
+- **修改** `core/Renderer.ts` — 实现 `normalizeFrameId()`（ROS模式去前导/）
+- **修改** `composables/useRenderer.ts` — 在createExtensionConfig()中注册Markers extension
+- **修复** `extensions/Grids.ts` — 删除 `RenderableLineList` 调用的多余第5参数 `LINE_OPTIONS`
+- **修复** `extensions/markers/Markers.ts` — path可选链检查（path?.length）
+- **最终状态**: tsc --noEmit 零错误

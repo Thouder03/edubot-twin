@@ -209,3 +209,57 @@ if (to.path === "/login" || to.path === "/") {
 - [ ] GzWeb Iframe 集成
 - [ ] Docker 容器状态 WebSocket 对接
 - [ ] RobotModel (URDF) 扩展移植
+
+---
+
+# 上下文压缩与思维复盘
+
+## [归档日期 2026-02-19]
+
+### 1. 核心议题背景
+
+本次会话的核心任务是为 ROS3DViewer 的 Renderer-Extension 架构实现完整的 **ROS Markers SceneExtension**。目标是让 3D 面板能接收并渲染 `visualization_msgs/Marker` 和 `visualization_msgs/MarkerArray` 消息，覆盖全部 12 种 Marker 类型。
+
+参考来源：`/home/ubuntu20/lichtblick/packages/suite-base/src/panels/ThreeDeeRender/renderables/` 目录。
+
+---
+
+### 2. 关键思维演变路径 (Cognitive Evolution)
+
+**阶段一：依赖分析与材质简化决策**
+- **用户意图**: 完整移植 lichtblick 的 Markers 扩展
+- **冲突**: lichtblick 的 `materials.ts` 依赖 `LineMaterialWithAlphaVertex`（来自 `@lichtblick/three-renderer` 私有包，本项目无此依赖）
+- **决策逻辑**: 改用标准 `THREE.LineBasicMaterial` 替代，放弃可变宽度线条（视觉差异可接受，避免引入重量级依赖）
+
+**阶段二：循环导入与类型定位**
+- **冲突**: `TopicMarkers.ts` 原先本地定义 `LayerSettingsMarker`，`RenderableMarker.ts` 又从 `TopicMarkers` 导入它 → 循环依赖
+- **决策**: 将 `LayerSettingsMarker` 的**权威定义位置**移到 `RenderableMarker.ts`，`TopicMarkers.ts` 保留本地拓展版（添加 `namespaces` 字段），两者解耦
+
+**阶段三：`normalizeFrameId` 接口缺失**
+- **冲突**: `RenderableMarker.ts` 和 `TopicMarkers.ts` 调用 `renderer.normalizeFrameId()`，但 `IRenderer` 接口中没有此方法（lichtblick 中它是 Renderer 的模块级私有函数）
+- **决策**: 在 `IRenderer` 接口中新增 `normalizeFrameId(frameId: string): string`，在 `Renderer.ts` 中实现为：`this.ros ? frameId.replace(/^\//, '') : frameId`
+
+**阶段四：批量编译错误修复**
+- `Markers.ts` 的 `path.length` → `!path || path.length`（undefined guard）
+- `RenderableCubeList.ts`、`RenderableTextViewFacing.ts` 未使用导入删除
+- `Grids.ts` 的 `RenderableLineList` 多余第5参数（原先为 lichtblick 的 `LINE_OPTIONS`，简化版构造函数不支持）
+
+**阶段五：最终共识**
+- 所有 Marker 相关文件 tsc 零错误
+- 在 `composables/useRenderer.ts` 的 `createExtensionConfig()` 显式注册 `Markers`
+
+---
+
+### 3. 已确立的架构约定
+
+- **新 SceneExtension 注册点**: `composables/useRenderer.ts` → `createExtensionConfig()`
+- **Materials 策略**: 不引入 `LineMaterialWithAlphaVertex`，全用标准 Three.js 材质
+- **类型定义位置**: 跨文件共享类型定义在被依赖方（而非依赖方），避免循环导入
+- **normalizeFrameId**: `IRenderer` 接口方法，实现在 `Renderer.ts`，供所有 Extension 调用
+
+### 4. 下一步行动指引 (Next Actions)
+
+- [ ] 用 ROS 发布 `visualization_msgs/Marker` 进行端到端联调
+- [ ] 实现 `LaserScan` SceneExtension（参考 `RenderablePoints` 的 THREE.Points 方案）
+- [ ] 实现 `PointCloud2` SceneExtension
+- [ ] 完善设置侧栏中 Markers topic 的命名空间可见性控制 UI
