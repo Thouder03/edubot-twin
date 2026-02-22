@@ -38,11 +38,19 @@ export class Markers extends SceneExtension<TopicMarkers> {
   public constructor(renderer: IRenderer, name: string = Markers.extensionId) {
     super(name, renderer)
     this.#pool = new MarkerPool(renderer)
+
+    // topic 列表更新时（如连接 ROS 后查询到新 topic）重刷设置树
+    renderer.on('topicsChanged', this.#handleTopicsChanged)
   }
 
   public override dispose(): void {
+    this.renderer.off('topicsChanged', this.#handleTopicsChanged)
     this.#pool.dispose()
     super.dispose()
+  }
+
+  #handleTopicsChanged = (): void => {
+    this.updateSettingsTree()
   }
 
   public override getSubscriptions(): readonly AnyRendererSubscription[] {
@@ -64,9 +72,19 @@ export class Markers extends SceneExtension<TopicMarkers> {
     const configTopics = this.renderer.config.topics
     const entries: SettingsTreeEntry[] = []
 
-    for (const topicName of Object.keys(configTopics)) {
-      const config = (configTopics[topicName] ?? {}) as Partial<LayerSettingsMarker>
+    // 合并两个来源：
+    // 1. config.topics — 已接收过消息或用户已手动配置的 topic
+    // 2. renderer.topics — ROS 已发布、schema 匹配 marker 的 topic（连接后立即可见）
+    const ALL_MARKER_SCHEMAS = new Set([...MARKER_DATATYPES, ...MARKER_ARRAY_DATATYPES])
+    const topicNames = new Set<string>(Object.keys(configTopics))
+    for (const topic of this.renderer.topics ?? []) {
+      if (ALL_MARKER_SCHEMAS.has(topic.schemaName)) {
+        topicNames.add(topic.name)
+      }
+    }
 
+    for (const topicName of topicNames) {
+      const config = (configTopics[topicName] ?? {}) as Partial<LayerSettingsMarker>
       const topicMarkers = this.renderables.get(topicName)
 
       const node = {
@@ -90,7 +108,7 @@ export class Markers extends SceneExtension<TopicMarkers> {
         children: undefined as SettingsTreeNodes | undefined
       }
 
-      // 命名空间子项
+      // 命名空间子项（仅已收到消息的 topic 才有）
       const namespaces = Array.from(topicMarkers?.namespaces.values() ?? []).sort((a, b) =>
         a.namespace.localeCompare(b.namespace)
       )
@@ -120,14 +138,43 @@ export class Markers extends SceneExtension<TopicMarkers> {
     renderFrameId: string,
     fixedFrameId: string
   ): void {
-    for (const renderable of this.renderables.values()) {
-      renderable.startFrame(currentTime, renderFrameId, fixedFrameId)
+    for (const [topicName, renderable] of this.renderables) {
+      // 根据 visible 设置控制 Three.js 对象的可见性
+      const settings = this.renderer.config.topics[topicName] as
+        | Partial<LayerSettingsMarker>
+        | undefined
+      renderable.visible = settings?.visible ?? DEFAULT_SETTINGS.visible
+      if (renderable.visible) {
+        renderable.startFrame(currentTime, renderFrameId, fixedFrameId)
+      }
     }
   }
 
   public override handleSettingsAction = (action: SettingsTreeAction): void => {
     const path = action.payload.path
-    if (action.action !== 'update' || !path || path.length !== 3) return
+    if (action.action !== 'update' || !path) return
+
+    // path 长度 2: ['topics', topicName] → 节点级可见性切换（眼睛图标）
+    if (path.length === 2) {
+      const topicName = path[1]!
+      // 保存 visible 到 config（path 补上 'visible' 字段）
+      this.saveSetting([...path, 'visible'] as string[], action.payload.value)
+      // 刷新设置树以更新眼睛状态
+      this.updateSettingsTree()
+      // 如已有渲染实例，同步 settings
+      const topicMarkers = this.renderables.get(topicName)
+      if (topicMarkers) {
+        const settings = this.renderer.config.topics[topicName] as
+          | Partial<LayerSettingsMarker>
+          | undefined
+        topicMarkers.userData.settings = { ...DEFAULT_SETTINGS, ...settings }
+        topicMarkers.update()
+      }
+      return
+    }
+
+    // path 长度 3: ['topics', topicName, fieldName] → 字段更新
+    if (path.length !== 3) return
 
     this.saveSetting(path as string[], action.payload.value)
 

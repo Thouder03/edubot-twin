@@ -128,14 +128,96 @@ function unsubscribeTfTopics() {
   tfSubscriptions = []
 }
 
-// 监听连接状态变化 → 自动订阅/取消 TF
+// 监听连接状态变化 → 自动订阅/取消 TF，并更新 renderer 已知 topic 列表
 watch(status, (newStatus) => {
   if (newStatus === 'connected') {
     subscribeTfTopics()
+    syncRosTopicsToRenderer()
   } else {
     unsubscribeTfTopics()
+    unsubscribeMarkerTopics()
+    // 断开时清空 topic 列表
+    renderer.value?.setTopics([])
   }
 })
+
+// ---------- ROS Marker Topic 订阅桥接 ----------
+let markerSubscriptions: RosTopic[] = []
+
+/** 取消所有 Marker topic 订阅 */
+function unsubscribeMarkerTopics() {
+  const ros = getRos()
+  const isConnected = ros && ros.isConnected
+  for (const sub of markerSubscriptions) {
+    try {
+      if (isConnected) {
+        sub.unsubscribe()
+      } else {
+        sub.removeAllListeners()
+      }
+    } catch (e) {
+      console.warn('[ROS3D] Error unsubscribing marker topic:', e)
+    }
+  }
+  markerSubscriptions = []
+}
+
+/**
+ * 查询 ROS master 的全量 topic 列表，注入 Renderer，
+ * 并自动订阅所有 marker 类型的 topic，路由消息到 addMessageEvent。
+ */
+function syncRosTopicsToRenderer() {
+  const ros = getRos()
+  if (!ros || !renderer.value) return
+
+  // Marker 类型 schema 集合（与 Markers.ts 保持一致）
+  const MARKER_SCHEMAS = new Set([
+    'visualization_msgs/Marker',
+    'visualization_msgs/msg/Marker',
+    'visualization_msgs/MarkerArray',
+    'visualization_msgs/msg/MarkerArray'
+  ])
+
+  ;(ros as any).getTopics(
+    (result: { topics: string[]; types: string[] }) => {
+      const topics = result.topics.map((name, i) => ({
+        name,
+        schemaName: result.types[i] ?? '',
+        datatype: result.types[i] ?? ''
+      }))
+      renderer.value?.setTopics(topics)
+      refreshSettingsTree()
+      console.log('[ROS3D] 已同步 ROS topics 至 Renderer，共', topics.length, '个')
+
+      // 取消旧订阅，重新订阅所有 marker topic
+      unsubscribeMarkerTopics()
+      for (const topic of topics) {
+        if (!MARKER_SCHEMAS.has(topic.schemaName)) continue
+
+        const rosTopic = new RosTopic({
+          ros,
+          name: topic.name,
+          messageType: topic.schemaName
+        })
+        rosTopic.subscribe((msg: any) => {
+          const now = BigInt(Date.now()) * 1_000_000n
+          addMessageEvent({
+            topic: topic.name,
+            schemaName: topic.schemaName,
+            receiveTime: { sec: Number(now / 1_000_000_000n), nsec: Number(now % 1_000_000_000n) },
+            message: msg,
+            sizeInBytes: 0
+          })
+        })
+        markerSubscriptions.push(rosTopic)
+        console.log('[ROS3D] 已订阅 Marker topic:', topic.name, '(', topic.schemaName, ')')
+      }
+    },
+    (err: string) => {
+      console.warn('[ROS3D] getTopics 失败:', err)
+    }
+  )
+}
 
 // ---------- 连接状态显示 ----------
 const statusConfig = computed(() => {
@@ -174,7 +256,7 @@ function refreshSettingsTree() {
   if (tree) {
     updateSettingsTree(props.panelId, {
       actionHandler: (action) => handleSettingsAction(action),
-      nodes: tree
+      nodes: tree as any
     })
   }
 }
@@ -203,6 +285,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   unsubscribeTfTopics()
+  unsubscribeMarkerTopics()
   disconnect()
   disposeRenderer()
   unregisterPanel(props.panelId)
