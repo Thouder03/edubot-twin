@@ -182,3 +182,17 @@
 - **修复** `extensions/Grids.ts` — 删除 `RenderableLineList` 调用的多余第5参数 `LINE_OPTIONS`
 - **修复** `extensions/markers/Markers.ts` — path可选链检查（path?.length）
 - **最终状态**: tsc --noEmit 零错误
+
+## 2026-03-12
+
+### LaserScan 全链路修复
+
+- **排查**: 通过代码静态分析逐层排查 /scan 不显示的根因（浏览器子智能体 503 失败，改用代码分析）
+- **根因1（最关键）**: `index.vue` 的 `syncRosTopicsToRenderer()` 只订阅 Marker 类型，`sensor_msgs/LaserScan` 消息永远不路由到 renderer
+  - **修复**: 加入 `LASERSCAN_SCHEMAS` + `VISUALIZABLE_SCHEMAS`，LaserScan 话题现在也被 ROSLIB 订阅
+- **根因2**: `DEFAULT_POINT_SETTINGS.visible=false`，首次接收消息时 renderable 的 visible=false，startFrame skip
+  - **修复**: `#handleLaserScan` 首次发现话题时强制 `visible=true` 并写入 config
+- **根因3**: `handleSettingsAction` 只处理 `path.length===3`，眼睛图标的 `path.length===2` 动作被忽略
+  - **修复**: 加入 `path.length===2` 分支，直接更新 renderable.visible + config + updateSettingsTree
+- **附带**: settingsNodes 过滤逻辑（Markers/LaserScans 两处）防止话题串台
+- **最终状态**: tsc --noEmit 零错误，/scan 端到端渲染链路完整

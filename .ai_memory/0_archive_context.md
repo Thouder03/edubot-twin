@@ -263,3 +263,52 @@ if (to.path === "/login" || to.path === "/") {
 - [ ] 实现 `LaserScan` SceneExtension（参考 `RenderablePoints` 的 THREE.Points 方案）
 - [ ] 实现 `PointCloud2` SceneExtension
 - [ ] 完善设置侧栏中 Markers topic 的命名空间可见性控制 UI
+
+## [归档日期 2026-03-12]
+
+### 1. 核心议题背景
+
+本次会话的核心任务是调试并修复 ROS3DViewer 中 `/scan`（`sensor_msgs/LaserScan`）话题无法渲染的问题。表现为：连接 ROS 后，设置树中 /scan 话题的眼睛图标为关闭且无法点击，3D 视图中不显示任何激光点云。
+
+---
+
+### 2. 关键思维演变路径 (Cognitive Evolution)
+
+**阶段一：错误的初始假设（GPU shader / position attribute）**
+- **用户意图**: 修复 LaserScan 不显示
+- **初始假设**: lichtblick 原版将 range 存在 `position` attribute（itemSize=1），THREE.js 内部期望 itemSize=3，导致 WebGL VAO 静默失败
+- **冲突/转折**: 查阅 lichtblick 源码 line 74 注释：`"Three.JS doesn't render anything if there is no attribute named position, so we use the name position for the 'range' parameter."` — 这是刻意设计，不是 bug
+- **决策逻辑**: 放弃 GPU/shader 假设，转向 settingsNodes 过滤逻辑排查
+
+**阶段二：Settings 树串台问题（话题出现在错误的 Extension）**
+- **发现**: `/scan` 在连接后出现在 Markers 设置树，因为 `Markers.settingsNodes()` 从 `configTopics` 迭代时没有检查 schema
+- **修复**: `configTopics` 中的话题也必须检查 `schema`，断线时只保留有 renderable 的话题
+
+**阶段三：visible 默认值问题**
+- **发现**: `DEFAULT_POINT_SETTINGS.visible = false`，首次创建 renderable 时 `settings.visible = false`
+- **修复**: `#handleLaserScan` 首次创建时强制 `visible = true`
+
+**阶段四：handleSettingsAction 路径长度问题**
+- **发现**: 眼睛图标触发的 action 的 `path.length === 2`，原代码 `if (path.length !== 3) return` 直接忽略
+- **修复**: 加入 `path.length === 2` 分支
+
+**阶段五：真正根因——消息永远不到达 handler（3小时后发现）**
+- **突破口**: 查看 `index.vue` 的 `syncRosTopicsToRenderer()` 函数
+- **冲击性发现**: 该函数里的 `MARKER_SCHEMAS` 集合和 `if (!MARKER_SCHEMAS.has(topic.schemaName)) continue` 过滤逻辑，导致 `sensor_msgs/LaserScan` 话题**从未被 ROSLIB 订阅**，消息根本不会到达 `addMessageEvent`，所有上游的修复都白费
+- **根因**: `syncRosTopicsToRenderer` 是所有话题消息的唯一路由入口，但当时只实现了 Marker 订阅
+- **修复**: 加入 `LASERSCAN_SCHEMAS` 和 `VISUALIZABLE_SCHEMAS` 合集
+
+### 3. 架构关键约束（教训）
+
+**新增 SceneExtension 必须做的两件事**:
+1. `extensions/YourExtension.ts` — 实现 `getSubscriptions()` 返回 schema
+2. `index.vue` — 在 `syncRosTopicsToRenderer()` 的 `VISUALIZABLE_SCHEMAS` 中注册 schema
+
+**这是一个"双入口"陷阱**：Renderer 的订阅体系（`getSubscriptions()`）和 ROSLIB 订阅体系（`syncRosTopicsToRenderer()`）是两个独立的层，二者必须同步维护。
+
+### 4. 下一步行动指引 (Next Actions)
+
+- [ ] 端到端测试：验证 /scan 在带TF / 无TF 环境下的渲染
+- [ ] 实现 `nav_msgs/OccupancyGrid`（地图）：记得在 VISUALIZABLE_SCHEMAS 注册
+- [ ] 实现 `sensor_msgs/PointCloud2`：记得在 VISUALIZABLE_SCHEMAS 注册
+- [ ] 考虑将 VISUALIZABLE_SCHEMAS 提取为常量文件，避免分散维护
