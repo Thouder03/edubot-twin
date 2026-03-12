@@ -72,14 +72,37 @@ export class Markers extends SceneExtension<TopicMarkers> {
     const configTopics = this.renderer.config.topics
     const entries: SettingsTreeEntry[] = []
 
-    // 合并两个来源：
-    // 1. config.topics — 已接收过消息或用户已手动配置的 topic
-    // 2. renderer.topics — ROS 已发布、schema 匹配 marker 的 topic（连接后立即可见）
+    // 合并两个来源（都需校验 schema）：
+    // 1. renderer.topics — ROS 已发布、schema 匹配 marker 的 topic
+    // 2. config.topics  — 已接收过消息，且 schema 仍匹配 marker（断线状态下无 topicMeta 时也允许）
     const ALL_MARKER_SCHEMAS = new Set([...MARKER_DATATYPES, ...MARKER_ARRAY_DATATYPES])
-    const topicNames = new Set<string>(Object.keys(configTopics))
+    const topicsByName = this.renderer.topicsByName
+    const topicNames = new Set<string>()
+
+    // 来源 1：从实时 topics 列表筛选
     for (const topic of this.renderer.topics ?? []) {
       if (ALL_MARKER_SCHEMAS.has(topic.schemaName)) {
         topicNames.add(topic.name)
+      }
+    }
+
+    // 来源 2：从 config.topics 筛选
+    // - 已连接（topicsByName 可用）：只加入 schema 确认匹配的话题
+    // - 断线（topicsByName 为 null）：只保留有 renderable（已收到过消息）的 Marker 话题
+    for (const name of Object.keys(configTopics)) {
+      const topicMeta = topicsByName?.get(name)
+      if (topicMeta) {
+        // 已连接：按 schema 严格过滤
+        if (ALL_MARKER_SCHEMAS.has(topicMeta.schemaName)) {
+          topicNames.add(name)
+        }
+      } else if (topicsByName != null) {
+        // 已连接但话题消失（断开发布者）：跳过
+      } else {
+        // 断线状态：只保留之前确实收到过消息的话题（有 renderable）
+        if (this.renderables.has(name)) {
+          topicNames.add(name)
+        }
       }
     }
 

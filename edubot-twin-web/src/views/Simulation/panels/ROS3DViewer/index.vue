@@ -164,19 +164,23 @@ function unsubscribeMarkerTopics() {
 
 /**
  * 查询 ROS master 的全量 topic 列表，注入 Renderer，
- * 并自动订阅所有 marker 类型的 topic，路由消息到 addMessageEvent。
+ * 并自动订阅所有可视化类型（Marker、LaserScan）的 topic，路由消息到 addMessageEvent。
  */
 function syncRosTopicsToRenderer() {
   const ros = getRos()
   if (!ros || !renderer.value) return
 
-  // Marker 类型 schema 集合（与 Markers.ts 保持一致）
+  // 可视化 schema 集合（与各 Extension 保持一致）
   const MARKER_SCHEMAS = new Set([
     'visualization_msgs/Marker',
     'visualization_msgs/msg/Marker',
     'visualization_msgs/MarkerArray',
     'visualization_msgs/msg/MarkerArray'
   ])
+
+  const LASERSCAN_SCHEMAS = new Set(['sensor_msgs/LaserScan', 'sensor_msgs/msg/LaserScan'])
+
+  const VISUALIZABLE_SCHEMAS = new Set([...MARKER_SCHEMAS, ...LASERSCAN_SCHEMAS])
 
   ;(ros as any).getTopics(
     (result: { topics: string[]; types: string[] }) => {
@@ -189,10 +193,10 @@ function syncRosTopicsToRenderer() {
       refreshSettingsTree()
       console.log('[ROS3D] 已同步 ROS topics 至 Renderer，共', topics.length, '个')
 
-      // 取消旧订阅，重新订阅所有 marker topic
+      // 取消旧订阅，重新订阅所有可视化话题
       unsubscribeMarkerTopics()
       for (const topic of topics) {
-        if (!MARKER_SCHEMAS.has(topic.schemaName)) continue
+        if (!VISUALIZABLE_SCHEMAS.has(topic.schemaName)) continue
 
         const rosTopic = new RosTopic({
           ros,
@@ -210,7 +214,7 @@ function syncRosTopicsToRenderer() {
           })
         })
         markerSubscriptions.push(rosTopic)
-        console.log('[ROS3D] 已订阅 Marker topic:', topic.name, '(', topic.schemaName, ')')
+        console.log('[ROS3D] 已订阅话题:', topic.name, '(', topic.schemaName, ')')
       }
     },
     (err: string) => {

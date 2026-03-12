@@ -17,6 +17,7 @@ import { SceneSettings } from '../extensions/SceneSettings'
 import { Grids } from '../extensions/Grids'
 import { FrameAxes } from '../extensions/FrameAxes'
 import { Markers } from '../extensions/Markers'
+import { LaserScans } from '../extensions/LaserScans'
 
 /** 默认 RendererConfig */
 function defaultRendererConfig(): RendererConfig {
@@ -86,6 +87,9 @@ function createExtensionConfig(): SceneExtensionConfig {
       },
       [Markers.extensionId]: {
         init: (renderer) => new Markers(renderer)
+      },
+      [LaserScans.extensionId]: {
+        init: (renderer) => new LaserScans(renderer)
       }
     }
   }
