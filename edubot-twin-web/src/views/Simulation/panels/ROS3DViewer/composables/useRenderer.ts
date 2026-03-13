@@ -19,6 +19,7 @@ import { FrameAxes } from '../extensions/FrameAxes'
 import { Markers } from '../extensions/Markers'
 import { LaserScans } from '../extensions/LaserScans'
 import { Polygons } from '../extensions/Polygons'
+import { OccupancyGrids } from '../extensions/OccupancyGrids'
 
 /** 默认 RendererConfig */
 function defaultRendererConfig(): RendererConfig {
@@ -94,6 +95,9 @@ function createExtensionConfig(): SceneExtensionConfig {
       },
       [Polygons.extensionId]: {
         init: (renderer) => new Polygons(renderer)
+      },
+      [OccupancyGrids.extensionId]: {
+        init: (renderer) => new OccupancyGrids(renderer)
       }
     }
   }

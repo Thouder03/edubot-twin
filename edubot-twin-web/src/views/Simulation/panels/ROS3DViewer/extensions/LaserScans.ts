@@ -169,7 +169,7 @@ class LaserScanHistoryRenderable extends Renderable<LaserScanHistoryUserData> {
         frameId: '',
         pose: emptyPose(),
         settingsPath: [],
-        settings: { visible: true },
+        settings: { visible: false },
         topic,
         laserScan: userData.latestLaserScan,
         originalMessage: userData.latestOriginalMessage
@@ -232,7 +232,7 @@ class LaserScanHistoryRenderable extends Renderable<LaserScanHistoryUserData> {
           frameId: '',
           pose: laserScan.pose,
           settingsPath: [],
-          settings: { visible: true },
+          settings: { visible: false },
           topic,
           laserScan,
           originalMessage
@@ -520,25 +520,25 @@ export class LaserScans extends SceneExtension<LaserScanHistoryRenderable> {
         | undefined
       const settings: LayerSettingsLaserScan = { ...DEFAULT_SETTINGS, ...userSettings }
 
-      // 首次发现话题时自动初始化：visible=true + colormap 颜色
-      // DEFAULT_POINT_SETTINGS.visible=false，若 userSettings 无 visible 则首次必须手动置为 true
+      // 首次发现话题时自动初始化：visible=false + colormap 颜色
+      // DEFAULT_POINT_SETTINGS.visible=false
       const isFirstTime = userSettings?.colorField == undefined
       if (isFirstTime) {
-        settings.visible = true
+        settings.visible = false
         settings.colorField = 'intensity'
         settings.colorMode = 'colormap'
         settings.colorMap = 'turbo'
         this.renderer.updateConfig((draft) => {
           draft.topics[topic] = {
-            visible: true,
+            visible: false,
             colorField: 'intensity',
             colorMode: 'colormap',
             colorMap: 'turbo'
           } as any
         })
       } else if (settings.visible == undefined) {
-        // 已持久化但没有 visible 字段，也默认开启
-        settings.visible = true
+        // 已持久化但没有 visible 字段，也默认关闭
+        settings.visible = false
       }
 
       const messageTime =
