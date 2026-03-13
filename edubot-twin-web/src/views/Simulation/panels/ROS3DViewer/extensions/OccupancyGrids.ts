@@ -480,7 +480,12 @@ function createMaterial(
     depthWrite: !transparent,
     map: texture,
     side: THREE.DoubleSide,
-    transparent
+    transparent,
+    // 启用多边形偏移，让 Map 图层在渲染深度上“退后”一点
+    // 从而解决与 z=0 处 Grid 网格线重合时的 Z-fighting（闪烁）问题
+    polygonOffset: true,
+    polygonOffsetFactor: 3,
+    polygonOffsetUnits: 3
   })
 }
 
