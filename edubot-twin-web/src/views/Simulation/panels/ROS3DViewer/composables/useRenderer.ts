@@ -18,6 +18,7 @@ import { Grids } from '../extensions/Grids'
 import { FrameAxes } from '../extensions/FrameAxes'
 import { Markers } from '../extensions/Markers'
 import { LaserScans } from '../extensions/LaserScans'
+import { Polygons } from '../extensions/Polygons'
 
 /** 默认 RendererConfig */
 function defaultRendererConfig(): RendererConfig {
@@ -90,6 +91,9 @@ function createExtensionConfig(): SceneExtensionConfig {
       },
       [LaserScans.extensionId]: {
         init: (renderer) => new LaserScans(renderer)
+      },
+      [Polygons.extensionId]: {
+        init: (renderer) => new Polygons(renderer)
       }
     }
   }

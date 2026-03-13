@@ -170,17 +170,8 @@ function syncRosTopicsToRenderer() {
   const ros = getRos()
   if (!ros || !renderer.value) return
 
-  // 可视化 schema 集合（与各 Extension 保持一致）
-  const MARKER_SCHEMAS = new Set([
-    'visualization_msgs/Marker',
-    'visualization_msgs/msg/Marker',
-    'visualization_msgs/MarkerArray',
-    'visualization_msgs/msg/MarkerArray'
-  ])
-
-  const LASERSCAN_SCHEMAS = new Set(['sensor_msgs/LaserScan', 'sensor_msgs/msg/LaserScan'])
-
-  const VISUALIZABLE_SCHEMAS = new Set([...MARKER_SCHEMAS, ...LASERSCAN_SCHEMAS])
+  // 动态读取 renderer 中注册的所有 sceneExtension 关心的 schema
+  const VISUALIZABLE_SCHEMAS = new Set(renderer.value.schemaSubscriptions.keys())
 
   ;(ros as any).getTopics(
     (result: { topics: string[]; types: string[] }) => {
