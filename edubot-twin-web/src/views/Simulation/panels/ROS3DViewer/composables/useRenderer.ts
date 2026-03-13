@@ -20,6 +20,7 @@ import { Markers } from '../extensions/Markers'
 import { LaserScans } from '../extensions/LaserScans'
 import { Polygons } from '../extensions/Polygons'
 import { OccupancyGrids } from '../extensions/OccupancyGrids'
+import { PointClouds } from '../extensions/PointClouds'
 
 /** 默认 RendererConfig */
 function defaultRendererConfig(): RendererConfig {
@@ -98,6 +99,9 @@ function createExtensionConfig(): SceneExtensionConfig {
       },
       [OccupancyGrids.extensionId]: {
         init: (renderer) => new OccupancyGrids(renderer)
+      },
+      [PointClouds.extensionId]: {
+        init: (renderer) => new PointClouds(renderer)
       }
     }
   }

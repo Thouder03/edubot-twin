@@ -51,6 +51,14 @@ export function normalizeByteArray(byteArray: unknown): Uint8Array {
     return byteArray
   } else if (Array.isArray(byteArray) || byteArray instanceof ArrayBuffer) {
     return new Uint8Array(byteArray)
+  } else if (typeof byteArray === 'string') {
+    const binaryStr = window.atob(byteArray)
+    const len = binaryStr.length
+    const bytes = new Uint8Array(len)
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryStr.charCodeAt(i)
+    }
+    return bytes
   } else {
     return new Uint8Array(0)
   }
