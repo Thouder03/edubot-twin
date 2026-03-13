@@ -3,6 +3,9 @@
 // 将连续点渲染为 THREE.Line
 
 import * as THREE from 'three'
+import { Line2 } from 'three/examples/jsm/lines/Line2'
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial'
 
 import { RenderableMarker } from './RenderableMarker'
 import { markerHasTransparency } from './materials'
@@ -10,10 +13,10 @@ import type { IRenderer } from '../../core/IRenderer'
 import { Marker } from '../../core/ros'
 
 export class RenderableLineStrip extends RenderableMarker {
-  #geometry: THREE.BufferGeometry
-  #line: THREE.Line
-  #positionBuffer = new Float32Array()
-  #colorBuffer = new Float32Array()
+  #geometry: LineGeometry
+  #line: Line2
+  #positionBuffer: number[] = []
+  #colorBuffer: number[] = []
 
   public constructor(
     topic: string,
@@ -23,14 +26,22 @@ export class RenderableLineStrip extends RenderableMarker {
   ) {
     super(topic, marker, receiveTime, renderer)
 
-    this.#geometry = new THREE.BufferGeometry()
+    this.#geometry = new LineGeometry()
     const transparent = markerHasTransparency(marker)
-    const material = new THREE.LineBasicMaterial({
+    const lineWidth = marker.scale?.x ?? 0.1
+
+    const material = new LineMaterial({
+      color: 0xffffff,
+      linewidth: lineWidth, // in world units if worldUnits=true, else in pixels
       vertexColors: true,
+      dashed: false,
+      alphaToCoverage: true,
+      worldUnits: true,
       transparent,
       depthWrite: !transparent
     })
-    this.#line = new THREE.Line(this.#geometry, material)
+
+    this.#line = new Line2(this.#geometry, material)
     this.#line.frustumCulled = false
     this.add(this.#line)
 
@@ -57,7 +68,15 @@ export class RenderableLineStrip extends RenderableMarker {
     this.#line.visible = true
 
     const transparent = markerHasTransparency(marker)
-    const mat = this.#line.material as THREE.LineBasicMaterial
+    const mat = this.#line.material as LineMaterial
+    const lineWidth = marker.scale?.x ?? 0.1
+
+    // 更新线宽
+    if (mat.linewidth !== lineWidth) {
+      mat.linewidth = lineWidth
+      mat.needsUpdate = true
+    }
+
     if (transparent !== markerHasTransparency(prevMarker)) {
       mat.transparent = transparent
       mat.depthWrite = !transparent
@@ -69,36 +88,25 @@ export class RenderableLineStrip extends RenderableMarker {
   }
 
   #setPositions(marker: Marker, pointsLength: number): void {
-    if (3 * pointsLength > this.#positionBuffer.length) {
-      this.#positionBuffer = new Float32Array(3 * pointsLength)
-    }
     const buf = this.#positionBuffer
+    buf.length = pointsLength * 3
     for (let i = 0; i < pointsLength; i++) {
       const p = marker.points[i]!
       buf[i * 3 + 0] = p.x
       buf[i * 3 + 1] = p.y
       buf[i * 3 + 2] = p.z
     }
-    this.#geometry.setAttribute(
-      'position',
-      new THREE.BufferAttribute(buf.subarray(0, pointsLength * 3), 3)
-    )
+    this.#geometry.setPositions(buf)
   }
 
   #setColors(marker: Marker, pointsLength: number): void {
-    if (3 * pointsLength > this.#colorBuffer.length) {
-      this.#colorBuffer = new Float32Array(3 * pointsLength)
-    }
     const buf = this.#colorBuffer
+    buf.length = pointsLength * 3
     this._markerColorsToLinear(marker, pointsLength, (color, i) => {
       buf[i * 3 + 0] = color[0]
       buf[i * 3 + 1] = color[1]
       buf[i * 3 + 2] = color[2]
     })
-    this.#geometry.setAttribute(
-      'color',
-      new THREE.BufferAttribute(buf.subarray(0, pointsLength * 3), 3)
-    )
-    this.#geometry.getAttribute('position').needsUpdate = true
+    this.#geometry.setColors(buf)
   }
 }
