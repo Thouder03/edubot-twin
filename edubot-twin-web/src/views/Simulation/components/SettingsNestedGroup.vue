@@ -81,6 +81,17 @@ const children = computed(() => {
 function handleFieldChange(path: string[], value: any, input: string) {
   emit('field-change', path, value, input)
 }
+
+function handleGradientChange(
+  path: string[],
+  value: readonly string[] | undefined,
+  index: 0 | 1,
+  newColor: string | null
+) {
+  const newValue = [...(value ?? ['#ffffff', '#ffffff'])]
+  newValue[index] = newColor || '#ffffff'
+  emit('field-change', path, newValue, 'gradient')
+}
 </script>
 
 <template>
@@ -290,6 +301,29 @@ function handleFieldChange(path: string[], value: any, input: string) {
                 </div>
               </template>
             </ElInput>
+          </div>
+
+          <!-- Gradient 渐变颜色（双颜色选择器） -->
+          <div v-else-if="field.input === 'gradient'" class="gradient-input">
+            <ElColorPicker
+              :model-value="field.value?.[0] ?? '#ffffff'"
+              size="small"
+              show-alpha
+              color-format="hex"
+              @change="
+                (val: string | null) => handleGradientChange(field.path, field.value, 0, val)
+              "
+            />
+            <span class="gradient-arrow">→</span>
+            <ElColorPicker
+              :model-value="field.value?.[1] ?? '#ffffff'"
+              size="small"
+              show-alpha
+              color-format="hex"
+              @change="
+                (val: string | null) => handleGradientChange(field.path, field.value, 1, val)
+              "
+            />
           </div>
 
           <!-- Autocomplete（带候选项的文本输入，用于 followTf 等帧选择） -->
@@ -607,6 +641,20 @@ export default {
 
   :deep(.el-input__inner) {
     text-align: center;
+  }
+}
+
+.gradient-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
+
+  .gradient-arrow {
+    color: #6c7086;
+    font-size: 14px;
+    user-select: none;
   }
 }
 </style>

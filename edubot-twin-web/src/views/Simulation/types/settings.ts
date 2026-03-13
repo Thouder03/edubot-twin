@@ -19,6 +19,7 @@ export interface SettingsTreeField {
     | 'vec2'
     | 'vec3'
     | 'autocomplete'
+    | 'gradient'
   value: any
   placeholder?: string
   help?: string

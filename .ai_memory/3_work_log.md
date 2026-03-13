@@ -196,3 +196,9 @@
   - **修复**: 加入 `path.length===2` 分支，直接更新 renderable.visible + config + updateSettingsTree
 - **附带**: settingsNodes 过滤逻辑（Markers/LaserScans 两处）防止话题串台
 - **最终状态**: tsc --noEmit 零错误，/scan 端到端渲染链路完整
+
+- **[2026-03-13]** 增加 ROS 3D Viewer 话题设置中“渐变”配置类型的界面渲染支持
+  - 在 `SettingsNestedGroup.vue` 中添加了对 `field.input === 'gradient'` 的解析。
+  - 使用了双端 `ElColorPicker` 组合作为输入，中间通过箭头分隔。
+  - 提取了 `handleGradientChange` 方法以保证规范和无 lint error 发出 field-change 事件。
+- [$(date '+%Y-%m-%d %H:%M:%S')] 修复 SettingsNestedGroup.vue 中 field.input 比较 'gradient' 导致的 TS 类型报错（TS2367），在 src/views/Simulation/types/settings.ts 的 SettingsTreeField 接口 input 联合类型中增加 'gradient' 支持。

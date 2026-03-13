@@ -312,7 +312,10 @@ export function colorModeSettingsFields<Settings extends ColorModeSettings & Bas
   } else if (colorMode !== 'rgba-fields') {
     if (msgFields) {
       const colorFieldOptions = msgFields.map((field) => ({ label: field, value: field }))
-      colorFieldOptions.push({ label: '自动距离', value: colorFieldComputedPrefix + 'distance' })
+      colorFieldOptions.push({
+        label: 'distance(auto)',
+        value: colorFieldComputedPrefix + 'distance'
+      })
 
       const colorField =
         config.colorField ?? bestColorByField(msgFields, { supportsPackedRgbModes })
