@@ -185,6 +185,7 @@ function handleFieldChange(path: string[], value: any, input: string) {
             :min="field.min"
             :max="field.max"
             :step="field.step ?? 1"
+            :placeholder="field.placeholder ?? ''"
             :disabled="field.disabled"
             class="custom-input-number"
             :decrease-icon="ArrowLeft"
@@ -208,6 +209,7 @@ function handleFieldChange(path: string[], value: any, input: string) {
           <ElSelect
             v-else-if="field.input === 'select'"
             :model-value="field.value"
+            :placeholder="field.placeholder ?? ''"
             :disabled="field.disabled"
             @update:model-value="handleFieldChange(field.path, $event, field.input)"
           >

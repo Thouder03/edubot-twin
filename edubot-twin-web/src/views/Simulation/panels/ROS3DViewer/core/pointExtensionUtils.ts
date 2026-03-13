@@ -99,7 +99,7 @@ export function pointSettingsNode(
         input: 'number' as const,
         step: 1,
         precision: 2,
-        value: pointSize,
+        value: pointSize !== undefined ? pointSize : defaultSettings.pointSize,
         min: 0
       },
       pointShape: {
@@ -109,7 +109,7 @@ export function pointSettingsNode(
           { label: '圆形', value: 'circle' },
           { label: '方形', value: 'square' }
         ],
-        value: pointShape
+        value: pointShape !== undefined ? pointShape : defaultSettings.pointShape
       },
       decayTime: {
         label: '衰减时间',
@@ -118,7 +118,7 @@ export function pointSettingsNode(
         placeholder: '0 秒（不衰减）',
         min: 0,
         precision: 3,
-        value: decayTime
+        value: decayTime !== undefined ? decayTime : defaultSettings.decayTime
       },
       ...colorModeFields
     }

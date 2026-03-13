@@ -263,28 +263,33 @@ class LaserScanHistoryRenderable extends Renderable<LaserScanHistoryUserData> {
     // 计算颜色值域
     let minColorValue = settings.minValue ?? Number.POSITIVE_INFINITY
     let maxColorValue = settings.maxValue ?? Number.NEGATIVE_INFINITY
-    if (settings.minValue == undefined || settings.maxValue == undefined) {
-      let maxRange = 0
-      for (let i = 0; i < ranges.length; i++) {
-        const range = ranges[i]!
-        if (Number.isFinite(range)) maxRange = Math.max(maxRange, range)
+    let maxRange = 0
+
+    for (let i = 0; i < ranges.length; i++) {
+      const range = ranges[i]!
+      if (Number.isFinite(range)) {
+        maxRange = Math.max(maxRange, range)
+      }
+      if (settings.minValue == undefined || settings.maxValue == undefined) {
         const colorValue = colorField === 'range' ? range : intensities[i]
         if (colorValue != undefined && Number.isFinite(colorValue)) {
           minColorValue = Math.min(minColorValue, colorValue)
           maxColorValue = Math.max(maxColorValue, colorValue)
         }
       }
+    }
+
+    if (settings.minValue == undefined || settings.maxValue == undefined) {
       // 用户没有手动指定时，使用自动计算值
       minColorValue = settings.minValue ?? minColorValue
       maxColorValue = settings.maxValue ?? maxColorValue
-
-      latestEntry.renderable.geometry.boundingSphere ??= new THREE.Sphere()
-      latestEntry.renderable.geometry.boundingSphere.set(VEC3_ZERO, maxRange)
-      latestEntry.renderable.frustumCulled = true
-    } else {
-      latestEntry.renderable.geometry.boundingSphere = null
-      latestEntry.renderable.frustumCulled = false
     }
+
+    // 始终手动分配 boundingSphere
+    // 因为自定义的 geometry 只有 1 维 position (存放 range)，Three.js 自动计算时会产生 NaN 的报错
+    latestEntry.renderable.geometry.boundingSphere ??= new THREE.Sphere()
+    latestEntry.renderable.geometry.boundingSphere.set(VEC3_ZERO, maxRange)
+    latestEntry.renderable.frustumCulled = true
 
     // colorMode 为 rgba-fields 时 LaserScan 不支持，跳过颜色赋值
     if (settings.colorMode === 'rgba-fields') {
