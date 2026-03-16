@@ -202,3 +202,16 @@
   - 使用了双端 `ElColorPicker` 组合作为输入，中间通过箭头分隔。
   - 提取了 `handleGradientChange` 方法以保证规范和无 lint error 发出 field-change 事件。
 - [$(date '+%Y-%m-%d %H:%M:%S')] 修复 SettingsNestedGroup.vue 中 field.input 比较 'gradient' 导致的 TS 类型报错（TS2367），在 src/views/Simulation/types/settings.ts 的 SettingsTreeField 接口 input 联合类型中增加 'gradient' 支持。
+
+## [2026-03-16]
+
+- 实现 `Poses.ts` 扩展：支持 PoseStamped / PoseWithCovarianceStamped，axis/arrow/covariance 三种显示模式
+- 实现 `PoseArrays.ts` 扩展：支持 PoseArray / Path，对象池 + 渐变色优化
+- 实现 `PublishClickTool.ts`：状态机点击发布工具（idle→point1→point2），鼠标预览（小球/箭头）
+- 实现 `PublishSettings.ts`：Settings Tree publish 节点，type/topic/偏差动态字段
+- 修改 `IRenderer.ts`：添加 `RendererConfig.publish?` 字段和 `publishClickTool` 接口属性
+- 修改 `Renderer.ts`：PublishClickTool 初始化顺序前移（先于 sceneExtensionConfig 注册循环）
+- 修改 `useRenderer.ts`：onPublish 回调注入模式；startPublish/stopPublish 暴露
+- 新建 `components/ROS3DToolbar.vue`：右上角工具栏（解耦）
+- Bug 修复：切换设置面板类型后按钮文字实时同步（renderer.on('configChange') 事件驱动）
+- Bug 修复：刷新页面后可直接切换回点类型（PublishClickTool 构造函数读配置初始化）

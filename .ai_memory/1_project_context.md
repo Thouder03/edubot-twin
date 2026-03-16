@@ -567,3 +567,91 @@ app/api/v1/endpoints/
 3. 完成! API 自动可用
 
 详细架构文档: `edubot-twin-server/API_ARCHITECTURE.md`
+
+---
+
+## 9. Poses / PoseArrays SceneExtension（已完成）
+
+### 文件位置
+- `extensions/Poses.ts`
+- `extensions/PoseArrays.ts`
+
+### 支持的 ROS 消息类型
+
+| 扩展 | 消息类型 |
+|------|--------|
+| Poses | `geometry_msgs/PoseStamped`, `geometry_msgs/PoseWithCovarianceStamped` |
+| PoseArrays | `geometry_msgs/PoseArray`, `nav_msgs/Path` |
+
+### 显示模式
+
+**Poses**:
+- `axis`：XYZ 坐标轴，可设置轴长/线宽
+- `arrow`：单箭头，可设置颜色/尺寸
+- `arrow`（有协方差时）：同时显示协方差球体（可切换）
+
+**PoseArrays**:
+- `axis`：每个姿态显示坐标轴
+- `arrow`：对象池 + 渐变颜色（head→tail 颜色双插值）
+- `line`：所有点位连为轨迹线（`THREE.Line`）
+
+---
+
+## 10. PublishClickTool / PublishSettings（已完成）
+
+### 架构设计
+
+```
+PublishClickTool (SceneExtension)  — 初始化在 Renderer.ts, 先于其他扩展
+    ↳ 状态机: idle → place-first-point → place-second-point → idle
+    ↳ emit foxglove.publish-submit 事件
+
+PublishSettings (SceneExtension)   — 在 useRenderer.ts sceneExtensionConfig 中注册
+    ↳ 监听 foxglove.publish-type-change 事件
+    ↳ 维护 Settings Tree 的 publish 节点
+
+index.vue (桥接层)
+    ↳ useRenderer({ onPublish }) 注入 ROS 发布回调
+    ↳ 监听 renderer.on('configChange') 同步 currentPublishType
+
+ROS3DToolbar.vue (独立组件)
+    ↳ props: isPublishing, publishType
+    ↳ emit: toggle
+```
+
+### IRenderer 新增接口
+
+```typescript
+// RendererConfig 新增:
+publish?: {
+  type: 'point' | 'pose' | 'pose_estimate'
+  poseTopic: string          // default: '/move_base_simple/goal'
+  pointTopic: string         // default: '/clicked_point'
+  poseEstimateTopic: string  // default: '/initialpose'
+  poseEstimateXDeviation: number
+  poseEstimateYDeviation: number
+  poseEstimateThetaDeviation: number
+}
+
+// IRenderer 新增属性:
+publishClickTool: PublishClickTool
+```
+
+### 关键约束
+
+1. **初始化顺序**: `PublishClickTool` 必须在 `sceneExtensionConfig` 的注册循环之前初始化，因为 `PublishSettings` 构造函数依赖 `renderer.publishClickTool`。
+2. **构造函数读配置**: `PublishClickTool` 构造函数必须读取 `renderer.config.publish?.type` 作为初始类型，否则刷新后持久化配置与工具内部状态不一致，导致切换逻辑失效。
+3. **响应式同步**: `index.vue` 中无法通过 `computed` 深度监听 `shallowRef<Renderer>.config` 的变化——必须通过 `renderer.on('configChange', ...)` 手动更新 `ref`。
+
+### useRenderer 接口扩展
+
+```typescript
+// 注册 onPublish 回调（由 index.vue 提供 roslib 发布实现）
+useRenderer({
+  onPublish(topic, messageType, message) { ... }
+})
+
+// 暴露方法
+startPublish(type?: PublishClickType)  // 进入发布模式
+stopPublish()                          // 退出发布模式
+```

@@ -312,3 +312,63 @@ if (to.path === "/login" || to.path === "/") {
 - [ ] 实现 `nav_msgs/OccupancyGrid`（地图）：记得在 VISUALIZABLE_SCHEMAS 注册
 - [ ] 实现 `sensor_msgs/PointCloud2`：记得在 VISUALIZABLE_SCHEMAS 注册
 - [ ] 考虑将 VISUALIZABLE_SCHEMAS 提取为常量文件，避免分散维护
+
+---
+
+## [归档日期 2026-03-16]
+
+### 1. 核心议题背景
+
+本次会话的核心任务是移植并实现四个 SceneExtension：`Poses`、`PoseArrays`、`PublishClickTool`、`PublishSettings`，以及配套的 `ROS3DToolbar.vue` 右上角工具栏，并修复若干 Bug。
+
+---
+
+### 2. 关键思维演变路径 (Cognitive Evolution)
+
+**阶段一：Poses / PoseArrays 实现**
+
+- **用户意图**: 参照 lichtblick 实现 Poses / PoseArrays
+- **关键决策**:
+  - 完全复用 lichtblick 的渲染逻辑（axis/arrow 双模式）
+  - PoseArrays 引入对象池 + 渐变色（head/tail 颜色插值）
+  - 修复 import 路径：`RosValue` 来自 `lichtblick-shim`，不是 `types`
+
+**阶段二：PublishClickTool 移植**
+
+- **用户意图**: 移植点击发布工具
+- **架构决策**:
+  - `PublishClickTool` 作为 SceneExtension，直接监听 `renderer.input` 的鼠标事件
+  - 通过 `dispatchEvent('foxglove.publish-submit')` 通知上层
+  - 在 `useRenderer.ts` 中注入 `onPublish` 回调（不在 composable 内硬依赖 roslib）
+
+**阶段三：初始化顺序 Bug（关键教训）**
+
+- **现象**: 打开 3D 面板报错 `Cannot read properties of undefined (reading 'addEventListener')`（PublishSettings 的构造函数访问 publishClickTool 时其尚为 undefined）
+- **根因**: `Renderer.ts` 中 `PublishClickTool` 的初始化在 `sceneExtensionConfig` 循环**之后**，但 `PublishSettings` 是在该循环中注册的，它的构造函数需要 `publishClickTool` 已存在
+- **修复**: 将 `publishClickTool` 的实例化移到循环**之前**
+
+**阶段四：响应式同步 Bug**
+
+- **现象**: 设置面板切换 type，右上角按钮文字不实时变化
+- **根因**: `currentPublishType` 写成了 `computed(() => renderer.value?.config.publish?.type)` — Vue 的 `shallowRef` 只追踪引用本身，不追踪内部属性
+- **修复**: 改为 `ref`，在 `renderer.on('configChange', ...)` 事件回调中手动更新
+
+**阶段五：切换状态死锁 Bug**
+
+- **现象**: 持久化类型为 `pose`，刷新页面后无法直接切换回 `point`
+- **根因**: `PublishClickTool` 构造时硬编码 `publishClickType = 'point'`，导致 `PublishSettings` 切换时 `oldType === newType`（实际上配置不同），被判断为「无变化」而跳过
+- **修复**: 构造函数改为读取 `renderer.config.publish?.type ?? 'point'`
+
+---
+
+### 3. 架构关键约束（新教训）
+
+1. **PublishClickTool 初始化必须先于 sceneExtensionConfig 循环**: 任何依赖 `renderer.publishClickTool` 的扩展构造函数都需要这个对象已存在
+2. **shallowRef 深度响应问题**: Renderer 是 `shallowRef`，其内部 config 的变化需通过 `renderer.on('configChange')` 手动通知 Vue
+3. **构造函数状态必须与配置对齐**: 任何在用户刷新时需要恢复状态的工具，都必须在构造时从 config 中读取初始值
+
+### 4. 下一步行动指引 (Next Actions)
+
+- [ ] 实现 `nav_msgs/OccupancyGrid`（地图）可视化扩展（记得在 VISUALIZABLE_SCHEMAS 注册）
+- [ ] 端到端测试：连接真实 ROS 环境，验证 Pose 发布对 `/move_base_simple/goal` 生效
+- [ ] 重构：将 VISUALIZABLE_SCHEMAS 提取为常量文件（`extensions/schemas.ts`），避免 index.vue 与各扩展分散维护
