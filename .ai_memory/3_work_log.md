@@ -215,3 +215,13 @@
 - 新建 `components/ROS3DToolbar.vue`：右上角工具栏（解耦）
 - Bug 修复：切换设置面板类型后按钮文字实时同步（renderer.on('configChange') 事件驱动）
 - Bug 修复：刷新页面后可直接切换回点类型（PublishClickTool 构造函数读配置初始化）
+
+### 修复 LaserScan 异常运动与全局时钟 (decayTime)
+
+- **时间**: 2026-03-16 20:13
+- **内容**:
+  - **时间戳解析修复**: 修改 `normalizeMessages.ts`，正确处理 `roslibjs` 中的 `secs/nsecs`，修复 TransformTree 因为时间戳解析报错引起的位置偏离和画面卡顿现象。
+  - **全局时钟驱动**: 在 `useRenderer.ts` 中引入 100ms `setInterval`（全局播放器时钟），解决无外部 ROS 消息推入时画面不更新、历史点云不衰减的问题。
+  - **仿真时间优先**: 在 `index.vue` 自动订阅 `/clock`，使 Renderer.currentTime 切换并完美跟踪 Gazebo 仿真时间。
+  - **decayTime 修正**: 在 `useRenderer.ts` 转发消息前，统一使用 `clockTimeNs` 重写原始事件的 `receiveTime`，消除了壁钟 2026 年（17亿秒）与仿真时间（11000秒）跨时间域对比造成的 `expireTime` 计算失效。
+- **状态**: 代码清理与人工验证均已通过。

@@ -189,6 +189,37 @@ export function useRenderer(options?: { onPublish?: OnPublishCallback }) {
   const renderer = shallowRef<Renderer | null>(null)
   const sceneReady = ref(false)
   const settingsTreeVersion = ref(0)
+  let maxRosTime = 0n
+
+  // ── 时钟驱动器（对应 Lichtblick RosbridgePlayer 的 #emitTimer 机制）
+  // clockTimeNs 是当前时间源（壁钟 或 /clock 仿真时间），单位 ns
+  let clockTimeNs: bigint = BigInt(Date.now()) * 1_000_000n
+  let useSimClock = false // 是否已切换到 /clock 仿真时间模式
+  let clockTimer: ReturnType<typeof setInterval> | null = null
+
+  /** 启动时钟定时器：每 100ms 推进一次 currentTime 并触发重渲染 */
+  function startClock() {
+    if (clockTimer != null) return
+    clockTimer = setInterval(() => {
+      if (!useSimClock) {
+        // 壁钟模式：始终用 Date.now()
+        clockTimeNs = BigInt(Date.now()) * 1_000_000n
+      }
+      // 不论何种时间源，都需要持续推进 renderer.currentTime
+      renderer.value?.setCurrentTime(clockTimeNs)
+      renderer.value?.queueAnimationFrame()
+    }, 100)
+  }
+
+  /** 停止时钟定时器 */
+  function stopClock() {
+    if (clockTimer != null) {
+      clearInterval(clockTimer)
+      clockTimer = null
+    }
+    useSimClock = false
+    clockTimeNs = BigInt(Date.now()) * 1_000_000n
+  }
 
   /**
    * 挂载 Renderer 到目标 canvas 容器
@@ -257,6 +288,9 @@ export function useRenderer(options?: { onPublish?: OnPublishCallback }) {
     renderer.value = r
     sceneReady.value = true
 
+    // 渲染器就绪后立即启动时钟
+    startClock()
+
     // 监听点击发布事件 → 通过外部回调发布 ROS 消息
     r.publishClickTool.addEventListener('foxglove.publish-submit', (event) => {
       const publish = r.config.publish
@@ -304,6 +338,8 @@ export function useRenderer(options?: { onPublish?: OnPublishCallback }) {
    * 销毁 Renderer 和 canvas
    */
   function dispose() {
+    // 先停止时钟，再销毁 renderer
+    stopClock()
     if (renderer.value) {
       const canvas = renderer.value.gl.domElement
       renderer.value.dispose()
@@ -317,9 +353,67 @@ export function useRenderer(options?: { onPublish?: OnPublishCallback }) {
 
   /**
    * 添加消息事件（从 ROS 转发）
+   *
+   * 同时处理 /clock 消息以驱动仿真时钟模式（对应 Lichtblick RosbridgePlayer.#clockTime）。
    */
   function addMessageEvent(messageEvent: MessageEvent) {
-    renderer.value?.addMessageEvent(messageEvent)
+    const msg = messageEvent.message as any
+
+    // ── /clock 消息处理（优先级最高，切换到仿真时间模式）
+    // rosgraph_msgs/Clock: { clock: { secs, nsecs } }
+    if (messageEvent.topic === '/clock' && msg?.clock != null) {
+      const c = msg.clock
+      const sec = c.sec ?? c.secs ?? 0
+      const nsec = c.nsec ?? c.nsecs ?? 0
+      const simNs = BigInt(sec) * 1_000_000_000n + BigInt(nsec)
+      if (!isNaN(sec)) {
+        if (!useSimClock) {
+          // 首次收到 /clock，切换到仿真时间模式
+          console.info('[ROS3D] 检测到 /clock，切换到仿真时间模式')
+          useSimClock = true
+        }
+        clockTimeNs = simNs
+        renderer.value?.setCurrentTime(clockTimeNs)
+      }
+      // /clock 消息不需要走 schema 路由
+      return
+    }
+
+    // ── 普通消息：提取 stamp 用于更新 maxRosTime（辅助 TF 时间对齐）
+    let stamp: { sec?: number; secs?: number; nsec?: number; nsecs?: number } | undefined
+    if (msg?.header?.stamp) {
+      stamp = msg.header.stamp
+    } else if (msg?.transforms?.[0]?.header?.stamp) {
+      stamp = msg.transforms[0].header.stamp
+    }
+
+    if (stamp) {
+      const sec = stamp.sec ?? stamp.secs
+      const nsec = stamp.nsec ?? stamp.nsecs
+      if (sec != null && nsec != null) {
+        const timeNs = BigInt(sec) * 1_000_000_000n + BigInt(nsec)
+        if (timeNs > maxRosTime) {
+          maxRosTime = timeNs
+        } else if (timeNs < maxRosTime - 1_000_000_000n) {
+          // 时间大幅度倒流（如 Gazebo 重置），重置 maxRosTime
+          maxRosTime = timeNs
+        }
+      }
+    }
+
+    // ── 关键修复：覆盖 receiveTime，使其与 clockTimeNs 在同一时间域
+    // 调用方 (index.vue) 传入的 receiveTime 是 Date.now()（壁钟），
+    // 但 currentTime 跟随 /clock（仿真时间），两者相差约 160000 倍，
+    // 导致 decayTime 的比对 (receiveTime < currentTime - decayNs) 永远为 false。
+    // 修复方式：统一用 clockTimeNs 作为 receiveTime，保证同尺度比对。
+    const clockSec = Number(clockTimeNs / 1_000_000_000n)
+    const clockNsec = Number(clockTimeNs % 1_000_000_000n)
+    const normalizedEvent: MessageEvent = {
+      ...messageEvent,
+      receiveTime: { sec: clockSec, nsec: clockNsec }
+    }
+
+    renderer.value?.addMessageEvent(normalizedEvent)
     renderer.value?.queueAnimationFrame()
   }
 

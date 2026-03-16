@@ -37,11 +37,11 @@ export type LegacyFrameTransform = {
   transform: LegacyTransform
 }
 
-export function normalizeTime(time: Partial<Time> | undefined): Time {
+export function normalizeTime(time: any): Time {
   if (!time) {
     return { sec: 0, nsec: 0 }
   }
-  return { sec: time.sec ?? 0, nsec: time.nsec ?? 0 }
+  return { sec: time.sec ?? time.secs ?? 0, nsec: time.nsec ?? time.nsecs ?? 0 }
 }
 
 export function normalizeByteArray(byteArray: unknown): Uint8Array {

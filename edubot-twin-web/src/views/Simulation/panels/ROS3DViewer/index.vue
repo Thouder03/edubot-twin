@@ -156,7 +156,26 @@ function subscribeTfTopics() {
     tfSubscriptions.push(rosTopic)
   }
 
-  console.log('[ROS3D] TF 订阅已启动:', tfTopics.map((t) => t.name).join(', '))
+  // 订阅 /clock 话题（Gazebo 仿真时间源）
+  // 参照 Lichtblick RosbridgePlayer.#addInternalSubscriptions
+  const clockTopic = new RosTopic({
+    ros,
+    name: '/clock',
+    messageType: 'rosgraph_msgs/Clock'
+  })
+  clockTopic.subscribe((msg: any) => {
+    const now = BigInt(Date.now()) * 1_000_000n
+    addMessageEvent({
+      topic: '/clock',
+      schemaName: 'rosgraph_msgs/Clock',
+      receiveTime: { sec: Number(now / 1_000_000_000n), nsec: Number(now % 1_000_000_000n) },
+      message: msg,
+      sizeInBytes: 0
+    })
+  })
+  tfSubscriptions.push(clockTopic) // 复用同一个清理数组
+
+  console.log('[ROS3D] TF 订阅已启动:', tfTopics.map((t) => t.name).join(', '), '+ /clock')
 }
 
 function unsubscribeTfTopics() {

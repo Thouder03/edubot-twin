@@ -10,6 +10,7 @@ You are building a "Digital Twin Robotics Training Platform" based on the `vue-e
 # Project Context
 
 - **Goal**: Build a platform with a **Teacher Dashboard** (Docker management, student stats) and a **Student Workbench** (ROS visualization, GzWeb, Terminal, Code Editor).
+- **ai_memory**: edubot-twin/.ai_memory
 - **Architecture**:
   - **Frontend**: Vue 3.5, Vite 6, Element Plus 2.9, UnoCSS.
   - **Backend Interaction**: Python FastAPI (managing Docker/ROS), communicated via REST API and WebSockets.
