@@ -23,6 +23,8 @@ import { OccupancyGrids } from '../extensions/OccupancyGrids'
 import { PointClouds } from '../extensions/PointClouds'
 import { Poses } from '../extensions/Poses'
 import { PoseArrays } from '../extensions/PoseArrays'
+import { PublishSettings } from '../extensions/PublishSettings'
+import type { PublishClickType } from '../extensions/PublishClickTool'
 
 /** 默认 RendererConfig */
 function defaultRendererConfig(): RendererConfig {
@@ -110,6 +112,9 @@ function createExtensionConfig(): SceneExtensionConfig {
       },
       [PoseArrays.extensionId]: {
         init: (renderer) => new PoseArrays(renderer)
+      },
+      [PublishSettings.extensionId]: {
+        init: (renderer) => new PublishSettings(renderer)
       }
     }
   }
@@ -170,7 +175,17 @@ function debouncedSave(config: Readonly<RendererConfig>): void {
   }, 500)
 }
 
-export function useRenderer() {
+// ============================================================
+// 发布回调类型
+// ============================================================
+
+export type OnPublishCallback = (
+  topic: string,
+  messageType: string,
+  message: Record<string, unknown>
+) => void
+
+export function useRenderer(options?: { onPublish?: OnPublishCallback }) {
   const renderer = shallowRef<Renderer | null>(null)
   const sceneReady = ref(false)
   const settingsTreeVersion = ref(0)
@@ -230,6 +245,48 @@ export function useRenderer() {
 
     renderer.value = r
     sceneReady.value = true
+
+    // 监听点击发布事件 → 通过外部回调发布 ROS 消息
+    r.publishClickTool.addEventListener('foxglove.publish-submit', (event) => {
+      const publish = r.config.publish
+      if (!publish || !options?.onPublish) return
+
+      const pub = options.onPublish
+      const stamp = { secs: 0, nsecs: 0 }
+      const frame_id = r.followFrameId ?? 'map'
+
+      if (event.publishClickType === 'point') {
+        pub(publish.pointTopic, 'geometry_msgs/PointStamped', {
+          header: { stamp, frame_id },
+          point: event.point
+        })
+      } else if (event.publishClickType === 'pose') {
+        pub(publish.poseTopic, 'geometry_msgs/PoseStamped', {
+          header: { stamp, frame_id },
+          pose: event.pose
+        })
+      } else {
+        // pose_estimate → geometry_msgs/PoseWithCovarianceStamped
+        const {
+          poseEstimateXDeviation: xDev,
+          poseEstimateYDeviation: yDev,
+          poseEstimateThetaDeviation: tDev
+        } = publish
+        // prettier-ignore
+        const covariance = [
+          xDev * xDev, 0, 0, 0, 0, 0,
+          0, yDev * yDev, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, tDev * tDev
+        ]
+        pub(publish.poseEstimateTopic, 'geometry_msgs/PoseWithCovarianceStamped', {
+          header: { stamp, frame_id },
+          pose: { pose: event.pose, covariance }
+        })
+      }
+    })
   }
 
   /**
@@ -297,6 +354,23 @@ export function useRenderer() {
     renderer.value?.handleSettingsAction(action as any)
   }
 
+  /**
+   * 开始点击发布模式
+   */
+  function startPublish(type?: PublishClickType) {
+    const r = renderer.value
+    if (!r) return
+    if (type) r.publishClickTool.setPublishClickType(type)
+    r.publishClickTool.start()
+  }
+
+  /**
+   * 停止点击发布模式
+   */
+  function stopPublish() {
+    renderer.value?.publishClickTool.stop()
+  }
+
   // 自动清理
   onBeforeUnmount(() => {
     dispose()
@@ -314,6 +388,8 @@ export function useRenderer() {
     setColorScheme,
     getCameraState,
     getSettingsTree,
-    handleSettingsAction
+    handleSettingsAction,
+    startPublish,
+    stopPublish
   }
 }

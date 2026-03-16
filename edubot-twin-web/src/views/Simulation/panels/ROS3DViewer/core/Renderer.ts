@@ -60,6 +60,7 @@ import { Quaternion, TF_DATATYPES, TRANSFORM_STAMPED_DATATYPES, Vector3 } from '
 import { SelectEntry } from './settings'
 import { AddTransformResult, CoordinateFrame, TransformTree, Transform } from './transforms'
 import { InterfaceMode } from './types'
+import { PublishClickTool } from '../extensions/PublishClickTool'
 
 const log = Logger.getLogger('Renderer')
 
@@ -82,7 +83,7 @@ const tempVec2 = new THREE.Vector2()
 
 /**
  * An extensible 3D renderer attached to a `HTMLCanvasElement`.
- * Simplified from Lichtblick, removing ImageMode/MeasurementTool/PublishClickTool.
+ * Simplified from Lichtblick, removing ImageMode/MeasurementTool.
  */
 export class Renderer extends EventEmitter<RendererEvents> implements IRenderer {
   public readonly interfaceMode: InterfaceMode = '3d'
@@ -116,6 +117,9 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
   public cameraHandler: ICameraHandler
 
   public ros = false
+
+  /** 点击发布工具（供 PublishSettings 和外部 UI 使用） */
+  public publishClickTool!: PublishClickTool
 
   #picker: Picker
   #selectionBackdropScene: THREE.Scene
@@ -239,6 +243,10 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
     // Always 3D mode — use CameraStateSettings
     this.cameraHandler = new CameraStateSettings(this as unknown as IRenderer, this.#canvas, aspect)
     this.#addSceneExtension(this.cameraHandler as unknown as SceneExtension)
+
+    // 先初始化 PublishClickTool，确保后续所有依赖它的扩展（如 PublishSettings）构造时可用
+    this.publishClickTool = new PublishClickTool(this as unknown as IRenderer)
+    this.#addSceneExtension(this.publishClickTool)
 
     // Register all scene extensions from config
     const { extensionsById } = args.sceneExtensionConfig

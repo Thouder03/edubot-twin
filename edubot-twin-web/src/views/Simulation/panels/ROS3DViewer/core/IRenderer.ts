@@ -94,6 +94,16 @@ export type RendererConfig = {
     rosUrl?: string
     autoConnect?: boolean
   }
+  /** 点击发布配置 */
+  publish?: {
+    type: 'point' | 'pose' | 'pose_estimate'
+    poseTopic: string
+    pointTopic: string
+    poseEstimateTopic: string
+    poseEstimateXDeviation: number
+    poseEstimateYDeviation: number
+    poseEstimateThetaDeviation: number
+  }
 }
 
 export type RendererSubscription<T = unknown> = {
@@ -191,4 +201,6 @@ export interface IRenderer extends EventEmitter<RendererEvents> {
   animationFrame: () => void
   queueAnimationFrame: () => void
   normalizeFrameId(frameId: string): string
+  /** 点击发布工具（PublishClickTool 扩展暴露的实例） */
+  publishClickTool: import('../extensions/PublishClickTool').PublishClickTool
 }
