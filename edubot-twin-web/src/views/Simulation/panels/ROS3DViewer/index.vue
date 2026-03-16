@@ -15,6 +15,7 @@ import { Topic as RosTopic } from 'roslib'
 import { usePanelState } from '../../stores/panelState'
 import { useRenderer } from './composables/useRenderer'
 import { useRosConnection } from './composables/useRosConnection'
+import ROS3DToolbar from './components/ROS3DToolbar.vue'
 
 // ---------- Props ----------
 interface Props {
@@ -42,10 +43,46 @@ const {
   handleSettingsAction,
   getSettingsTree,
   addMessageEvent,
-  renderer
-} = useRenderer()
+  renderer,
+  startPublish,
+  stopPublish
+} = useRenderer({
+  onPublish(topic, messageType, message) {
+    const ros = getRos()
+    if (!ros) return
+    const t = new RosTopic({ ros, name: topic, messageType })
+    t.advertise()
+    t.publish(message)
+    setTimeout(() => t.unadvertise(), 300)
+  }
+})
+
+// ---------- 发布模式状态 ----------
+const isPublishing = ref(false)
+
+// 当前发布类型（跟随 renderer config.publish.type）
+const currentPublishType = computed(() => renderer.value?.config.publish?.type ?? 'pose')
+
+function togglePublish() {
+  if (isPublishing.value) {
+    stopPublish()
+    isPublishing.value = false
+  } else {
+    isPublishing.value = true
+    // 不传入 type → startPublish 内部使用 publishClickTool.publishClickType（已由 PublishSettings 同步）
+    startPublish()
+  }
+}
 
 const { status, errorMessage, getRos, connect, disconnect } = useRosConnection(rosUrl)
+
+// 监听发布工具 publish-end 事件（发布一次后自动退出）
+watch(sceneReady, (ready) => {
+  if (!ready || !renderer.value) return
+  renderer.value.publishClickTool.addEventListener('foxglove.publish-end', () => {
+    isPublishing.value = false
+  })
+})
 
 // 监听 configChange：当 rosUrl 变化时更新连接 URL
 // （RendererConfig 的持久化已由 useRenderer 的 debouncedSave 处理）
@@ -291,7 +328,7 @@ onBeforeUnmount(() => {
   <div class="ros3d-viewer">
     <!-- Three.js 渲染容器 -->
     <div ref="canvasContainer" class="ros3d-canvas-container"></div>
-    <!-- HUD 覆盖层 - 连接状态 -->
+    <!-- HUD 覆盖层 - 连接状态（左上） -->
     <div class="ros3d-hud">
       <div
         class="hud-status"
@@ -306,6 +343,14 @@ onBeforeUnmount(() => {
           {{ statusConfig.label }}
         </span>
       </div>
+    </div>
+    <!-- 右上角工具栏（独立组件） -->
+    <div class="ros3d-toolbar-wrapper">
+      <ROS3DToolbar
+        :is-publishing="isPublishing"
+        :publish-type="currentPublishType"
+        @toggle="togglePublish"
+      />
     </div>
     <!-- 加载状态 -->
     <div v-if="!sceneReady" class="ros3d-loading">
@@ -332,11 +377,20 @@ onBeforeUnmount(() => {
   left: 0;
 }
 
-// ---------- HUD 覆盖层 ----------
+// ---------- HUD 覆盖层（左上） ----------
 .ros3d-hud {
   position: absolute;
   top: 8px;
   left: 8px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+// ---------- 右上角工具栏容器（定位） ----------
+.ros3d-toolbar-wrapper {
+  position: absolute;
+  top: 8px;
+  right: 8px;
   z-index: 10;
   pointer-events: auto;
 }
@@ -404,6 +458,16 @@ onBeforeUnmount(() => {
   }
   50% {
     opacity: 1;
+  }
+}
+
+@keyframes blink-border {
+  0%,
+  100% {
+    border-color: rgba(243, 139, 168, 0.4);
+  }
+  50% {
+    border-color: rgba(243, 139, 168, 0.9);
   }
 }
 </style>

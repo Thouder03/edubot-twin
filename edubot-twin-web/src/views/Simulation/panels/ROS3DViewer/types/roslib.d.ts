@@ -36,6 +36,9 @@ declare module 'roslib' {
     constructor(options: TopicOptions)
     subscribe(callback: (message: T) => void): void
     unsubscribe(callback?: (message: T) => void): void
+    advertise(): void
+    unadvertise(): void
+    publish(message: T | Record<string, unknown>): void
     name: string
     messageType: string
   }
