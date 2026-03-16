@@ -21,6 +21,8 @@ import { LaserScans } from '../extensions/LaserScans'
 import { Polygons } from '../extensions/Polygons'
 import { OccupancyGrids } from '../extensions/OccupancyGrids'
 import { PointClouds } from '../extensions/PointClouds'
+import { Poses } from '../extensions/Poses'
+import { PoseArrays } from '../extensions/PoseArrays'
 
 /** 默认 RendererConfig */
 function defaultRendererConfig(): RendererConfig {
@@ -102,6 +104,12 @@ function createExtensionConfig(): SceneExtensionConfig {
       },
       [PointClouds.extensionId]: {
         init: (renderer) => new PointClouds(renderer)
+      },
+      [Poses.extensionId]: {
+        init: (renderer) => new Poses(renderer)
+      },
+      [PoseArrays.extensionId]: {
+        init: (renderer) => new PoseArrays(renderer)
       }
     }
   }
