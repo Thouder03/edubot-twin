@@ -464,12 +464,16 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
     this.settings.setNodesForKey(RENDERER_ID, [
       {
         path: ['topics'],
-        node: { label: t('threeDee:topics') }
+        node: {
+          label: t('threeDee:topics'),
+          children: this.settings.tree()['topics']?.children
+        }
       },
       {
         path: ['layers'],
         node: {
           label: `${t('threeDee:customLayers')}${layerCount > 0 ? ` (${layerCount})` : ''}`,
+          children: this.settings.tree()['layers']?.children,
           actions
         }
       }
@@ -519,6 +523,11 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
       this.topicsByName = new Map(topics.map((t) => [t.name, t]))
     }
     this.emit('topicsChanged', this)
+
+    // Rebuild the settings nodes for all scene extensions
+    for (const extension of this.sceneExtensions.values()) {
+      this.settings.setNodesForKey(extension.extensionId, extension.settingsNodes())
+    }
   }
 
   /** Set parameters from the data source */

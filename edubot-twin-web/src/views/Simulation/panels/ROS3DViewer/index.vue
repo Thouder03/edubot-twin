@@ -91,8 +91,10 @@ watch(sceneReady, (ready) => {
   })
 
   // 监听配置变化，由于 Renderer 是 shallowRef，必须手动监听内部事件来驱动 UI
+  // 当 config 中的 topics 更新时（例如用户点击眼睛图标），同步执行动态订阅逻辑
   r.on('configChange', (changedRenderer) => {
     currentPublishType.value = changedRenderer.config.publish?.type ?? 'pose'
+    updateSubscriptions(changedRenderer.config.topics)
   })
 })
 
@@ -124,14 +126,14 @@ function subscribeTfTopics() {
     { name: '/tf_static', type: 'tf2_msgs/TFMessage' }
   ]
 
-  // 通知 Renderer 可用的 topics
-  renderer.value.setTopics(
-    tfTopics.map((t) => ({
-      name: t.name,
-      schemaName: t.type,
-      datatype: t.type
-    }))
-  )
+  // 只需将 tf topics 加入 topic 集合中，不影响常规检测的主题
+  const currentTopics = renderer.value.topics ? [...renderer.value.topics] : []
+  tfTopics.forEach((t) => {
+    if (!currentTopics.some((ct) => ct.name === t.name)) {
+      currentTopics.push({ name: t.name, schemaName: t.type })
+    }
+  })
+  renderer.value.setTopics(currentTopics)
 
   for (const topicDef of tfTopics) {
     const rosTopic = new RosTopic({
@@ -158,7 +160,6 @@ function subscribeTfTopics() {
 }
 
 function unsubscribeTfTopics() {
-  // 仅在连接状态正常时尝试取消订阅
   const ros = getRos()
   const isConnected = ros && ros.isConnected
 
@@ -167,7 +168,6 @@ function unsubscribeTfTopics() {
       if (isConnected) {
         sub.unsubscribe()
       } else {
-        // 如果已断开，直接销毁订阅对象（清理本地监听器），不再向后端发送取消订阅请求
         sub.removeAllListeners()
       }
     } catch (e) {
@@ -184,20 +184,72 @@ watch(status, (newStatus) => {
     syncRosTopicsToRenderer()
   } else {
     unsubscribeTfTopics()
-    unsubscribeMarkerTopics()
+    unsubscribeAllDynamicTopics()
     // 断开时清空 topic 列表
     renderer.value?.setTopics([])
   }
 })
 
-// ---------- ROS Marker Topic 订阅桥接 ----------
-let markerSubscriptions: RosTopic[] = []
+// ---------- 动态 Topic 订阅桥接 ----------
+const activeSubscriptions = new Map<string, RosTopic>()
 
-/** 取消所有 Marker topic 订阅 */
-function unsubscribeMarkerTopics() {
+/**
+ * 根据当前用户的配置 (visible 状态) 动态订阅或取消订阅 ROS 话题
+ */
+function updateSubscriptions(configTopics: Record<string, any> = {}) {
+  const ros = getRos()
+  const r = renderer.value
+  if (!ros || !r || !ros.isConnected) return
+
+  const VISUALIZABLE_SCHEMAS = new Set(r.schemaSubscriptions.keys())
+  const validTopics = r.topics ?? []
+
+  for (const topic of validTopics) {
+    // 过滤掉不可视化的 schema （保持纯粹数据结构管理干净）
+    if (!VISUALIZABLE_SCHEMAS.has(topic.schemaName)) continue
+
+    const topicConfig = configTopics[topic.name]
+    const isVisible = topicConfig?.visible === true
+
+    // 如果设置为可见且当前尚未订阅，则发起订阅
+    if (isVisible && !activeSubscriptions.has(topic.name)) {
+      const rosTopic = new RosTopic({
+        ros,
+        name: topic.name,
+        messageType: topic.schemaName
+      })
+
+      rosTopic.subscribe((msg: any) => {
+        const now = BigInt(Date.now()) * 1_000_000n
+        addMessageEvent({
+          topic: topic.name,
+          schemaName: topic.schemaName,
+          receiveTime: { sec: Number(now / 1_000_000_000n), nsec: Number(now % 1_000_000_000n) },
+          message: msg,
+          sizeInBytes: 0
+        })
+      })
+      activeSubscriptions.set(topic.name, rosTopic)
+      console.log('[ROS3D] 已动态订阅话题:', topic.name)
+    } else if (!isVisible && activeSubscriptions.has(topic.name)) {
+      const sub = activeSubscriptions.get(topic.name)!
+      try {
+        sub.unsubscribe()
+      } catch (e) {
+        console.warn(`[ROS3D] 取消订阅 ${topic.name} 失败:`, e)
+      }
+      activeSubscriptions.delete(topic.name)
+      console.log('[ROS3D] 已动态取消订阅话题:', topic.name)
+    }
+  }
+}
+
+/** 断开所有动态订阅 */
+function unsubscribeAllDynamicTopics() {
   const ros = getRos()
   const isConnected = ros && ros.isConnected
-  for (const sub of markerSubscriptions) {
+
+  for (const [name, sub] of activeSubscriptions) {
     try {
       if (isConnected) {
         sub.unsubscribe()
@@ -205,57 +257,39 @@ function unsubscribeMarkerTopics() {
         sub.removeAllListeners()
       }
     } catch (e) {
-      console.warn('[ROS3D] Error unsubscribing marker topic:', e)
+      console.warn(`[ROS3D] Error unsubscribing ${name}:`, e)
     }
   }
-  markerSubscriptions = []
+  activeSubscriptions.clear()
 }
 
 /**
- * 查询 ROS master 的全量 topic 列表，注入 Renderer，
- * 并自动订阅所有可视化类型（Marker、LaserScan）的 topic，路由消息到 addMessageEvent。
+ * 查询 ROS master 的全量 topic 列表，注入 Renderer。
+ * 随后交给 updateSubscriptions 依据 visible 状态动态产生订阅。
  */
 function syncRosTopicsToRenderer() {
   const ros = getRos()
   if (!ros || !renderer.value) return
-
-  // 动态读取 renderer 中注册的所有 sceneExtension 关心的 schema
-  const VISUALIZABLE_SCHEMAS = new Set(renderer.value.schemaSubscriptions.keys())
-
   ;(ros as any).getTopics(
     (result: { topics: string[]; types: string[] }) => {
-      const topics = result.topics.map((name, i) => ({
-        name,
-        schemaName: result.types[i] ?? '',
-        datatype: result.types[i] ?? ''
-      }))
-      renderer.value?.setTopics(topics)
-      refreshSettingsTree()
-      console.log('[ROS3D] 已同步 ROS topics 至 Renderer，共', topics.length, '个')
+      // 保留已经加进 renderer 的 topics (比如 tf topics)
+      const currentTopics = renderer.value!.topics ? [...renderer.value!.topics] : []
 
-      // 取消旧订阅，重新订阅所有可视化话题
-      unsubscribeMarkerTopics()
-      for (const topic of topics) {
-        if (!VISUALIZABLE_SCHEMAS.has(topic.schemaName)) continue
-
-        const rosTopic = new RosTopic({
-          ros,
-          name: topic.name,
-          messageType: topic.schemaName
-        })
-        rosTopic.subscribe((msg: any) => {
-          const now = BigInt(Date.now()) * 1_000_000n
-          addMessageEvent({
-            topic: topic.name,
-            schemaName: topic.schemaName,
-            receiveTime: { sec: Number(now / 1_000_000_000n), nsec: Number(now % 1_000_000_000n) },
-            message: msg,
-            sizeInBytes: 0
+      result.topics.forEach((name, i) => {
+        if (!currentTopics.some((ct) => ct.name === name)) {
+          currentTopics.push({
+            name,
+            schemaName: result.types[i] ?? ''
           })
-        })
-        markerSubscriptions.push(rosTopic)
-        console.log('[ROS3D] 已订阅话题:', topic.name, '(', topic.schemaName, ')')
-      }
+        }
+      })
+
+      renderer.value?.setTopics(currentTopics)
+      refreshSettingsTree()
+      console.log('[ROS3D] 已同步 ROS topics 至 Renderer，共', currentTopics.length, '个')
+
+      // 初次同步列表后尝试基于配置挂载订阅
+      updateSubscriptions(renderer.value?.config.topics)
     },
     (err: string) => {
       console.warn('[ROS3D] getTopics 失败:', err)
@@ -329,7 +363,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   unsubscribeTfTopics()
-  unsubscribeMarkerTopics()
+  unsubscribeAllDynamicTopics()
   disconnect()
   disposeRenderer()
   unregisterPanel(props.panelId)
