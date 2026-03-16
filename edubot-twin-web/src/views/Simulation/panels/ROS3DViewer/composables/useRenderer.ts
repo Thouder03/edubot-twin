@@ -235,8 +235,19 @@ export function useRenderer(options?: { onPublish?: OnPublishCallback }) {
       debouncedSave(changedRenderer.config as RendererConfig)
     })
 
-    // 相机移动时触发重新渲染
+    // 相机移动时触发重新渲染，并同步 cameraState 到 config（对等 Lichtblick ThreeDeeRender.tsx 第 209-233 行）
+    // NOTE: getCameraState 在 follow-position/follow-none 模式下读取的是 OrbitControls 的局部偏移，
+    //       setCameraState 重新应用是为了防止 non-follow-mode 下回放时出现闪烁（原注释中有说明）
     r.on('cameraMove', () => {
+      const newCameraState = r.getCameraState()
+      if (newCameraState) {
+        // 与 Lichtblick 对等：先 setCameraState 再持久化，防止 non-follow-mode 播放闪烁
+        r.setCameraState(newCameraState)
+        // 将新 cameraState 写入 config 并防抖保存
+        r.updateConfig((draft) => {
+          draft.cameraState = newCameraState
+        })
+      }
       r.queueAnimationFrame()
     })
 

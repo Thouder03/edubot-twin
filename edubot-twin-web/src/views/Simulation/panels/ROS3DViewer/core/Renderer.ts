@@ -269,18 +269,30 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
   // --- IRenderer: setFollowFrameId ---
 
   public setFollowFrameId(frameId: string | undefined): void {
-    if (this.followFrameId === frameId) return
-    this.followFrameId = frameId
-    if (frameId) {
-      const frame = this.transformTree.frame(frameId)
-      if (frame) {
-        this.fixedFrameId = frame.root().id as string | undefined
-      }
+    if (this.followFrameId !== frameId) {
+      log.debug(`Setting followFrameId to ${frameId}`)
     }
-    this.updateConfig((draft) => {
-      draft.followTf = frameId
-    })
-    this.emit('transformTreeUpdated', this)
+    this.followFrameId = frameId
+  }
+
+  #updateFixedFrameId(): void {
+    const frame =
+      this.followFrameId != undefined ? this.transformTree.frame(this.followFrameId) : undefined
+
+    if (frame == undefined) {
+      this.fixedFrameId = undefined
+      return
+    }
+    const fixedFrame = frame.root()
+    const fixedFrameId = fixedFrame.id
+    if (this.fixedFrameId !== fixedFrameId) {
+      if (this.fixedFrameId == undefined) {
+        log.debug(`Setting fixed frame to ${fixedFrameId}`)
+      } else {
+        log.debug(`Changing fixed frame from "${this.fixedFrameId}" to "${fixedFrameId}"`)
+      }
+      this.fixedFrameId = fixedFrameId
+    }
   }
 
   #onDevicePixelRatioChange = () => {
@@ -602,16 +614,6 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
     } else if (result === AddTransformResult.UPDATED) {
       this.coordinateFrameList = this.transformTree.frameList()
       this.emit('transformTreeUpdated', this)
-
-      if (!this.followFrameId) {
-        const defaultFollowFrame = this.transformTree.getDefaultFollowFrameId()
-        if (defaultFollowFrame) {
-          this.followFrameId = defaultFollowFrame
-          this.fixedFrameId = this.transformTree.frame(defaultFollowFrame)?.root().id as
-            | string
-            | undefined
-        }
-      }
     }
   }
 
@@ -636,6 +638,9 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
   }
 
   #frameHandler(): void {
+    // 实时更新 fixedFrameId 以应对 TF 树拓扑变化（比如新消息使 odom 变成 base_link 的 parent）
+    this.#updateFixedFrameId()
+
     const camera = this.cameraHandler.getActiveCamera()
     const renderFrameId = this.followFrameId ?? CoordinateFrame.FALLBACK_FRAME_ID
     const fixedFrameId = this.fixedFrameId ?? CoordinateFrame.FALLBACK_FRAME_ID
