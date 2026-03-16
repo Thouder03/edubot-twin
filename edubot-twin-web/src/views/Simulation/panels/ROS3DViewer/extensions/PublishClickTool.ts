@@ -100,6 +100,9 @@ export class PublishClickTool extends SceneExtension<Renderable, PublishClickEve
   public constructor(renderer: IRenderer) {
     super(PublishClickTool.extensionId, renderer)
 
+    // 从配置中恢复初始类型，避免初始化状态与设置面板不一致
+    this.publishClickType = this.renderer.config.publish?.type ?? 'point'
+
     this.#sphere = new RenderableSphere('', makeSphereMarker(), undefined, this.renderer)
     this.#arrow = new RenderableArrow(
       '',

@@ -60,8 +60,10 @@ const {
 // ---------- 发布模式状态 ----------
 const isPublishing = ref(false)
 
-// 当前发布类型（跟随 renderer config.publish.type）
-const currentPublishType = computed(() => renderer.value?.config.publish?.type ?? 'pose')
+// 当前发布类型（从配置中读取）
+const currentPublishType = ref<'point' | 'pose' | 'pose_estimate'>(
+  renderer.value?.config.publish?.type ?? 'pose'
+)
 
 function togglePublish() {
   if (isPublishing.value) {
@@ -79,8 +81,18 @@ const { status, errorMessage, getRos, connect, disconnect } = useRosConnection(r
 // 监听发布工具 publish-end 事件（发布一次后自动退出）
 watch(sceneReady, (ready) => {
   if (!ready || !renderer.value) return
-  renderer.value.publishClickTool.addEventListener('foxglove.publish-end', () => {
+  const r = renderer.value
+
+  // 同步当前发布类型（处理初始化和后续更新）
+  currentPublishType.value = r.config.publish?.type ?? 'pose'
+
+  r.publishClickTool.addEventListener('foxglove.publish-end', () => {
     isPublishing.value = false
+  })
+
+  // 监听配置变化，由于 Renderer 是 shallowRef，必须手动监听内部事件来驱动 UI
+  r.on('configChange', (changedRenderer) => {
+    currentPublishType.value = changedRenderer.config.publish?.type ?? 'pose'
   })
 })
 

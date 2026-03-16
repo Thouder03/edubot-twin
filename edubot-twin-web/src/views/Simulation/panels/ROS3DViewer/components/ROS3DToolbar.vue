@@ -34,9 +34,9 @@ const LABELS: Record<string, string> = {
 }
 
 const ICONS: Record<string, string> = {
-  point: 'vi-carbon:location',
+  point: 'vi-carbon:radio-button-checked',
   pose: 'vi-carbon:send-alt',
-  pose_estimate: 'vi-carbon:target'
+  pose_estimate: 'vi-carbon:location'
 }
 
 const btnLabel = computed(() => LABELS[props.publishType] ?? '发布')
