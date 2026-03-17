@@ -307,7 +307,6 @@ export class Grids extends SceneExtension<GridRenderable> {
 
 function createMarker(settings: LayerSettingsGrid): Marker {
   const { size, divisions, color: colorStr } = settings
-  console.log('[Grid] createMarker called, lineWidth:', settings.lineWidth)
   const step = size / divisions
   const halfSize = size / 2
   const points: Vector3[] = []
@@ -344,6 +343,5 @@ function createMarker(settings: LayerSettingsGrid): Marker {
     mesh_use_embedded_materials: false
   }
 
-  console.log('[Grid] marker created with scale.x:', marker.scale.x)
   return marker
 }
