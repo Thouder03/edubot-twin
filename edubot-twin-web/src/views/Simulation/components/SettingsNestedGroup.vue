@@ -10,7 +10,10 @@ import {
   ElOption,
   ElColorPicker,
   ElTooltip,
-  ElAutocomplete
+  ElAutocomplete,
+  ElDropdown,
+  ElDropdownMenu,
+  ElDropdownItem
 } from 'element-plus'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { Icon } from '@/components/Icon'
@@ -29,6 +32,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: 'field-change', path: string[], value: any, input: string): void
+  (e: 'node-action', path: string[], command: string): void
 }>()
 
 // Collapsed state for this nested group
@@ -54,6 +58,11 @@ function handleVisibilityToggle(event: MouseEvent) {
   const newVisible = isHidden.value ? true : false
   // 使用特殊 input 标记 '__visible__'，由 PanelSettings 识别并转换为正确的 action
   emit('field-change', props.path, newVisible, '__visible__')
+}
+
+/** 处理菜单命令 */
+function handleActionCommand(command: string) {
+  emit('node-action', props.path, command)
 }
 
 // Prepare fields with full path
@@ -127,6 +136,31 @@ function handleGradientChange(
             :class="{ 'is-hidden-icon': isHidden }"
           />
         </button>
+
+        <!-- 菜单按钮 -->
+        <ElDropdown
+          v-if="node.actions?.length"
+          trigger="click"
+          @command="handleActionCommand"
+        >
+          <button type="button" class="menu-btn" @click.stop>
+            <Icon icon="vi-carbon:overflow-menu-vertical" :size="14" />
+          </button>
+          <template #dropdown>
+            <ElDropdownMenu>
+              <ElDropdownItem
+                v-for="action in node.actions"
+                :key="action.command"
+                :command="action.command"
+                :divided="action.divided"
+                :disabled="action.disabled"
+              >
+                <Icon v-if="action.icon" :icon="action.icon" :size="14" class="action-icon" />
+                {{ action.label }}
+              </ElDropdownItem>
+            </ElDropdownMenu>
+          </template>
+        </ElDropdown>
       </div>
     </div>
 
@@ -431,6 +465,13 @@ export default {
     flex: 1;
     font-weight: 500;
   }
+
+  .nested-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
 }
 
 // 眼睛图标按钮
@@ -461,6 +502,30 @@ export default {
     &.is-hidden-icon {
       color: #585b70;
     }
+  }
+}
+
+// 菜单按钮
+.menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #6c7086;
+  flex-shrink: 0;
+  transition:
+    color 0.15s,
+    background 0.15s;
+
+  &:hover {
+    color: #cdd6f4;
+    background: rgba(137, 180, 250, 0.12);
   }
 }
 

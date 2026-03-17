@@ -77,6 +77,20 @@ function handleFieldChange(path: string[], value: any, input: string) {
   selectedSettingsTree.value.actionHandler(action)
 }
 
+// ---------- 节点动作处理 ----------
+function handleNodeAction(path: string[], command: string) {
+  if (!selectedSettingsTree.value) return
+
+  const action: SettingsTreeAction = {
+    action: 'perform-node-action',
+    payload: {
+      id: command,
+      path
+    }
+  }
+  selectedSettingsTree.value.actionHandler(action)
+}
+
 // ---------- 分组菜单处理 ----------
 function handleGroupAction(groupKey: string, action: string) {
   console.log('[PanelSettings] Group action:', groupKey, action)
@@ -134,6 +148,7 @@ function handleGroupAction(groupKey: string, action: string) {
               :path="[group.key]"
               :depth="0"
               @field-change="handleFieldChange"
+              @node-action="handleNodeAction"
             />
           </ElForm>
         </ElCollapseItem>
