@@ -10,6 +10,24 @@ import { Icon } from '@/components/Icon'
 import { usePanelState } from '../stores/panelState'
 import PanelSettings from './PanelSettings.vue'
 
+// ---------- 宽度持久化 ----------
+const SIDEBAR_WIDTH_KEY = 'simulation-sidebar-width'
+
+function loadWidthFromStorage(): number {
+  try {
+    const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY)
+    if (saved) {
+      const width = Number(saved)
+      if (width >= 100 && width <= 500) {
+        return width
+      }
+    }
+  } catch (e) {
+    console.warn('加载设置面板宽度失败:', e)
+  }
+  return 200
+}
+
 // ---------- 面板状态 ----------
 const panelState = usePanelState()
 
@@ -33,9 +51,9 @@ function handleClose() {
 }
 
 // ---------- Resize ----------
-const sidebarWidth = ref(200)
 const MIN_WIDTH = 100
 const MAX_WIDTH = 500
+const sidebarWidth = ref(loadWidthFromStorage())
 const isResizing = ref(false)
 
 function onResizeStart(e: MouseEvent) {
@@ -51,6 +69,11 @@ function onResizeStart(e: MouseEvent) {
 
   function onMouseUp() {
     isResizing.value = false
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth.value))
+    } catch (e) {
+      console.warn('保存设置面板宽度失败:', e)
+    }
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
   }
