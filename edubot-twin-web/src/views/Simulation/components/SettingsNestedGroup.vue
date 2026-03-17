@@ -65,6 +65,11 @@ function handleActionCommand(command: string) {
   emit('node-action', props.path, command)
 }
 
+/** 冒泡处理子节点的 node-action 事件 */
+function handleNodeAction(path: string[], command: string) {
+  emit('node-action', path, command)
+}
+
 // Prepare fields with full path
 const fields = computed(() => {
   return Object.entries(props.node.fields ?? {}).map(([key, field]) => ({
@@ -150,8 +155,8 @@ function handleGradientChange(
             <ElDropdownMenu>
               <ElDropdownItem
                 v-for="action in node.actions"
-                :key="action.command"
-                :command="action.command"
+                :key="action.id"
+                :command="action.id"
                 :divided="action.divided"
                 :disabled="action.disabled"
               >
@@ -406,6 +411,7 @@ function handleGradientChange(
           :path="child.path"
           :depth="depth + 1"
           @field-change="handleFieldChange"
+          @node-action="handleNodeAction"
         />
       </div>
     </div>

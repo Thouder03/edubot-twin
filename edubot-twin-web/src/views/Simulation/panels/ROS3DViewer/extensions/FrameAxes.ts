@@ -254,8 +254,8 @@ export class FrameAxes extends SceneExtension<FrameAxisRenderable> {
         node: {
           label: `${t('threeDee:transforms')}${frameCount > 0 ? ` (${frameCount})` : ''}`,
           actions: [
-            { id: 'show-all', type: 'action', label: t('threeDee:showAll') },
-            { id: 'hide-all', type: 'action', label: t('threeDee:hideAll') }
+            { type: 'action', id: 'show-all', label: t('threeDee:showAll') },
+            { type: 'action', id: 'hide-all', label: t('threeDee:hideAll') }
           ],
           handler,
           children

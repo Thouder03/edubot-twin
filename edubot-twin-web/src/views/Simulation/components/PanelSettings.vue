@@ -93,8 +93,16 @@ function handleNodeAction(path: string[], command: string) {
 
 // ---------- 分组菜单处理 ----------
 function handleGroupAction(groupKey: string, action: string) {
-  console.log('[PanelSettings] Group action:', groupKey, action)
-  // TODO: 实现重置、折叠等操作
+  if (!selectedSettingsTree.value) return
+
+  const actionObj: SettingsTreeAction = {
+    action: 'perform-node-action',
+    payload: {
+      id: action,
+      path: [groupKey]
+    }
+  }
+  selectedSettingsTree.value.actionHandler(actionObj)
 }
 </script>
 
@@ -125,8 +133,8 @@ function handleGroupAction(groupKey: string, action: string) {
                     <ElDropdownMenu>
                       <ElDropdownItem
                         v-for="action in group.actions"
-                        :key="action.command"
-                        :command="action.command"
+                        :key="action.id"
+                        :command="action.id"
                         :divided="action.divided"
                         :disabled="action.disabled"
                       >

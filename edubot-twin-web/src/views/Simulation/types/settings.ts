@@ -41,7 +41,8 @@ export interface SettingsTreeField {
 
 /** 分组菜单项配置 */
 export interface SettingsTreeNodeAction {
-  command: string // 命令标识
+  type: 'action'
+  id: string // 命令标识
   label: string // 显示文本
   icon?: string // 可选图标
   divided?: boolean // 是否在此项前显示分割线

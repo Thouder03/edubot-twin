@@ -15,6 +15,9 @@ import { SceneExtension } from '../core/SceneExtension'
 import { SettingsTreeEntry } from '../core/SettingsManager'
 
 export const DEFAULT_LABEL_SCALE_FACTOR = 1
+export const DEFAULT_BACKGROUND_COLOR = '#1e1e2e'
+export const DEFAULT_ENABLE_STATS = false
+export const DEFAULT_IGNORE_COLLADA_UP_AXIS = false
 
 export class SceneSettings extends SceneExtension {
   public static extensionId = 'foxglove.SceneSettings'
@@ -129,8 +132,16 @@ export class SceneSettings extends SceneExtension {
   public override handleSettingsAction = (action: SettingsTreeAction): void => {
     if (action.action === 'perform-node-action' && action.payload.id === 'reset-scene') {
       this.renderer.updateConfig((draft) => {
-        draft.scene = {}
+        draft.scene = {
+          backgroundColor: DEFAULT_BACKGROUND_COLOR,
+          labelScaleFactor: DEFAULT_LABEL_SCALE_FACTOR,
+          enableStats: DEFAULT_ENABLE_STATS,
+          ignoreColladaUpAxis: DEFAULT_IGNORE_COLLADA_UP_AXIS,
+          meshUpAxis: undefined
+        }
       })
+      this.renderer.setColorScheme(this.renderer.colorScheme, DEFAULT_BACKGROUND_COLOR)
+      this.renderer.labelPool.setScaleFactor(DEFAULT_LABEL_SCALE_FACTOR)
       this.updateSettingsTree()
       return
     }

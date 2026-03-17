@@ -13,7 +13,12 @@ import type { RendererConfig } from '../core/IRenderer'
 import type { SceneExtensionConfig } from '../core/SceneExtensionConfig'
 import type { MessageEvent, Topic } from '../core/lichtblick-shim'
 import type { CameraState } from '../core/camera'
-import { SceneSettings } from '../extensions/SceneSettings'
+import {
+  SceneSettings,
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_ENABLE_STATS,
+  DEFAULT_IGNORE_COLLADA_UP_AXIS
+} from '../extensions/SceneSettings'
 import { Grids } from '../extensions/Grids'
 import { FrameAxes } from '../extensions/FrameAxes'
 import { Markers } from '../extensions/Markers'
@@ -44,15 +49,15 @@ function defaultRendererConfig(): RendererConfig {
     followMode: 'follow-pose',
     followTf: undefined,
     scene: {
-      backgroundColor: '#1e1e2e',
+      backgroundColor: DEFAULT_BACKGROUND_COLOR,
       labelScaleFactor: 1,
-      ignoreColladaUpAxis: false,
+      ignoreColladaUpAxis: DEFAULT_IGNORE_COLLADA_UP_AXIS,
       meshUpAxis: undefined,
       transforms: {
         enablePreloading: false,
         editable: false
       },
-      enableStats: false
+      enableStats: DEFAULT_ENABLE_STATS
     },
     transforms: {},
     topics: {},
@@ -283,7 +288,7 @@ export function useRenderer(options?: { onPublish?: OnPublishCallback }) {
     })
 
     // 设置默认颜色方案
-    r.setColorScheme('dark', '#1e1e2e')
+    r.setColorScheme('dark', DEFAULT_BACKGROUND_COLOR)
 
     renderer.value = r
     sceneReady.value = true
