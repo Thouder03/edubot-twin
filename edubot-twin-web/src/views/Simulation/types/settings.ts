@@ -39,6 +39,15 @@ export interface SettingsTreeField {
   precision?: number
 }
 
+/** 分组菜单项配置 */
+export interface SettingsTreeNodeAction {
+  command: string // 命令标识
+  label: string // 显示文本
+  icon?: string // 可选图标
+  divided?: boolean // 是否在此项前显示分割线
+  disabled?: boolean // 是否禁用
+}
+
 /** 一组字段 */
 export interface SettingsTreeNode {
   label?: string
@@ -58,6 +67,8 @@ export interface SettingsTreeNode {
   visible?: boolean
   /** 节点错误信息 */
   error?: string
+  /** 自定义菜单项（不设置则使用默认菜单） */
+  actions?: SettingsTreeNodeAction[]
 }
 
 /** 完整设置节点映射 */

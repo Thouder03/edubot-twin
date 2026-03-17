@@ -37,6 +37,7 @@ const settingsNodes = computed(() => {
       icon: node!.icon,
       collapsible: node!.collapsible ?? true,
       defaultExpanded: node!.defaultExpanded ?? false,
+      actions: node!.actions, // 自定义菜单项
       rawNode: node
     }))
 })
@@ -98,7 +99,7 @@ function handleGroupAction(groupKey: string, action: string) {
             <div class="group-header">
               <Icon v-if="group.icon" :icon="group.icon" :size="16" class="group-icon" />
               <span class="group-label">{{ group.label }}</span>
-              <div class="group-actions">
+              <div v-if="group.actions?.length" class="group-actions">
                 <ElDropdown trigger="click" @command="(cmd) => handleGroupAction(group.key, cmd)">
                   <Icon
                     icon="vi-carbon:overflow-menu-vertical"
@@ -108,12 +109,16 @@ function handleGroupAction(groupKey: string, action: string) {
                   />
                   <template #dropdown>
                     <ElDropdownMenu>
-                      <ElDropdownItem command="reset">{{
-                        t('threeDee.resetToDefault')
-                      }}</ElDropdownItem>
-                      <ElDropdownItem command="collapse-all">{{
-                        t('threeDee.collapseAll')
-                      }}</ElDropdownItem>
+                      <ElDropdownItem
+                        v-for="action in group.actions"
+                        :key="action.command"
+                        :command="action.command"
+                        :divided="action.divided"
+                        :disabled="action.disabled"
+                      >
+                        <Icon v-if="action.icon" :icon="action.icon" :size="14" class="action-icon" />
+                        {{ t(action.label) }}
+                      </ElDropdownItem>
                     </ElDropdownMenu>
                   </template>
                 </ElDropdown>
@@ -336,6 +341,14 @@ function handleGroupAction(groupKey: string, action: string) {
   }
   p {
     font-size: 13px;
+  }
+}
+
+// 菜单项图标
+:deep(.el-dropdown-menu__item) {
+  .action-icon {
+    margin-right: 8px;
+    vertical-align: middle;
   }
 }
 </style>
