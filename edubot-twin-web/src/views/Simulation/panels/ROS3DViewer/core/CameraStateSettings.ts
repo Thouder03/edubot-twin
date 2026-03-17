@@ -547,17 +547,10 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
     const config = this.renderer.config
     return {
       perspective: config.cameraState.perspective,
-      distance: round(this.#controls.getDistance(), PRECISION_DISTANCE),
-      phi: round(THREE.MathUtils.radToDeg(this.#controls.getPolarAngle()), PRECISION_DEGREES),
-      thetaOffset: round(
-        THREE.MathUtils.radToDeg(-this.#controls.getAzimuthalAngle()),
-        PRECISION_DEGREES
-      ),
-      targetOffset: [
-        round(this.#controls.target.x, PRECISION_DISTANCE),
-        round(this.#controls.target.y, PRECISION_DISTANCE),
-        round(this.#controls.target.z, PRECISION_DISTANCE)
-      ],
+      distance: this.#controls.getDistance(),
+      phi: THREE.MathUtils.radToDeg(this.#controls.getPolarAngle()),
+      thetaOffset: THREE.MathUtils.radToDeg(-this.#controls.getAzimuthalAngle()),
+      targetOffset: [this.#controls.target.x, this.#controls.target.y, this.#controls.target.z],
       target: config.cameraState.target,
       targetOrientation: config.cameraState.targetOrientation,
       fovy: config.cameraState.fovy,
@@ -625,8 +618,4 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
       this.#orthographicCamera.updateProjectionMatrix()
     }
   }
-}
-
-function round(x: number, precision: number): number {
-  return Number(x.toFixed(precision))
 }

@@ -196,6 +196,7 @@ function handleGradientChange(
             :min="field.min"
             :max="field.max"
             :step="field.step ?? 1"
+            :precision="field.precision"
             :placeholder="field.placeholder ?? ''"
             :disabled="field.disabled"
             class="custom-input-number"
