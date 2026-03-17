@@ -240,7 +240,7 @@ function handleGradientChange(
               <ElInputNumber
                 :model-value="field.value?.[idx] ?? 0"
                 :precision="field.precision ?? 3"
-                :step="field.step ?? 0.1"
+                :step="field.step ?? 1"
                 :disabled="field.disabled"
                 class="custom-input-number"
                 :decrease-icon="ArrowLeft"

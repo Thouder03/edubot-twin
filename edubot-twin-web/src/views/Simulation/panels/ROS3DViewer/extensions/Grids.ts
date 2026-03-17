@@ -182,6 +182,26 @@ export class Grids extends SceneExtension<GridRenderable> {
       return
     }
 
+    // Handle visible toggle (eye icon, path.length === 2)
+    if (action.action === 'update' && path && path.length === 2 && path[0] === 'layers') {
+      const instanceId = path[1]!
+      const visible = action.payload.value as boolean
+      const renderable = this.renderables.get(instanceId)
+
+      if (renderable) {
+        renderable.userData.settings.visible = visible
+        renderable.visible = visible
+      }
+
+      this.renderer.updateConfig((draft) => {
+        const prev = (draft.layers[instanceId] ?? {}) as Partial<LayerSettingsGrid>
+        draft.layers[instanceId] = { ...prev, visible } as any
+      })
+
+      this.updateSettingsTree()
+      return
+    }
+
     if (!path || path.length !== 3) {
       return // Doesn't match the pattern of ["layers", instanceId, field]
     }
@@ -251,6 +271,7 @@ export class Grids extends SceneExtension<GridRenderable> {
     if (!markersEqual) {
       const marker = createMarker(newSettings)
       renderable.userData.lineList.update(marker, undefined)
+      this.renderer.queueAnimationFrame()
     }
 
     // Update the pose if it changed
@@ -259,6 +280,7 @@ export class Grids extends SceneExtension<GridRenderable> {
       !vec3TupleApproxEquals(newSettings.rotation, prevSettings.rotation)
     ) {
       renderable.userData.pose = xyzrpyToPose(newSettings.position, newSettings.rotation)
+      this.renderer.queueAnimationFrame()
     }
   }
 
@@ -272,7 +294,7 @@ export class Grids extends SceneExtension<GridRenderable> {
       frameId: '', // This will be updated in `startFrame()`
       pose: makePose(),
       settingsPath: ['layers', instanceId],
-      settings,
+      settings: { ...DEFAULT_SETTINGS },
       lineList
     })
     renderable.add(lineList)
@@ -285,6 +307,7 @@ export class Grids extends SceneExtension<GridRenderable> {
 
 function createMarker(settings: LayerSettingsGrid): Marker {
   const { size, divisions, color: colorStr } = settings
+  console.log('[Grid] createMarker called, lineWidth:', settings.lineWidth)
   const step = size / divisions
   const halfSize = size / 2
   const points: Vector3[] = []
@@ -300,7 +323,7 @@ function createMarker(settings: LayerSettingsGrid): Marker {
   const color = { r: 1, g: 1, b: 1, a: 1 }
   stringToRgba(color, colorStr)
 
-  return {
+  const marker: Marker = {
     header: {
       frame_id: '', // unused, settings.frameId is used instead
       stamp: TIME_ZERO
@@ -320,4 +343,7 @@ function createMarker(settings: LayerSettingsGrid): Marker {
     mesh_resource: '',
     mesh_use_embedded_materials: false
   }
+
+  console.log('[Grid] marker created with scale.x:', marker.scale.x)
+  return marker
 }
