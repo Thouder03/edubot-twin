@@ -4,7 +4,7 @@
  * 管理面板实例的注册、设置树、选中状态。
  * 在 GL 虚拟组件之间共享状态（通过 import 而非 provide/inject）。
  */
-import { reactive, computed } from 'vue'
+import { reactive, computed, markRaw } from 'vue'
 import type { SettingsTree } from '../types/settings'
 
 interface PanelInstance {
@@ -46,7 +46,7 @@ export function usePanelState() {
 
   /** 注册/更新面板的设置树 */
   function updateSettingsTree(panelId: string, tree: SettingsTree) {
-    state.settingsTrees[panelId] = tree
+    state.settingsTrees[panelId] = markRaw(tree)
   }
 
   /** 选中某面板为设置目标 */

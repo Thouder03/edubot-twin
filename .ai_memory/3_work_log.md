@@ -225,3 +225,10 @@
   - **仿真时间优先**: 在 `index.vue` 自动订阅 `/clock`，使 Renderer.currentTime 切换并完美跟踪 Gazebo 仿真时间。
   - **decayTime 修正**: 在 `useRenderer.ts` 转发消息前，统一使用 `clockTimeNs` 重写原始事件的 `receiveTime`，消除了壁钟 2026 年（17亿秒）与仿真时间（11000秒）跨时间域对比造成的 `expireTime` 计算失效。
 - **状态**: 代码清理与人工验证均已通过。
+- **[修复]** 限制 `ROS3DViewer` 3D 面板视角的更新频率 (`CameraStateSettings.ts`)，使用 `lodash` 的 `throttle` (200ms) 显著降低了由于过度频繁的 vue state/settings 同步而造成的卡顿。并修复了“同步相机”设定无效的问题，在开启该设定时会解除节流实现实时更新。
+- **[修复]** 进一步解决了 `ROS3DViewer` 拖拽视角时越改越卡的问题。此前虽然节流了 `cameraMove`，但是由于 OrbitControls 仍在频繁触发 `cameraMove` 并连带触发全局的 `this.updateSettingsTree()`，导致 Vue 递归比对巨大的 settings tree 而产生极其严重的性能问题。将 `updateSettingsTree` 也在拖拽期间（默认）进行 1000ms 的防抖/节流限制，从根源解耦了视图渲染与 UI 状态同步。
+- **[修复]** 撤销了针对 `CameraStateSettings.ts` 中 `cameraMove` 本身的节流处理。`cameraMove` 被节流会阻断 `OrbitControls` 发出的实时更新请求 (`renderer.queueAnimationFrame`) 导致 3D 画面的帧率实质性下降（即越拖越卡）。将节流仅作用于 `updateSettingsTree` 才能达到既不让 Vue 渲染卡顿，又保证 3D 画布 60fps 拖拽的效果。
+- **[修复]** 修复了设定更新时每秒卡顿一下的问题：`SettingsTree` 是极其庞大的嵌套数据结构（包含大量 topic、图层节点等对象），通过 `immer` 不断生成新树。过去更新触发时，Vue `reactive`/`ref` 会深层介入产生不可承受的 `Proxy` 开销（表现为此前的 1秒 卡 1下）。通过引入 `import('vue').then({ markRaw })` 将注入 panelsState 的配置树节点强行脱离深层代理，瞬间排除了更新界面的性能开销，做到了真正的如丝般顺滑。
+- **[修复]** 为 `CameraStateSettings` 增加了 `pointerdown` / `pointerup` 事件监听，用于标识 `#isDragging` 拖拽状态。在鼠标按下拖拽视角期间，完全跳过 `updateSettingsTree()` 的触发，使得拖拽过程获得近乎原生的纯 WebGL 渲染性能。松开鼠标后补发一次更新以确保左侧界面的坐标数据一致。
+- **[修复]** 进一步解决 3D 面板拖拽视角时的卡顿问题。通过在 canvas 和 document 上监听 mousedown/mouseup 事件，在鼠标按下时设置 `#isDragging = true`，期间跳过 `updateSettingsTree()` 调用（从而消除了 Vue 渲染侧栏带来的开销），松开鼠标后延迟 100ms 执行一次最终的设置树更新。`syncCamera` 打开时不受此限制，始终实时更新。
+- **[修复]** 去除了 `CameraStateSettings.ts` 中的 `1s` 定时刷新机制，完全依赖于鼠标拖拽判定。拖拽结束后立刻更新页面数值，没有多余延迟。

@@ -1,16 +1,7 @@
 # 当前任务状态
-
-## 最新进展阶段
-- **任务目标**: 修复 LaserScan 随坐标系异常运动（拖拽/卡顿）及 decayTime 衰减失效的 Bug
-- **实施完毕**: 
-  - 在 `normalizeMessages.ts` 中修复了 `normalizeTime` 对于 `secs/nsecs` 的解析异常，解决了坐标系变换导致点云晃动平移的现象。
-  - 在 `useRenderer.ts` 与 `index.vue` 中实现了类似于 Foxglove/Lichtblick 的全局时钟驱动器（100ms 定时推进 `currentTime`），并优先捕捉并使用 `/clock`（Gazebo 仿真时间）。
-  - 修复了 `receiveTime` 时间域不统一（Unix壁钟 vs 仿真时间）导致 `decayTime` 永远无法清除旧点云的隐藏深渊 Bug。
-
-## 待完成工作
-- [x] 实施：修改 `normalizeMessages.ts` 解决时间戳解析
-- [x] 实施：在 `useRenderer.ts` 实现 `startClock/stopClock`
-- [x] 实施：在 `index.vue` 订阅 `/clock` 话题
-- [x] 实施：在 `useRenderer.ts` 统一 `receiveTime` 时间域
-- [x] 验证：确认 LaserScan 坐标锚定与 decayTime 均符合预期
-- [ ] 下一阶段：等待用户分配新任务
+- [x] 限制 3D 面板移动时的视角更新频率，解决卡顿问题
+- [x] 修复“同步相机”选项，在开启时恢复实时更新
+- [x] 分析并修复由于 `updateSettingsTree` 频繁触发导致 Vue 渲染器与 THREE 渲染器互相干涉造成严重卡顿的问题
+- [x] 撤销对 OrbitControls 视角的节流限制，因为这会阻碍 render frame loop
+- [x] 修复 `1s` 同步设置树带来的瞬间卡顿：对 `settingsTree` 通过 `markRaw` 剥离 Vue 深度响应劫持，消除 proxy 遍历导致的性能瓶颈
+- [x] 在 `CameraStateSettings` 中增加 `isDragging` 鼠标拖拽状态检测，拖拽期间完全暂停 Vue 响应式数据同步，拖放结束后自动补发一次更新，实现绝对纯净的拖拽帧率。

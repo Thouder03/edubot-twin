@@ -97,6 +97,11 @@ export class FrameAxes extends SceneExtension<FrameAxisRenderable> {
   #lineGeometry: LineGeometry
   #defaultRenderableSettings: LayerSettingsTransform
 
+  // 鼠标拖拽状态
+  #isDragging = false
+  #postDragTimer: ReturnType<typeof setTimeout> | null = null
+  #cleanupDragListeners: (() => void) | null = null
+
   public constructor(
     renderer: IRenderer,
     defaultRenderableSettings: Partial<LayerSettingsTransform>,
@@ -124,12 +129,39 @@ export class FrameAxes extends SceneExtension<FrameAxisRenderable> {
     renderer.on('transformTreeUpdated', this.#handleTransformTreeUpdated)
 
     this.#defaultRenderableSettings = { ...DEFAULT_SETTINGS, ...defaultRenderableSettings }
+
+    // 监听鼠标拖拽：按下时暂停设置树更新，释放时恢复
+    const canvas = this.renderer.gl.domElement
+    const onMouseDown = () => {
+      this.#isDragging = true
+      this.#throttledUpdateSettingsTree.cancel()
+      if (this.#postDragTimer != null) {
+        clearTimeout(this.#postDragTimer)
+        this.#postDragTimer = null
+      }
+    }
+    const onMouseUp = () => {
+      if (!this.#isDragging) return
+      this.#isDragging = false
+      this.#postDragTimer = setTimeout(() => {
+        this.updateSettingsTree()
+        this.#postDragTimer = null
+      }, 100)
+    }
+    canvas.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('mouseup', onMouseUp)
+    this.#cleanupDragListeners = () => {
+      canvas.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
   }
 
   public override dispose(): void {
     this.renderer.off('transformTreeUpdated', this.#handleTransformTreeUpdated)
     this.#lineMaterial.dispose()
     this.#linePickingMaterial.dispose()
+    this.#cleanupDragListeners?.()
+    if (this.#postDragTimer != null) clearTimeout(this.#postDragTimer)
     super.dispose()
   }
 
@@ -250,10 +282,10 @@ export class FrameAxes extends SceneExtension<FrameAxisRenderable> {
     // Keep the material's `resolution` uniform in sync with the actual canvas size
     this.#lineMaterial.resolution = this.renderer.input.canvasSize
 
-    // Update all the transforms settings nodes each frame since they contain
-    // fields that change when currentTime changes
-    this.#throttledUpdateSettingsTree()
-    // this.updateSettingsTree();
+    // 拖拽期间跳过设置树更新
+    if (!this.#isDragging) {
+      this.#throttledUpdateSettingsTree()
+    }
 
     super.startFrame(currentTime, renderFrameId, fixedFrameId)
 

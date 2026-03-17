@@ -27,7 +27,7 @@ const props = defineProps<Props>()
 const { t } = useI18n()
 
 // ---------- 面板设置集成 ----------
-const { registerPanel, unregisterPanel, updateSettingsTree } = usePanelState()
+const { registerPanel, unregisterPanel, updateSettingsTree, state: panelState } = usePanelState()
 
 // ---------- ROS 连接配置（从 RendererConfig.connection 读取，统一持久化）----------
 // 等价于 lichtblick 的 context.initialState 恢复逻辑
@@ -349,6 +349,9 @@ function handleConnectionToggle() {
 
 // ---------- 设置树同步 ----------
 function refreshSettingsTree() {
+  // 只在设置面板打开且选中当前面板时才更新
+  if (panelState.selectedPanelId !== props.panelId) return
+
   const tree = getSettingsTree()
   if (tree) {
     updateSettingsTree(props.panelId, {

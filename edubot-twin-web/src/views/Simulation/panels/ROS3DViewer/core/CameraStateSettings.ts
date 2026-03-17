@@ -50,6 +50,10 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
   #isUpdatingCameraState = false
   #canvas: HTMLCanvasElement
 
+  // 鼠标拖拽期间暂停设置树的更新
+  #isDragging = false
+  #postDragTimer: ReturnType<typeof setTimeout> | null = null
+
   // This group is used to transform the cameras based on the Frame follow mode
   // quaternion is affected in stationary and position-only follow modes
   // both position and quaternion of the group are affected in stationary mode
@@ -91,12 +95,42 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
       }
     })
 
+    // 监听鼠标拖拽：按下时暂停设置树更新，释放时恢复
+    const onMouseDown = () => {
+      this.#isDragging = true
+      // 取消所有待执行的 throttle 调用，防止 trailing 触发
+      this.#throttledUpdateSettingsTree.cancel()
+      if (this.#postDragTimer != null) {
+        clearTimeout(this.#postDragTimer)
+        this.#postDragTimer = null
+      }
+    }
+    const onMouseUp = () => {
+      if (!this.#isDragging) return
+      this.#isDragging = false
+      // 释放后延迟一帧更新设置树，避免与渲染帧冲突
+      this.#postDragTimer = setTimeout(() => {
+        this.updateSettingsTree()
+        this.#postDragTimer = null
+      }, 100)
+    }
+    canvas.addEventListener('mousedown', onMouseDown)
+    // mouseup 需要 document 级别，否则拖出 canvas 外松开不会触发
+    document.addEventListener('mouseup', onMouseUp)
+    // 记录清除函数，供 dispose 调用
+    this.#cleanupDragListeners = () => {
+      canvas.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+
     // Make the canvas able to receive keyboard events and setup WASD controls
     canvas.tabIndex = 1000
     this.#aspect = aspect
     this.#controls.keys = { LEFT: 'KeyA', RIGHT: 'KeyD', UP: 'KeyW', BOTTOM: 'KeyS' }
     this.#controls.listenToKeyEvents(canvas)
   }
+
+  #cleanupDragListeners: (() => void) | null = null
 
   public override dispose(): void {
     // for camera settings
@@ -108,6 +142,9 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
     this.renderer.settings.errors.off('update', this.#handleErrorChange)
     this.renderer.settings.errors.off('clear', this.#handleErrorChange)
     this.renderer.settings.errors.off('remove', this.#handleErrorChange)
+
+    this.#cleanupDragListeners?.()
+    if (this.#postDragTimer != null) clearTimeout(this.#postDragTimer)
 
     super.dispose()
   }
@@ -389,13 +426,38 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
     }
   }
 
+  // throttle the settings tree update so Vue doesn't re-render the whole settings tree
+  #throttledUpdateSettingsTree = _.throttle(
+    () => {
+      this.updateSettingsTree()
+    },
+    500,
+    { leading: true, trailing: true }
+  )
+
   #handleCameraMove = (): void => {
-    // View -> Settings: Update config from current camera state
+    // console.log('[CameraMove]', { isDragging: this.#isDragging, syncCamera: this.renderer.config.scene?.syncCamera })
+
+    // syncCamera 模式下始终实时更新
+    if (this.renderer.config.scene?.syncCamera) {
+      const currentState = this.getCameraState()
+      this.renderer.updateConfig((draft) => {
+        draft.cameraState = currentState
+      })
+      this.#throttledUpdateSettingsTree.cancel()
+      this.updateSettingsTree()
+      return
+    }
+
+    // 拖拽期间完全跳过配置和设置树更新
+    if (this.#isDragging) return
+
+    // 非拖拽期间：更新配置并节流更新设置树
     const currentState = this.getCameraState()
     this.renderer.updateConfig((draft) => {
       draft.cameraState = currentState
     })
-    this.updateSettingsTree()
+    this.#throttledUpdateSettingsTree()
   }
 
   #handleTransformTreeUpdated = (): void => {
