@@ -125,7 +125,7 @@ function handleGroupAction(groupKey: string, action: string) {
                 <ElDropdown trigger="click" @command="(cmd) => handleGroupAction(group.key, cmd)">
                   <Icon
                     icon="vi-carbon:overflow-menu-vertical"
-                    :size="16"
+                    :size="25"
                     class="group-menu-icon"
                     @click.stop
                   />

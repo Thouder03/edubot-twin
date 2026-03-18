@@ -595,7 +595,7 @@ export default {
     enablePreloadingTooltip: '请注意，开启预加载可能会影响性能。',
     fixed: '固定',
     followMode: '跟随模式',
-    followModeHelp: '在播放过程中更改相机跟随显示坐标系的行为。',
+    followModeHelp: '在连接过程中更改相机跟随显示坐标系的行为。',
     frameNotFound: '未找到坐标系',
     hideAll: '隐藏全部',
     historySize: '历史大小',
@@ -682,5 +682,15 @@ export default {
     clickToDisconnect: '点击断开',
     clickToConnect: '点击连接',
     initializing: '初始化 3D 场景...'
+  },
+  settings: {
+    clickToShow: '点击显示',
+    clickToHide: '点击隐藏',
+    selectionVariableHelp: '选择标记时，此全局变量将被设置为标记 ID',
+    publishTopicHelp: '发布消息的话题',
+    publishTypeHelp: '在场景中点击时发布的消息类型',
+    xDeviationHelp: '与姿态估计一起发布的 X 标准差',
+    yDeviationHelp: '与姿态估计一起发布的 Y 标准差',
+    thetaDeviationHelp: '与姿态估计一起发布的 theta 标准差'
   }
 }

@@ -20,6 +20,9 @@ import {
 import { Marker, MarkerArray, MARKER_ARRAY_DATATYPES, MARKER_DATATYPES } from '../core/ros'
 import { makePose } from '../core/transforms'
 import { MarkerPool } from './markers/MarkerPool'
+import { useI18n } from '@/hooks/web/useI18n'
+
+const { t } = useI18n()
 
 const DEFAULT_SETTINGS: LayerSettingsMarker = {
   visible: false,
@@ -122,6 +125,7 @@ export class Markers extends SceneExtension<TopicMarkers> {
           },
           selectedIdVariable: {
             label: '选中ID变量',
+            help: t('settings.selectionVariableHelp'),
             input: 'string' as const,
             value: config.selectedIdVariable
           }

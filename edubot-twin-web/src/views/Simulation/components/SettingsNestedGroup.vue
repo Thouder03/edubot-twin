@@ -18,6 +18,9 @@ import {
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { Icon } from '@/components/Icon'
 import { SettingsTreeNode } from '../types/settings'
+import { useI18n } from '@/hooks/web/useI18n'
+
+const { t } = useI18n()
 
 interface Props {
   nodeKey: string // Current node key (e.g. "base_laser_link")
@@ -131,7 +134,7 @@ function handleGradientChange(
           v-if="supportsVisibility && (isHovered || isHidden)"
           type="button"
           class="visibility-btn"
-          :title="isHidden ? '点击显示' : '点击隐藏'"
+          :title="isHidden ? t('settings.clickToShow') : t('settings.clickToHide')"
           @click.stop="handleVisibilityToggle"
         >
           <Icon
@@ -145,7 +148,7 @@ function handleGradientChange(
         <!-- 菜单按钮 -->
         <ElDropdown v-if="node.actions?.length" trigger="click" @command="handleActionCommand">
           <button type="button" class="menu-btn" @click.stop>
-            <Icon icon="vi-carbon:overflow-menu-vertical" :size="14" />
+            <Icon icon="vi-carbon:overflow-menu-vertical" :size="20" />
           </button>
           <template #dropdown>
             <ElDropdownMenu>
@@ -183,7 +186,7 @@ function handleGradientChange(
           <template #label>
             <div class="label-with-error" @click.prevent>
               <ElTooltip
-                :content="field.label"
+                :content="field.help ?? field.label"
                 placement="top-start"
                 :show-after="500"
                 effect="light"

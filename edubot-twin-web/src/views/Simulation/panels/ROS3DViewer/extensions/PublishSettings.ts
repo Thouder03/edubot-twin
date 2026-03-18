@@ -8,6 +8,9 @@ import type { IRenderer } from '../core/IRenderer'
 import { SceneExtension } from '../core/SceneExtension'
 import type { SettingsTreeEntry } from '../core/SettingsManager'
 import type { PublishClickType } from './PublishClickTool'
+import { useI18n } from '@/hooks/web/useI18n'
+
+const { t } = useI18n()
 
 // ============================================================
 // 默认值
@@ -73,17 +76,18 @@ export class PublishSettings extends SceneExtension {
                 { label: '位姿 (PoseStamped)', value: 'pose' },
                 { label: '初始位姿估计', value: 'pose_estimate' }
               ],
-              help: '在 3D 视图中点击时发布的消息类型'
+              help: t('settings.publishTypeHelp')
             },
             topic: {
               label: 'Topic',
               input: 'string',
               value: topicValue[publish.type] ?? publish.pointTopic,
-              help: '将要发布到的 ROS Topic 名称'
+              help: t('settings.publishTopicHelp')
             },
             ...(publish.type === 'pose_estimate' && {
               poseEstimateXDeviation: {
                 label: 'X 偏差 (σ)',
+                help: t('settings.xDeviationHelp'),
                 input: 'number',
                 min: 0,
                 step: 0.1,
@@ -92,6 +96,7 @@ export class PublishSettings extends SceneExtension {
               },
               poseEstimateYDeviation: {
                 label: 'Y 偏差 (σ)',
+                help: t('settings.yDeviationHelp'),
                 input: 'number',
                 min: 0,
                 step: 0.1,
@@ -100,6 +105,7 @@ export class PublishSettings extends SceneExtension {
               },
               poseEstimateThetaDeviation: {
                 label: 'θ 偏差 (σ)',
+                help: t('settings.thetaDeviationHelp'),
                 input: 'number',
                 min: 0,
                 step: 0.05,

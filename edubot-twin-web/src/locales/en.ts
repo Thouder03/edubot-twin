@@ -699,5 +699,16 @@ export default {
     clickToDisconnect: 'Click to disconnect',
     clickToConnect: 'Click to connect',
     initializing: 'Initializing 3D scene...'
+  },
+  settings: {
+    clickToShow: 'Click to show',
+    clickToHide: 'Click to hide',
+    selectionVariableHelp:
+      'When selecting a marker, this global variable will be set to the marker ID',
+    publishTopicHelp: 'The topic on which to publish',
+    publishTypeHelp: 'The type of message to publish when clicking in the scene',
+    xDeviationHelp: 'The X standard deviation to publish with pose estimates',
+    yDeviationHelp: 'The Y standard deviation to publish with pose estimates',
+    thetaDeviationHelp: 'The theta standard deviation to publish with pose estimates'
   }
 }
