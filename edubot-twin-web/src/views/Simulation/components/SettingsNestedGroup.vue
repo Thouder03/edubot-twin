@@ -181,14 +181,14 @@ function handleGradientChange(
           :class="{ 'has-error': field.error }"
         >
           <template #label>
-            <div class="label-with-error">
+            <div class="label-with-error" @click.prevent>
               <ElTooltip
                 :content="field.label"
                 placement="top-start"
                 :show-after="500"
                 effect="light"
               >
-                <span>{{ field.label }}</span>
+                <span class="label-text">{{ field.label }}</span>
               </ElTooltip>
               <ElTooltip v-if="field.error" :content="field.error" placement="top" effect="light">
                 <Icon icon="vi-carbon:warning-filled" :size="14" class="error-icon" />
@@ -439,6 +439,7 @@ export default {
   color: #cdd6f4;
   user-select: none;
   font-size: 13px;
+  min-width: 0;
 
   &:hover {
     color: #89b4fa;
@@ -462,6 +463,7 @@ export default {
     margin-right: 4px;
     font-size: 12px;
     color: #a6adc8;
+    flex-shrink: 0;
 
     &.is-rotated {
       transform: rotate(-90deg);
@@ -471,6 +473,10 @@ export default {
   .nested-label {
     flex: 1;
     font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .nested-actions {
@@ -478,6 +484,7 @@ export default {
     align-items: center;
     gap: 4px;
     margin-left: auto;
+    flex-shrink: 0;
   }
 }
 
@@ -557,10 +564,15 @@ export default {
   align-items: center;
   gap: 4px;
   width: 100%;
+  min-width: 0;
 
-  > span {
+  .label-text {
     flex: 1;
     text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .error-icon {
