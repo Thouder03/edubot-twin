@@ -60,6 +60,10 @@ const {
 // ---------- 发布模式状态 ----------
 const isPublishing = ref(false)
 
+// ---------- 话题轮询定时器 ----------
+let topicPollingTimer: ReturnType<typeof setInterval> | null = null
+let lastTopicListHash = ''
+
 // 当前发布类型（从配置中读取）
 const currentPublishType = ref<'point' | 'pose' | 'pose_estimate'>(
   renderer.value?.config.publish?.type ?? 'pose'
@@ -201,7 +205,18 @@ watch(status, (newStatus) => {
   if (newStatus === 'connected') {
     subscribeTfTopics()
     syncRosTopicsToRenderer()
+
+    // 启动定期轮询（每 5 秒检查一次新话题）
+    if (topicPollingTimer) clearInterval(topicPollingTimer)
+    topicPollingTimer = setInterval(() => {
+      syncRosTopicsToRenderer()
+    }, 5000)
   } else {
+    // 断开连接时清理定时器
+    if (topicPollingTimer) {
+      clearInterval(topicPollingTimer)
+      topicPollingTimer = null
+    }
     unsubscribeTfTopics()
     unsubscribeAllDynamicTopics()
     // 断开时清空 topic 列表
@@ -291,16 +306,23 @@ function syncRosTopicsToRenderer() {
   if (!ros || !renderer.value) return
   ;(ros as any).getTopics(
     (result: { topics: string[]; types: string[] }) => {
-      // 保留已经加进 renderer 的 topics (比如 tf topics)
-      const currentTopics = renderer.value!.topics ? [...renderer.value!.topics] : []
+      // 计算话题列表哈希，避免无变化时的不必要更新（使用副本排序）
+      const currentHash = [...result.topics].sort().join(',')
+      if (currentHash === lastTopicListHash) return
+      lastTopicListHash = currentHash
 
+      // 保留 TF 相关话题（这些是手动订阅的，不在 ROS Master 的常规话题列表中）
+      const tfTopicNames = ['/tf', '/tf_static', '/clock']
+      const currentTopics = renderer.value!.topics
+        ? renderer.value!.topics.filter((t) => tfTopicNames.includes(t.name))
+        : []
+
+      // 添加 ROS Master 返回的所有话题
       result.topics.forEach((name, i) => {
-        if (!currentTopics.some((ct) => ct.name === name)) {
-          currentTopics.push({
-            name,
-            schemaName: result.types[i] ?? ''
-          })
-        }
+        currentTopics.push({
+          name,
+          schemaName: result.types[i] ?? ''
+        })
       })
 
       renderer.value?.setTopics(currentTopics)
@@ -384,6 +406,11 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  // 清理定时器
+  if (topicPollingTimer) {
+    clearInterval(topicPollingTimer)
+    topicPollingTimer = null
+  }
   unsubscribeTfTopics()
   unsubscribeAllDynamicTopics()
   disconnect()
