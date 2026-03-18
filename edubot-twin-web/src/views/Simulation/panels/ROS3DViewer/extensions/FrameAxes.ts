@@ -154,6 +154,10 @@ export class FrameAxes extends SceneExtension<FrameAxisRenderable> {
       canvas.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('mouseup', onMouseUp)
     }
+
+    // 初始化标签颜色：根据当前 colorScheme 设置前景/背景色
+    // setColorScheme 在 Renderer 初始化时调用，但彼时 renderables 为空，所以手动在此初始化
+    this.setColorScheme(renderer.colorScheme, undefined)
   }
 
   public override dispose(): void {

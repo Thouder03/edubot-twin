@@ -567,6 +567,11 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
     this.outlineMaterial.color.set(colorScheme === 'dark' ? DARK_OUTLINE : LIGHT_OUTLINE)
     this.instancedOutlineMaterial.color.set(colorScheme === 'dark' ? DARK_OUTLINE : LIGHT_OUTLINE)
 
+    // 通知所有扩展颜色方案变更（如 FrameAxes 需要更新标签前/背景色）
+    for (const extension of this.sceneExtensions.values()) {
+      extension.setColorScheme?.(colorScheme, bgColor)
+    }
+
     this.queueAnimationFrame()
   }
 

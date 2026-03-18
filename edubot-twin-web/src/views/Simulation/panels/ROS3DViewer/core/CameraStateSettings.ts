@@ -293,6 +293,7 @@ export class CameraStateSettings extends SceneExtension implements ICameraHandle
       this.renderer.updateConfig((draft) => {
         draft.cameraState = _.cloneDeep(DEFAULT_CAMERA_STATE)
       })
+      this.setCameraState(DEFAULT_CAMERA_STATE)
       this.updateSettingsTree()
       return
     }

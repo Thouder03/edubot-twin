@@ -4,6 +4,7 @@
  * 使得从 Lichtblick 移植的源代码无需安装 @lichtblick 生态依赖。
  */
 
+import * as THREE from 'three'
 import { i18n } from '@/plugins/vueI18n'
 
 /**
@@ -312,80 +313,10 @@ export function isLessThan(a: RosTime, b: RosTime): boolean {
   return a.nsec < b.nsec
 }
 
-// ============= @lichtblick/three-text (stub) =============
+// ============= @lichtblick/three-text (本地修补版本) =============
+// 修复：移除 LinearTosRGB GLSL 调用（Three.js r152+ 已废弃该函数，会导致 shader 编译失败）
 
-import * as THREE from 'three'
-
-/**
- * Label - 简化版文字标签（CSS2DObject 替代 @lichtblick/three-text Label）
- */
-export class Label extends THREE.Object3D {
-  public text = ''
-  public fontSize = 12
-  public color = 0xffffff
-  public backgroundColor = 0x000000
-
-  constructor() {
-    super()
-  }
-
-  public setText(text: string): void {
-    this.text = text
-  }
-
-  public setColor(r: number, g: number, b: number, _a = 1): void {
-    this.color = new THREE.Color(r, g, b).getHex()
-  }
-
-  public setBackgroundColor(r: number, g: number, b: number, _a = 1): void {
-    this.backgroundColor = new THREE.Color(r, g, b).getHex()
-  }
-
-  public setLineHeight(height: number): void {
-    this.fontSize = height
-  }
-
-  public setAnchorPoint(x: number, y: number): void {
-    void x
-    void y
-  }
-
-  public setBillboard(value: boolean): void {
-    void value
-  }
-
-  public setOpacity(_value: number): void {
-    // noop
-  }
-
-  dispose(): void {
-    // noop
-  }
-}
-
-export class LabelPool {
-  public scaleFactor = 1
-
-  acquire(): Label {
-    return new Label()
-  }
-
-  release(_label: Label): void {
-    // noop
-  }
-
-  setScaleFactor(factor: number): void {
-    this.scaleFactor = factor
-  }
-
-  dispose(): void {
-    // noop
-  }
-}
-
-export class LabelMaterial extends THREE.ShaderMaterial {
-  // stub
-}
+export { Label, LabelPool, LabelMaterial } from './three-text/index'
 
 // ============= @lichtblick/suite-base stubs =============
 

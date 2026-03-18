@@ -232,3 +232,10 @@
 - **[修复]** 为 `CameraStateSettings` 增加了 `pointerdown` / `pointerup` 事件监听，用于标识 `#isDragging` 拖拽状态。在鼠标按下拖拽视角期间，完全跳过 `updateSettingsTree()` 的触发，使得拖拽过程获得近乎原生的纯 WebGL 渲染性能。松开鼠标后补发一次更新以确保左侧界面的坐标数据一致。
 - **[修复]** 进一步解决 3D 面板拖拽视角时的卡顿问题。通过在 canvas 和 document 上监听 mousedown/mouseup 事件，在鼠标按下时设置 `#isDragging = true`，期间跳过 `updateSettingsTree()` 调用（从而消除了 Vue 渲染侧栏带来的开销），松开鼠标后延迟 100ms 执行一次最终的设置树更新。`syncCamera` 打开时不受此限制，始终实时更新。
 - **[修复]** 去除了 `CameraStateSettings.ts` 中的 `1s` 定时刷新机制，完全依赖于鼠标拖拽判定。拖拽结束后立刻更新页面数值，没有多余延迟。
+
+## 2026-03-18
+- 修复 3D 面板坐标系文字标签（TF frame labels）不显示的问题
+- 根因：lichtblick-shim.ts 中 Label/LabelPool/LabelMaterial 是空壳（Object3D stub），无任何实际渲染逻辑
+- 解决：通过 pnpm 安装 @lichtblick/three-text v1.0.0（SDF + WebGL Shader 文字渲染），更新 shim 直接 re-export 真实实现
+- 同时将 `import * as THREE from 'three'` 移至文件顶部（原放在 stub 区块内）
+- TypeScript 编译零错误
