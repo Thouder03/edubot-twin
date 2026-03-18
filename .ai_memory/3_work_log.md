@@ -239,3 +239,6 @@
 - 解决：通过 pnpm 安装 @lichtblick/three-text v1.0.0（SDF + WebGL Shader 文字渲染），更新 shim 直接 re-export 真实实现
 - 同时将 `import * as THREE from 'three'` 移至文件顶部（原放在 stub 区块内）
 - TypeScript 编译零错误
+- [x] 将面板设置的组标题样式改为 Lichtblick 风格 (箭头居左，菜单项居右)
+- [x] 调整组标题左侧 margin (padding-left) 为 22px，并确保标题靠左对齐
+- [x] 显式设置组标题的 justify-content 和 text-align 为 left，解决“仍居中”的问题

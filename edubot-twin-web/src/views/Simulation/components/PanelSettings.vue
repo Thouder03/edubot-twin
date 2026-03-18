@@ -119,13 +119,18 @@ function handleGroupAction(groupKey: string, action: string) {
         >
           <template #title>
             <div class="group-header">
+              <Icon
+                icon="vi-carbon:caret-right"
+                class="expand-icon"
+                :class="{ 'is-rotated': expandedGroups.includes(group.key) }"
+              />
               <Icon v-if="group.icon" :icon="group.icon" :size="16" class="group-icon" />
               <span class="group-label">{{ group.label }}</span>
               <div v-if="group.actions?.length" class="group-actions">
                 <ElDropdown trigger="click" @command="(cmd) => handleGroupAction(group.key, cmd)">
                   <Icon
                     icon="vi-carbon:overflow-menu-vertical"
-                    :size="25"
+                    :size="18"
                     class="group-menu-icon"
                     @click.stop
                   />
@@ -213,10 +218,14 @@ function handleGroupAction(groupKey: string, action: string) {
       background: transparent;
       border: none;
       color: #cdd6f4;
-      padding: 12px;
-      height: auto;
-      line-height: 1.4;
-      font-size: 13px;
+      padding: 4px 8px 4px 22px;
+      height: 32px;
+      line-height: 1;
+      font-size: 12px;
+      transition: background 0.2s;
+      display: flex;
+      justify-content: flex-start;
+      align-items: center;
 
       &:hover {
         background: #313244;
@@ -230,20 +239,19 @@ function handleGroupAction(groupKey: string, action: string) {
     }
 
     :deep(.el-collapse-item__content) {
-      padding: 0 12px 12px 12px;
+      padding: 4px 12px 12px 12px; /* Lichtblick 样式：标题与内容间距 4px */
       color: #cdd6f4;
     }
 
     :deep(.el-collapse-item__arrow) {
-      color: #6c7086;
-      transition: none !important;
+      display: none;
     }
   }
 
   // Element Plus Form 暗色适配
   :deep(.el-form-item) {
     display: flex;
-    margin-bottom: 8px;
+    margin-bottom: 2px; /* Lichtblick 样式：紧凑间距 */
     align-items: center; /* 垂直居中 */
   }
 
@@ -280,11 +288,12 @@ function handleGroupAction(groupKey: string, action: string) {
     background-color: #313244;
     box-shadow: none;
     border: 1px solid #45475a;
-    // max-width: 140px; /* 移除固定宽度限制以填充空间 */
     width: 100%;
+    height: 33.25px; /* Lichtblick 样式：固定高度 */
     .el-input__inner {
       color: #cdd6f4;
       text-align: right; /* 像属性面板一样文本右对齐 */
+      height: 100%;
     }
   }
 
@@ -294,9 +303,11 @@ function handleGroupAction(groupKey: string, action: string) {
       max-width: 100%; /* InputNumber wrapper 处理宽度方式不同 */
       padding-left: 0;
       padding-right: 0;
+      height: 33.25px; /* Lichtblick 样式：固定高度 */
     }
     .el-input__inner {
       text-align: center;
+      height: 100%;
     }
   }
 
@@ -306,7 +317,7 @@ function handleGroupAction(groupKey: string, action: string) {
       background-color: #313244;
       box-shadow: none;
       border: 1px solid #45475a;
-      // max-width: 140px; /* 限制选择框宽度 */
+      height: 33.25px; /* Lichtblick 样式：固定高度 */
     }
   }
 }
@@ -314,18 +325,34 @@ function handleGroupAction(groupKey: string, action: string) {
 .group-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  height: 15px;
+  height: 100%;
   user-select: none;
+
+  .expand-icon {
+    transition: transform 0.2s;
+    font-size: 12px;
+    color: #a6adc8;
+    flex-shrink: 0;
+
+    &.is-rotated {
+      transform: rotate(90deg);
+    }
+  }
 
   .group-icon {
     color: #89b4fa;
+    flex-shrink: 0;
   }
 
   .group-label {
     flex: 1;
-    font-weight: 500;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
   }
 
   .group-actions {
@@ -336,12 +363,13 @@ function handleGroupAction(groupKey: string, action: string) {
     .group-menu-icon {
       color: #6c7086;
       cursor: pointer;
-      padding: 4px;
+      padding: 2px;
       border-radius: 4px;
+      transition: all 0.2s;
 
       &:hover {
         color: #cdd6f4;
-        background: rgba(137, 180, 250, 0.1);
+        background: rgba(137, 180, 250, 0.15);
       }
     }
   }
@@ -368,7 +396,7 @@ function handleGroupAction(groupKey: string, action: string) {
     margin-bottom: 12px;
   }
   p {
-    font-size: 13px;
+    font-size: 12px;
   }
 }
 

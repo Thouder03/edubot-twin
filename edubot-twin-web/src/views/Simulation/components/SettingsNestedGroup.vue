@@ -123,9 +123,9 @@ function handleGradientChange(
       @mouseleave="isHovered = false"
     >
       <Icon
-        icon="vi-carbon:chevron-down"
+        icon="vi-carbon:caret-right"
         class="expand-icon"
-        :class="{ 'is-rotated': !isExpanded }"
+        :class="{ 'is-rotated': isExpanded }"
       />
       <span class="nested-label">{{ node.label || nodeKey }}</span>
       <div class="nested-actions">
@@ -148,7 +148,7 @@ function handleGradientChange(
         <!-- 菜单按钮 -->
         <ElDropdown v-if="node.actions?.length" trigger="click" @command="handleActionCommand">
           <button type="button" class="menu-btn" @click.stop>
-            <Icon icon="vi-carbon:overflow-menu-vertical" :size="20" />
+            <Icon icon="vi-carbon:overflow-menu-vertical" :size="18" />
           </button>
           <template #dropdown>
             <ElDropdownMenu>
@@ -438,14 +438,18 @@ export default {
   display: flex;
   align-items: center;
   cursor: pointer;
-  padding: 4px 0;
+  padding: 4px 8px 4px 22px;
   color: #cdd6f4;
   user-select: none;
-  font-size: 13px;
+  font-size: 12px;
   min-width: 0;
+  border-radius: 4px;
+  transition: all 0.2s;
 
   &:hover {
     color: #89b4fa;
+    background: rgba(137, 180, 250, 0.05);
+
     .expand-icon {
       color: #89b4fa;
     }
@@ -469,13 +473,12 @@ export default {
     flex-shrink: 0;
 
     &.is-rotated {
-      transform: rotate(-90deg);
+      transform: rotate(90deg);
     }
   }
 
   .nested-label {
-    flex: 1;
-    font-weight: 500;
+    font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -496,8 +499,8 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   background: transparent;
   border: none;
@@ -511,7 +514,7 @@ export default {
 
   &:hover {
     color: #cdd6f4;
-    background: rgba(137, 180, 250, 0.12);
+    background: rgba(137, 180, 250, 0.15);
   }
 
   .visibility-icon {
@@ -527,8 +530,8 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   background: transparent;
   border: none;
@@ -542,23 +545,25 @@ export default {
 
   &:hover {
     color: #cdd6f4;
-    background: rgba(137, 180, 250, 0.12);
+    background: rgba(137, 180, 250, 0.15);
   }
 }
 
 .nested-content {
   margin-left: 8px; // Indent children
+  margin-top: 4px; // Lichtblick 样式：标题与内容间距 4px
   border-left: 1px solid #313244;
 
   &.is-root {
     margin-left: 0;
+    margin-top: 4px; // Lichtblick 样式：标题与内容间距 4px
     border-left: none;
     padding-left: 0;
   }
 }
 
 .nested-fields {
-  margin-bottom: 8px;
+  margin-bottom: 2px; /* Lichtblick 样式：紧凑间距 */
 }
 
 // Label 区域布局（支持错误图标）
@@ -600,7 +605,7 @@ export default {
 .nested-children {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px; /* Lichtblick 样式：紧凑间距 */
 }
 
 // Reuse styles from parent context via deep classes if possible,
@@ -609,7 +614,7 @@ export default {
 .vec3-input {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   width: 100%;
 
   .vec3-item {
@@ -620,7 +625,7 @@ export default {
     min-width: 0;
 
     .vec3-label {
-      font-size: 10px;
+      font-size: 12px;
       color: #6c7086;
       text-transform: uppercase;
     }
@@ -642,23 +647,28 @@ export default {
   :deep(.el-input__wrapper) {
     background-color: #313244;
     border-color: #45475a;
+    height: 33.25px; /* Lichtblick 样式：固定高度 */
   }
 
   :deep(.el-input__inner) {
     color: #cdd6f4;
     text-align: center;
+    height: 100%;
   }
 }
 
 .custom-boolean-toggle {
   width: 100%;
   display: flex;
+  height: 33.25px; /* Lichtblick 样式：固定高度 */
 
   :deep(.el-radio-button) {
     flex: 1;
     .el-radio-button__inner {
       width: 100%;
-      padding: 5px 0; /* Compact padding */
+      height: 33.25px; /* Lichtblick 样式：固定高度 */
+      padding: 0; /* 移除 padding，使用固定高度 */
+      line-height: 33.25px; /* 垂直居中 */
       background-color: #313244;
       border-color: #45475a;
       color: #cdd6f4;
@@ -721,12 +731,17 @@ export default {
 
   :deep(.el-input__wrapper) {
     padding-left: 0;
+    height: 33.25px; /* Lichtblick 样式：固定高度 */
+  }
+
+  :deep(.el-input__inner) {
+    height: 100%;
   }
 }
 
 .field-help {
   color: #6c7086;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .custom-input-number {
@@ -768,12 +783,22 @@ export default {
   align-items: center;
   gap: 8px;
   width: 100%;
+  height: 33.25px; /* Lichtblick 样式：固定高度 */
   justify-content: center;
 
   .gradient-arrow {
     color: #6c7086;
-    font-size: 14px;
+    font-size: 12px;
     user-select: none;
+  }
+
+  :deep(.el-color-picker) {
+    height: 33.25px; /* Lichtblick 样式：固定高度 */
+  }
+
+  :deep(.el-color-picker__trigger) {
+    height: 33.25px; /* Lichtblick 样式：固定高度 */
+    width: 50px; /* 适当宽度 */
   }
 }
 </style>
