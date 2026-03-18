@@ -219,27 +219,26 @@ function handleGroupAction(groupKey: string, action: string) {
       border: none;
       color: #cdd6f4;
       padding: 4px 8px 4px 22px;
-      height: 32px;
+      height: 35px;
       line-height: 1;
       font-size: 12px;
-      transition: background 0.2s;
       display: flex;
       justify-content: flex-start;
       align-items: center;
 
       &:hover {
-        background: #313244;
+        background: rgba(49, 50, 68, 0.6); /* 更柔和的 hover */
       }
     }
 
     :deep(.el-collapse-item__wrap) {
       background: transparent;
       border: none;
-      transition: none !important; /* Disable animation */
+      transition: none !important;
     }
 
     :deep(.el-collapse-item__content) {
-      padding: 4px 12px 12px 12px; /* Lichtblick 样式：标题与内容间距 4px */
+      padding: 4px 8px 8px 8px; /* Lichtblick: 上间距 4px，左右 8px */
       color: #cdd6f4;
     }
 
@@ -248,26 +247,22 @@ function handleGroupAction(groupKey: string, action: string) {
     }
   }
 
-  // Element Plus Form 暗色适配
+  // Element Plus Form - Grid 布局（Lichtblick 样式）
   :deep(.el-form-item) {
-    display: flex;
-    margin-bottom: 2px; /* Lichtblick 样式：紧凑间距 */
-    align-items: center; /* 垂直居中 */
+    display: grid;
+    grid-template-columns: minmax(20px, 128px) minmax(120px, 1fr); /* label 最小 50px 最大 40%，控件最小 120px 占剩余空间 */
+    column-gap: 8px; /* Lichtblick: theme.spacing(1) */
+    margin-bottom: 5px; /* Lichtblick: 紧凑间距 */
+    align-items: center; /* 垂直居中对齐 */
   }
 
   :deep(.el-form-item__label) {
     color: #a6adc8 !important;
     font-size: 12px;
-    padding-right: 12px;
-    line-height: 28px;
-
-    /* 标签对齐与尺寸 */
-    flex: 0 0 35%; /* 固定 35% 宽度用于对齐 */
-    max-width: 150px;
-    display: inline-block; /* 确保 text-overflow 生效 */
-    text-align: right; /* 文本右对齐 */
-    display: flex;
-    align-items: center;
+    padding-right: 0; /* Grid 已处理间距 */
+    line-height: 1.5;
+    text-align: right;
+    min-width: 0; /* 允许压缩到 grid 的 minmax 最小值 */
 
     /* 省略号溢出处理 */
     white-space: nowrap;
@@ -280,34 +275,48 @@ function handleGroupAction(groupKey: string, action: string) {
   }
 
   :deep(.el-form-item__content) {
-    flex: 1;
-    min-width: 0; /* 允许收缩 */
+    min-width: 120px; /* 控件列最小宽度，防止被压缩 */
+    margin-right: 4px; /* Lichtblick: theme.spacing(0.5) */
   }
 
   :deep(.el-input__wrapper) {
     background-color: #313244;
     box-shadow: none;
-    border: 1px solid #45475a;
+    border: 1px solid rgba(69, 71, 90, 0.5); /* 更柔和的边框 */
     width: 100%;
-    height: 33.25px; /* Lichtblick 样式：固定高度 */
+    min-height: 28px; /* 恢复合适的最小高度 */
+    padding-block: 4px; /* 调整内边距 */
+    transition: border-color 0.2s;
+
+    &:hover {
+      border-color: #45475a;
+    }
+
+    &:focus-within {
+      border-color: #89b4fa;
+    }
+
     .el-input__inner {
       color: #cdd6f4;
-      text-align: right; /* 像属性面板一样文本右对齐 */
-      height: 100%;
+      text-align: right;
+      height: auto;
+      line-height: 1.5;
     }
   }
 
   :deep(.el-input-number) {
     width: 100%;
     .el-input__wrapper {
-      max-width: 100%; /* InputNumber wrapper 处理宽度方式不同 */
+      max-width: 100%;
       padding-left: 0;
       padding-right: 0;
-      height: 33.25px; /* Lichtblick 样式：固定高度 */
+      min-height: 28px; /* 恢复合适的最小高度 */
+      padding-block: 4px; /* 调整内边距 */
     }
     .el-input__inner {
       text-align: center;
-      height: 100%;
+      height: auto;
+      line-height: 1.5;
     }
   }
 
@@ -316,8 +325,14 @@ function handleGroupAction(groupKey: string, action: string) {
     .el-select__wrapper {
       background-color: #313244;
       box-shadow: none;
-      border: 1px solid #45475a;
-      height: 33.25px; /* Lichtblick 样式：固定高度 */
+      border: 1px solid rgba(69, 71, 90, 0.5);
+      min-height: 28px; /* 恢复合适的最小高度 */
+      padding-block: 4px; /* 调整内边距 */
+      transition: border-color 0.2s;
+
+      &:hover {
+        border-color: #45475a;
+      }
     }
   }
 }

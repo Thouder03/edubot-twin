@@ -444,11 +444,9 @@ export default {
   font-size: 12px;
   min-width: 0;
   border-radius: 4px;
-  transition: all 0.2s;
 
   &:hover {
-    color: #89b4fa;
-    background: rgba(137, 180, 250, 0.05);
+    background: rgba(49, 50, 68, 0.6); /* Lichtblick: 更柔和的 hover */
 
     .expand-icon {
       color: #89b4fa;
@@ -457,12 +455,7 @@ export default {
 
   // 节点隐藏时整体变灰
   &.is-hidden {
-    .nested-label {
-      opacity: 0.4;
-    }
-    .expand-icon {
-      opacity: 0.4;
-    }
+    opacity: 0.6; /* Lichtblick: 整体透明度 */
   }
 
   .expand-icon {
@@ -550,9 +543,7 @@ export default {
 }
 
 .nested-content {
-  margin-left: 8px; // Indent children
   margin-top: 4px; // Lichtblick 样式：标题与内容间距 4px
-  border-left: 1px solid #313244;
 
   &.is-root {
     margin-left: 0;
@@ -563,7 +554,9 @@ export default {
 }
 
 .nested-fields {
-  margin-bottom: 2px; /* Lichtblick 样式：紧凑间距 */
+  display: flex;
+  flex-direction: column;
+  gap: 2px; /* Lichtblick: 紧凑间距 */
 }
 
 // Label 区域布局（支持错误图标）
@@ -605,27 +598,24 @@ export default {
 .nested-children {
   display: flex;
   flex-direction: column;
-  gap: 2px; /* Lichtblick 样式：紧凑间距 */
+  gap: 2px; /* Lichtblick: 紧凑间距 */
 }
-
-// Reuse styles from parent context via deep classes if possible,
-// OR copy styles. For independence, copying main form styles here.
 
 .vec3-input {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 2px; /* Lichtblick: 紧凑间距 */
   width: 100%;
 
   .vec3-item {
     flex: 1;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px; /* Lichtblick: theme.spacing(1) */
     min-width: 0;
 
     .vec3-label {
-      font-size: 12px;
+      font-size: 10px;
       color: #6c7086;
       text-transform: uppercase;
     }
@@ -635,6 +625,8 @@ export default {
       .el-input__wrapper {
         padding-left: 0;
         padding-right: 0;
+        min-height: 28px; /* 恢复合适的最小高度 */
+        padding-block: 4px; /* 调整内边距 */
       }
     }
   }
@@ -646,38 +638,50 @@ export default {
 
   :deep(.el-input__wrapper) {
     background-color: #313244;
-    border-color: #45475a;
-    height: 33.25px; /* Lichtblick 样式：固定高度 */
+    border: 1px solid rgba(69, 71, 90, 0.5);
+    min-height: 28px; /* 恢复合适的最小高度 */
+    padding-block: 4px; /* 调整内边距 */
+    transition: border-color 0.2s;
+
+    &:hover {
+      border-color: #45475a;
+    }
   }
 
   :deep(.el-input__inner) {
     color: #cdd6f4;
     text-align: center;
-    height: 100%;
+    height: auto;
+    line-height: 1.5;
   }
 }
 
 .custom-boolean-toggle {
   width: 100%;
   display: flex;
-  height: 33.25px; /* Lichtblick 样式：固定高度 */
+  background-color: #313244; /* Lichtblick: action.hover */
+  gap: 2px; /* Lichtblick: theme.spacing(0.25) */
+  border-radius: 4px;
+  padding: 3px; /* 调整内边距 */
+  min-height: 28px; /* 确保最小高度 */
 
   :deep(.el-radio-button) {
     flex: 1;
     .el-radio-button__inner {
       width: 100%;
-      height: 33.25px; /* Lichtblick 样式：固定高度 */
-      padding: 0; /* 移除 padding，使用固定高度 */
-      line-height: 33.25px; /* 垂直居中 */
-      background-color: #313244;
-      border-color: #45475a;
+      padding: 4px 12px; /* 调整垂直内边距 */
+      line-height: 1.5; /* 调整行高 */
+      background-color: transparent;
+      border: none;
       color: #cdd6f4;
       box-shadow: none;
+      border-radius: 4px;
+      transition: background 0.2s;
     }
     &.is-active .el-radio-button__inner {
-      background-color: #cdd6f4;
-      color: #1e1e2e;
-      border-color: #cdd6f4;
+      background-color: #1e1e2e; /* Lichtblick: background.paper */
+      color: #cdd6f4;
+      box-shadow: none;
     }
   }
 }
@@ -697,10 +701,9 @@ export default {
     height: 18px;
     border-radius: 2px;
     overflow: hidden;
-    border: 1px solid #45475a;
+    border: 1px solid rgba(69, 71, 90, 0.5);
     cursor: pointer;
 
-    /* The picker is hidden but clickable */
     .embedded-picker {
       position: absolute;
       top: 0;
@@ -725,17 +728,25 @@ export default {
       left: 0;
       width: 100%;
       height: 100%;
-      pointer-events: none; /* Let clicks pass to picker */
+      pointer-events: none;
     }
   }
 
   :deep(.el-input__wrapper) {
     padding-left: 0;
-    height: 33.25px; /* Lichtblick 样式：固定高度 */
+    min-height: 28px; /* 恢复合适的最小高度 */
+    padding-block: 4px; /* 调整内边距 */
+    border: 1px solid rgba(69, 71, 90, 0.5);
+    transition: border-color 0.2s;
+
+    &:hover {
+      border-color: #45475a;
+    }
   }
 
   :deep(.el-input__inner) {
-    height: 100%;
+    height: auto;
+    line-height: 1.5;
   }
 }
 
@@ -754,6 +765,7 @@ export default {
     background: transparent;
     border: none;
     color: #a6adc8;
+    transition: color 0.2s;
 
     &:hover {
       color: #cdd6f4;
@@ -769,36 +781,48 @@ export default {
   }
 
   :deep(.el-input__wrapper) {
-    padding-left: 30px !important; /* Space for left arrow */
-    padding-right: 30px !important; /* Space for right arrow */
+    padding-left: 30px !important;
+    padding-right: 30px !important;
+    min-height: 28px; /* 恢复合适的最小高度 */
+    padding-block: 4px; /* 调整内边距 */
+    border: 1px solid rgba(69, 71, 90, 0.5);
+    transition: border-color 0.2s;
+
+    &:hover {
+      border-color: #45475a;
+    }
   }
 
   :deep(.el-input__inner) {
     text-align: center;
+    height: auto;
+    line-height: 1.5;
   }
 }
 
 .gradient-input {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 8px; /* Lichtblick: theme.spacing(1) */
   width: 100%;
-  height: 33.25px; /* Lichtblick 样式：固定高度 */
   justify-content: center;
 
   .gradient-arrow {
     color: #6c7086;
-    font-size: 12px;
+    font-size: 14px;
     user-select: none;
   }
 
-  :deep(.el-color-picker) {
-    height: 33.25px; /* Lichtblick 样式：固定高度 */
-  }
-
   :deep(.el-color-picker__trigger) {
-    height: 33.25px; /* Lichtblick 样式：固定高度 */
-    width: 50px; /* 适当宽度 */
+    width: 50px;
+    min-height: 28px; /* 恢复合适的最小高度 */
+    padding: 4px; /* 调整内边距 */
+    border: 1px solid rgba(69, 71, 90, 0.5);
+    transition: border-color 0.2s;
+
+    &:hover {
+      border-color: #45475a;
+    }
   }
 }
 </style>
