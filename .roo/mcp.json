@@ -1,0 +1,23 @@
+{
+	"mcpServers": {
+		"filesystem": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@modelcontextprotocol/server-filesystem",
+				"/home/ubuntu20/code/edubot-twin",
+				"/home/ubuntu20/lichtblick"
+			]
+		},
+		"git": {
+			"command": "uvx",
+			"args": [
+				"mcp-server-git",
+				"--repository",
+				"/home/ubuntu20/code/edubot-twin"
+			],
+			"disabled": true,
+			"alwaysAllow": []
+		}
+	}
+}
