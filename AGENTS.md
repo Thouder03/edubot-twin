@@ -52,7 +52,7 @@ renderer.addMessageEvent({
 
 ## 参考文档
 
-详细规则见 `.roo/rules/` 目录：
+详细规则见 `.agent/rules/` 目录：
 - `ros3dviewer-extension-guidance.md` - ROS3D 扩展开发完整规范
 - `router-map-guidance.md` - 路由配置详细说明
 - `simulation-panel-guidance.md` - 仿真面板开发指南

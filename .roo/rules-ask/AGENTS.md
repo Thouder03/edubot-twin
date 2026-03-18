@@ -2,11 +2,11 @@
 
 ## 文档位置陷阱
 
-**ROS3D 扩展规范**: 在 `.roo/rules/ros3dviewer-extension-guidance.md`，不在代码注释中
+**ROS3D 扩展规范**: 在 `.agent/rules/ros3dviewer-extension-guidance.md`，不在代码注释中
 
-**路由配置说明**: 在 `.roo/rules/router-map-guidance.md`，解释双重配置原则
+**路由配置说明**: 在 `.agent/rules/router-map-guidance.md`，解释双重配置原则
 
-**仿真面板开发**: 在 `.roo/rules/simulation-panel-guidance.md`，包含 Golden Layout 集成
+**仿真面板开发**: 在 `.agent/rules/simulation-panel-guidance.md`，包含 Golden Layout 集成
 
 ## 反直觉的架构设计
 
