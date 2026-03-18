@@ -138,7 +138,12 @@ function handleGroupAction(groupKey: string, action: string) {
                         :divided="action.divided"
                         :disabled="action.disabled"
                       >
-                        <Icon v-if="action.icon" :icon="action.icon" :size="14" class="action-icon" />
+                        <Icon
+                          v-if="action.icon"
+                          :icon="action.icon"
+                          :size="14"
+                          class="action-icon"
+                        />
                         {{ t(action.label) }}
                       </ElDropdownItem>
                     </ElDropdownMenu>

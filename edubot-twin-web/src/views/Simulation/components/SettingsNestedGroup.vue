@@ -143,11 +143,7 @@ function handleGradientChange(
         </button>
 
         <!-- 菜单按钮 -->
-        <ElDropdown
-          v-if="node.actions?.length"
-          trigger="click"
-          @command="handleActionCommand"
-        >
+        <ElDropdown v-if="node.actions?.length" trigger="click" @command="handleActionCommand">
           <button type="button" class="menu-btn" @click.stop>
             <Icon icon="vi-carbon:overflow-menu-vertical" :size="14" />
           </button>
@@ -181,18 +177,23 @@ function handleGradientChange(
           v-for="field in fields"
           :key="field.key"
           :label="field.label"
-          :error="field.error"
           class="settings-field"
+          :class="{ 'has-error': field.error }"
         >
           <template #label>
-            <ElTooltip
-              :content="field.label"
-              placement="top-start"
-              :show-after="500"
-              effect="light"
-            >
-              <span>{{ field.label }}</span>
-            </ElTooltip>
+            <div class="label-with-error">
+              <ElTooltip
+                :content="field.label"
+                placement="top-start"
+                :show-after="500"
+                effect="light"
+              >
+                <span>{{ field.label }}</span>
+              </ElTooltip>
+              <ElTooltip v-if="field.error" :content="field.error" placement="top" effect="light">
+                <Icon icon="vi-carbon:warning-filled" :size="14" class="error-icon" />
+              </ElTooltip>
+            </div>
           </template>
           <!-- Text Input -->
           <ElInput
@@ -548,6 +549,37 @@ export default {
 
 .nested-fields {
   margin-bottom: 8px;
+}
+
+// Label 区域布局（支持错误图标）
+.label-with-error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+
+  > span {
+    flex: 1;
+    text-align: right;
+  }
+
+  .error-icon {
+    color: #f38ba8;
+    flex-shrink: 0;
+    cursor: help;
+  }
+}
+
+// 错误状态的表单项
+:deep(.el-form-item.has-error) {
+  .el-input__wrapper,
+  .el-select__wrapper {
+    border-color: #f38ba8 !important;
+  }
+
+  .el-input-number .el-input__wrapper {
+    border-color: #f38ba8 !important;
+  }
 }
 
 .nested-children {
