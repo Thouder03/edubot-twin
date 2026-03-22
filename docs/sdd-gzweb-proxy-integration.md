@@ -125,6 +125,17 @@ interface GzMessage {
 接收 gz:showGrid → scene.grid.visible = payload.visible
 ```
 
+**gz:showCollisions 处理逻辑**:
+```
+接收 gz:showCollisions → scene.showCollision(payload.visible)
+                       → 遍历场景所有名含 'COLLISION_VISUAL' 的 Object3D
+                       → 对其子 Mesh 设置 visible = show
+                       → 更新 scene.showCollisions 属性
+```
+
+> **⚠️ 实现注意**: 必须调用 `scene.showCollision(show)` **方法**，不能直接赋值 `scene.showCollisions = show` **属性**。
+> 直接赋值属性只更新状态标志，不会触发场景遍历，已存在的模型碰撞体不会更新可见性。
+
 #### 2.2.3 健康检测
 
 | type | payload | 说明 |
@@ -444,10 +455,10 @@ function animate() {
         break;
 
       case 'gz:showCollisions':
-        if (typeof scene !== 'undefined') {
-          scene.showCollisions = !!msg.payload.visible;
-          // 触发已有模型的碰撞体可见性刷新
-          emitter.emit('show_collisions', msg.payload.visible ? 'show' : 'hide');
+        if (typeof scene !== 'undefined' && scene.showCollision) {
+          // 必须调用 showCollision() 方法，而非直接赋值 showCollisions 属性
+          // 该方法会遍历场景中所有 COLLISION_VISUAL 对象并设置可见性
+          scene.showCollision(!!msg.payload.visible);
         }
         break;
 
