@@ -229,7 +229,7 @@ window.addEventListener('message', function(event) {
        └─────────────┘
 ```
 
-**心跳机制**: Vue 端每 **5 秒** 发送 `gz:ping`，若 **2 秒** 内未收到 `gz:pong`，状态切换为 `error`（缩短超时以优化用户体验，让用户尽早感知连接异常）。
+**心跳机制**: Vue 端每 **5 秒** 发送 `gz:ping`，若 **3 秒** 内未收到 `gz:pong`，状态切换为 `error`（缩短超时以优化用户体验，让用户尽早感知连接异常）。
 
 ---
 
@@ -310,7 +310,8 @@ if (!Detector.webgl)
   Detector.addGetWebGLMessage();
 
 // 从 URL 参数读取 WebSocket 地址
-var params = new URLSearchParams(window.location.search);
+// 从 hash fragment 读取 WebSocket 地址（不用 query string 因为 gzbridge 会把它拼进文件路径）
+var params = new URLSearchParams(window.location.hash.substring(1));
 var wsUrl = params.get('ws') || (location.hostname + ':' + location.port + location.pathname);
 
 var container, stats;
@@ -370,7 +371,8 @@ function animate() {
 (function() {
   'use strict';
 
-  var params = new URLSearchParams(window.location.search);
+  // 从 hash fragment 读取参数（不用 query string 因为 gzbridge 会把它拼进文件路径）
+  var params = new URLSearchParams(window.location.hash.substring(1));
   var parentOrigin = params.get('origin') || '*';
   var emitter = globalEmitter;
 
@@ -634,7 +636,7 @@ export interface UseGzBridgeReturn {
  *
  * 心跳机制:
  * - 每 5 秒发送 gz:ping
- * - 10 秒无 gz:pong 响应则 connectionStatus 切换为 'error'
+ * - 3 秒无 gz:pong 响应则 connectionStatus 切换为 'error'
  */
 export function useGzBridge(
   iframeRef: Ref<HTMLIFrameElement | null>
@@ -658,16 +660,18 @@ export function useGzBridge(
  * @returns embed.html 完整 URL (如 "http://192.168.1.100:9001/embed.html?ws=192.168.1.100:9001/&origin=http://localhost:4000")
  */
 function buildIframeSrc(gzwebUrl: string): string {
-  const url = new URL('/embed.html', gzwebUrl)
-
-  // gzbridge WebSocket 地址 (同源同端口，gzbridge server.js 同时提供 HTTP + WS)
-  const wsHost = url.hostname + ':' + url.port + '/'
-  url.searchParams.set('ws', wsHost)
-
-  // 父窗口 origin (用于 postMessage 安全校验)
-  url.searchParams.set('origin', window.location.origin)
-
-  return url.toString()
+  try {
+    const url = new URL(gzwebUrl)
+    const wsHost = url.hostname + ':' + url.port + '/'
+    // 使用 hash fragment 而非 query params
+    // 因为 gzbridge server.js 会将 query string 拼进文件路径导致 404
+    const hashParams = new URLSearchParams()
+    hashParams.set('ws', wsHost)
+    hashParams.set('origin', window.location.origin)
+    return `${url.origin}/embed.html#${hashParams.toString()}`
+  } catch {
+    return gzwebUrl + '/embed.html'
+  }
 }
 ```
 
@@ -731,7 +735,7 @@ src/
 
 ### 5.3 `useGzBridge.ts` Composable 规范
 
-**文件路径**: `edubot-twin-web/src/composables/useGzBridge.ts`
+**文件路径**: `edubot-twin-web/src/views/Simulation/composables/useGzBridge.ts`
 
 **职责**: 整个 GzWeb 集成功能的核心，负责状态管理和通信。
 

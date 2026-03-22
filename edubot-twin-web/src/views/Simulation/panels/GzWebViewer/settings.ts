@@ -9,13 +9,17 @@ export interface GzWebViewerConfig {
   autoConnect: boolean
   showOriginAxes: boolean
   showGrid: boolean
+  showCollisions: boolean
+  showOrbitIndicator: boolean
 }
 
 export const defaultConfig: GzWebViewerConfig = {
-  gzwebUrl: 'http://localhost:8080',
+  gzwebUrl: 'http://192.168.40.129:8080',
   autoConnect: true,
   showOriginAxes: false,
-  showGrid: true
+  showGrid: true,
+  showCollisions: false,
+  showOrbitIndicator: false
 }
 
 /** 根据当前配置构建设置树 */
@@ -49,6 +53,16 @@ export function buildSettingsTree(config: GzWebViewerConfig): SettingsTreeNodes 
           label: '显示地面网格',
           input: 'boolean',
           value: config.showGrid
+        },
+        showCollisions: {
+          label: '显示碰撞体',
+          input: 'boolean',
+          value: config.showCollisions
+        },
+        showOrbitIndicator: {
+          label: '显示轨道指示器',
+          input: 'boolean',
+          value: config.showOrbitIndicator
         }
       }
     }

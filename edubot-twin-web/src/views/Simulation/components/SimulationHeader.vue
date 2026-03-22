@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
  * SimulationHeader.vue - 仿真页面顶部工具栏
+ *
+ * 集成 SimControlBar 仿真控制栏（中间区域）
  */
 import { Icon } from '@/components/Icon'
 import { ElButton, ElDropdown, ElDropdownMenu, ElDropdownItem, ElDivider } from 'element-plus'
 import { layoutPresets, availablePanels } from '../config/predefined-layouts'
+import SimControlBar from './SimControlBar.vue'
 import type { LayoutConfig } from 'golden-layout'
 
 interface Emits {
@@ -45,6 +48,9 @@ function handleAddPanel(type: string, label: string) {
         机器人仿真工作台
       </span>
     </div>
+
+    <!-- 中间: 仿真控制栏 -->
+    <SimControlBar />
 
     <!-- 右侧: 布局切换 + 添加面板 -->
     <div class="header-right">
