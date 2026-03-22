@@ -4,6 +4,10 @@
  *
  * 全屏布局，不使用 admin Layout
  * 使用 Golden Layout 实现可拖拽、可分割的多面板布局
+ *
+ * ── GzWeb 通信 ──
+ * 页面加载时即初始化 GzWeb iframe 通信（不等 GzWebViewer 面板挂载），
+ * 确保 SimControlBar 在 GzWebViewer 面板关闭时仍能控制仿真。
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -14,6 +18,11 @@ import GLayout from './components/GLayout.vue'
 import SettingsSidebar from './components/SettingsSidebar.vue'
 import { defaultLayout } from './config/predefined-layouts'
 import { usePanelState } from './stores/panelState'
+import { useGzBridge } from './composables/useGzBridge'
+import { defaultConfig as gzDefaultConfig } from './panels/GzWebViewer/settings'
+
+// ---------- GzWeb 通信（页面级初始化）----------
+const { initialize: initGzBridge, dispose: disposeGzBridge } = useGzBridge()
 
 // ---------- 布局持久化 ----------
 const LAYOUT_STORAGE_KEY = 'simulation-layout-config'
@@ -103,10 +112,18 @@ onMounted(() => {
 
   document.body.style.overflow = 'hidden'
   window.addEventListener('beforeunload', saveLayoutToStorage)
+
+  // ── 页面级 GzWeb 通信初始化 ──
+  // 使用 GzWebViewer 默认配置中的 gzwebUrl
+  // 将来第二期从后端 API 获取动态地址后，此处改为 API 返回值
+  initGzBridge(gzDefaultConfig.gzwebUrl)
 })
 
 onBeforeUnmount(() => {
   saveLayoutToStorage()
+
+  // ── 销毁 GzWeb 通信 ──
+  disposeGzBridge()
 
   // 恢复原始暗色模式状态
   if (!originalDarkClass) {

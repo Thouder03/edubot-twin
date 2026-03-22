@@ -2,10 +2,16 @@
 /**
  * GzWebViewer - Gazebo 仿真面板
  *
- * 通过 iframe 嵌入 gzweb embed.html，使用 postMessage 双向通信。
+ * 不再自己创建 iframe 和管理通信。
+ * 通过 useGzBridge 的 attachToContainer/detachFromContainer
+ * 将页面级已创建的 iframe 移入/移出本面板的 DOM 容器。
+ *
+ * - 面板挂载时：将 iframe 移入容器 → 用户可见 3D 场景
+ * - 面板卸载时：将 iframe 移回 body（隐藏）→ 通信不中断
+ *
  * 配置变更（showGrid / showCollisions / showOrbitIndicator）自动同步到 iframe。
  */
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { usePanelState } from '../../stores/panelState'
 import { useGzBridge } from '../../composables/useGzBridge'
 import {
@@ -23,36 +29,22 @@ interface Props {
 const props = defineProps<Props>()
 
 // ---------- GzBridge 集成 ----------
-const { connectionStatus, initialize, dispose, showGrid, showCollisions, showOrbitIndicator } =
-  useGzBridge()
+const {
+  connectionStatus,
+  attachToContainer,
+  detachFromContainer,
+  showGrid,
+  showCollisions,
+  showOrbitIndicator,
+  updateGzwebUrl
+} = useGzBridge()
 
 // ---------- 面板设置集成 ----------
 const { registerPanel, unregisterPanel, updateSettingsTree } = usePanelState()
 const config = ref<GzWebViewerConfig>({ ...defaultConfig })
 
-// ---------- iframe ----------
-const gzIframe = ref<HTMLIFrameElement | null>(null)
-
-/**
- * 构造 iframe src URL
- * @param gzwebUrl gzbridge HTTP 服务地址
- */
-function buildIframeSrc(gzwebUrl: string): string {
-  try {
-    const url = new URL(gzwebUrl)
-    const wsHost = url.hostname + ':' + url.port + '/'
-    // 使用 hash fragment 而非 query params
-    // 因为 gzbridge server.js 会将 query string 拼进文件路径导致 404
-    const hashParams = new URLSearchParams()
-    hashParams.set('ws', wsHost)
-    hashParams.set('origin', window.location.origin)
-    return `${url.origin}/embed.html#${hashParams.toString()}`
-  } catch {
-    return gzwebUrl + '/embed.html'
-  }
-}
-
-const iframeSrc = computed(() => buildIframeSrc(config.value.gzwebUrl))
+// ---------- iframe 容器 ----------
+const iframeContainer = ref<HTMLElement | null>(null)
 
 // ---------- 设置面板同步 ----------
 function saveConfig(newConfig: GzWebViewerConfig) {
@@ -68,6 +60,10 @@ function saveConfig(newConfig: GzWebViewerConfig) {
   }
   if (newConfig.showOrbitIndicator !== oldConfig.showOrbitIndicator) {
     showOrbitIndicator(newConfig.showOrbitIndicator)
+  }
+  // gzwebUrl 变更时，通知 bridge 更新 iframe src
+  if (newConfig.gzwebUrl !== oldConfig.gzwebUrl) {
+    updateGzwebUrl(newConfig.gzwebUrl)
   }
 
   refreshSettingsTree()
@@ -85,31 +81,26 @@ onMounted(() => {
   registerPanel(props.panelId, 'GzWebViewer')
   refreshSettingsTree()
 
-  // 等待 iframe 渲染后初始化通信
-  if (gzIframe.value) {
-    initialize(gzIframe.value)
+  // 将 useGzBridge 管理的 iframe 移入本面板容器
+  if (iframeContainer.value) {
+    attachToContainer(iframeContainer.value)
   }
 })
 
 onBeforeUnmount(() => {
-  dispose()
+  // 将 iframe 移回 body（隐藏），通信不中断
+  detachFromContainer()
   unregisterPanel(props.panelId)
 })
 
-// 监听 gzwebUrl 变更 → iframe 自动重新加载（src 是 computed）
 // 监听 config 变更 → 更新设置树
 watch(config, refreshSettingsTree, { deep: true })
 </script>
 
 <template>
   <div class="gzweb-viewer">
-    <iframe
-      ref="gzIframe"
-      :src="iframeSrc"
-      class="gzweb-iframe"
-      allow="autoplay"
-      sandbox="allow-scripts allow-same-origin"
-    ></iframe>
+    <!-- iframe 容器：iframe 通过 attachToContainer 移入此 div -->
+    <div ref="iframeContainer" class="gzweb-iframe-container"></div>
     <!-- 连接中遮罩层 -->
     <div v-if="connectionStatus !== 'connected'" class="gzweb-overlay">
       <div class="overlay-content">
@@ -136,11 +127,9 @@ watch(config, refreshSettingsTree, { deep: true })
   background: #1e1e2e;
 }
 
-.gzweb-iframe {
+.gzweb-iframe-container {
   width: 100%;
   height: 100%;
-  border: none;
-  display: block;
 }
 
 // ── 连接中遮罩 ──

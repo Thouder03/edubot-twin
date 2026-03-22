@@ -595,7 +595,9 @@ export type GzConnectionStatus = 'disconnected' | 'connecting' | 'connected' | '
 
 ### 4.2 useGzBridge Composable 接口
 
-**文件路径**: `edubot-twin-web/src/views/Simulation/panels/GzWebViewer/composables/useGzBridge.ts`
+**文件路径**: `edubot-twin-web/src/views/Simulation/composables/useGzBridge.ts`
+
+**设计原则**: **页面级初始化**——`useGzBridge` 在仿真页面 (`Simulation.vue`) 加载时即创建隐藏 iframe 并建立通信，不依赖 GzWebViewer 面板是否已挂载。GzWebViewer 面板仅负责将 iframe 移入/移出可视容器。
 
 **公开接口**:
 
@@ -609,7 +611,17 @@ export interface UseGzBridgeReturn {
   isPaused: Ref<boolean>
   simTime: Ref<string>
   realTime: Ref<string>
-  isReady: Ref<boolean>
+  isBridgeReady: Ref<boolean>
+  isConnected: ComputedRef<boolean>
+  isAttached: Ref<boolean>   // iframe 是否已 attach 到 GzWebViewer 面板
+
+  // ── 页面级生命周期 ──
+  initialize: (gzwebUrl: string) => void
+  dispose: () => void
+
+  // ── 面板级集成 ──
+  attachToContainer: (container: HTMLElement) => void
+  detachFromContainer: () => void
 
   // ── 指令方法 ──
   sendCommand: (command: GzCommand) => void
@@ -619,36 +631,21 @@ export interface UseGzBridgeReturn {
   resetWorld: () => void
   resetModels: () => void
   resetView: () => void
-
-  // ── 配置 ──
-  setAllowedOrigin: (origin: string) => void
+  showGrid: (visible: boolean) => void
+  showCollisions: (visible: boolean) => void
+  showOrbitIndicator: (visible: boolean) => void
+  updateGzwebUrl: (gzwebUrl: string) => void
 }
-
-/**
- * GzWeb iframe 通信 composable
- *
- * @param iframeRef - iframe DOM 元素的模板引用
- * @returns 状态和操作方法
- *
- * 生命周期:
- * - onMounted: 注册 message 事件监听器，启动心跳定时器
- * - onBeforeUnmount: 移除监听器，停止心跳
- *
- * 心跳机制:
- * - 每 5 秒发送 gz:ping
- * - 3 秒无 gz:pong 响应则 connectionStatus 切换为 'error'
- */
-export function useGzBridge(
-  iframeRef: Ref<HTMLIFrameElement | null>
-): UseGzBridgeReturn
 ```
 
 **内部实现约束**:
 
-1. `sendCommand()` **必须** 在 `isReady.value === true` 时才发送，否则静默忽略
+1. `sendCommand()` **必须** 在 `isBridgeReady.value === true` 时才发送，否则静默忽略
 2. `handleMessage()` **必须** 校验 `event.data.type` 以 `gz:` 开头
-3. 心跳定时器 **必须** 在 `onBeforeUnmount` 中清理
-4. 每个 GzWebViewer 实例持有独立的 `useGzBridge` 实例（组件级作用域）
+3. 心跳定时器 **必须** 在 `dispose()` 中清理
+4. 模块级单例：所有调用者共享同一组状态
+5. `initialize()` 自行创建隐藏 iframe 并挂到 `document.body` 上，无需外部传入 iframe 元素
+6. `attachToContainer()` / `detachFromContainer()` 仅做 DOM 移动，不影响通信状态
 
 ### 4.3 iframe URL 构造规则
 
@@ -678,32 +675,47 @@ function buildIframeSrc(gzwebUrl: string): string {
 ### 4.4 iframe 生命周期管理
 
 ```
-GzWebViewer 挂载 (onMounted)
+仿真页面加载 (Simulation.vue onMounted)
   │
-  ├─ 读取 config.gzwebUrl
-  ├─ 构造 iframeSrc = buildIframeSrc(config.gzwebUrl)
-  ├─ 设置 iframe.src
-  │
-  ├─ useGzBridge 初始化
+  ├─ useGzBridge().initialize(gzwebUrl)
+  │   ├─ 创建隐藏 iframe (display:none) 挂到 document.body
+  │   ├─ 设置 iframe.src = buildIframeSrc(gzwebUrl)
   │   ├─ 注册 window 'message' 监听器
-  │   └─ 启动心跳定时器 (5s 间隔)
+  │   │
+  │   ├─ 等待 gz:ready 事件
+  │   │   └─ isBridgeReady = true, connectionStatus = 'connecting'
+  │   │   └─ 启动心跳定时器 (5s 间隔)
+  │   │
+  │   └─ 等待 gz:connection { connected: true }
+  │       └─ connectionStatus = 'connected'
+  │       └─ SimControlBar 按钮自动变为可用
   │
-  ├─ 等待 gz:ready 事件
-  │   └─ isReady = true, connectionStatus = 'connecting'
-  │
-  ├─ 等待 gz:connection { connected: true }
-  │   └─ connectionStatus = 'connected'
-  │
-  └─ 正常运行: 双向 postMessage 通信
-      │
-      ├─ config.gzwebUrl 变化 → 重新构造 iframeSrc → iframe 重新加载
-      └─ config.showGrid 变化 → sendCommand(gz:showGrid)
+  └─ 此时 GzWebViewer 面板可能尚未挂载，但通信已建立
 
-GzWebViewer 卸载 (onBeforeUnmount)
+GzWebViewer 面板挂载 (onMounted)
   │
-  ├─ 移除 'message' 监听器
-  ├─ 清理心跳定时器
+  ├─ registerPanel()
+  ├─ useGzBridge().attachToContainer(containerEl)
+  │   └─ 将 iframe 从 body 移入面板容器 → 用户可见 3D 场景
+  │
+  └─ 正常运行:
+      ├─ config.showGrid 变化 → sendCommand(gz:showGrid)
+      └─ config.gzwebUrl 变化 → updateGzwebUrl(newUrl)
+
+GzWebViewer 面板卸载 (onBeforeUnmount)
+  │
+  ├─ useGzBridge().detachFromContainer()
+  │   └─ 将 iframe 移回 body 并隐藏，通信不中断
   └─ unregisterPanel()
+
+仿真页面卸载 (Simulation.vue onBeforeUnmount)
+  │
+  ├─ useGzBridge().dispose()
+  │   ├─ 停止心跳定时器
+  │   ├─ 移除 'message' 监听器
+  │   ├─ 从 DOM 移除 iframe
+  │   └─ 重置所有状态
+  └─ 保存布局等其他清理
 ```
 
 ---
@@ -737,86 +749,85 @@ src/
 
 **文件路径**: `edubot-twin-web/src/views/Simulation/composables/useGzBridge.ts`
 
-**职责**: 整个 GzWeb 集成功能的核心，负责状态管理和通信。
+**职责**: 整个 GzWeb 集成功能的核心，负责 iframe 创建、状态管理和通信。
+
+**关键设计**: 页面级初始化 + 面板级视图集成
+- `initialize(gzwebUrl)`: 由 `Simulation.vue` 在 `onMounted` 时调用，自行创建隐藏 iframe
+- `attachToContainer(el)` / `detachFromContainer()`: 由 `GzWebViewer` 调用，将 iframe 移入/移出可视容器
+- `dispose()`: 由 `Simulation.vue` 在 `onBeforeUnmount` 时调用，彻底销毁 iframe
 
 ```typescript
 import { ref, readonly, computed } from 'vue'
-import type { Ref } from 'vue'
 import type { GzCommand, GzEvent, GzConnectionStatus } from '...' // 引入类型
 
-// 状态
-const iframe = ref<HTMLIFrameElement | null>(null)
-const connectionStatus = ref<GzConnectionStatus>('disconnected')
-const isPaused = ref<boolean>(true)
-const simTime = ref('00:00:00.000')
-const realTime = ref('00:00:00.000')
-const isBridgeReady = ref(false) // iframe 内的 embed-bridge.js 是否就绪
+// ── 模块级单例状态 ──
+const _iframe = ref<HTMLIFrameElement | null>(null)
+const _connectionStatus = ref<GzConnectionStatus>('disconnected')
+const _isPaused = ref<boolean>(true)
+const _simTime = ref('00:00:00.000')
+const _realTime = ref('00:00:00.000')
+const _isBridgeReady = ref(false)
+const _isAttached = ref(false)
 
 export function useGzBridge() {
 
-  // ── 私有方法 ──
+  // ── 页面级生命周期（由 Simulation.vue 调用）──
 
-  // 安全地发送指令到 iframe
-  const sendCommand = (command: GzCommand) => {
-    if (iframe.value && iframe.value.contentWindow && isBridgeReady.value) {
-      // 注意：origin 必须与 iframe 加载时提供的 origin 参数匹配
-      iframe.value.contentWindow.postMessage(command, '*')
-    }
-  }
-
-  // 处理从 iframe 收到的事件
-  const handleMessage = (event: MessageEvent<GzEvent>) => {
-    // 省略 origin 和 type 校验...
-    const { type, payload } = event.data
-    switch (type) {
-      case 'gz:ready':
-        isBridgeReady.value = true
-        connectionStatus.value = 'connecting'
-        // 启动心跳
-        break
-      case 'gz:connection':
-        connectionStatus.value = payload.connected ? 'connected' : 'error'
-        break
-      case 'gz:paused':
-        isPaused.value = payload.paused
-        break
-      // ... 处理其他事件
-    }
-  }
-
-  // ── 公开 API ──
-
-  // 初始化，由 GzWebViewer 调用
-  const initialize = (iframeElement: HTMLIFrameElement) => {
-    iframe.value = iframeElement
+  // 初始化: 创建隐藏 iframe 并开始监听 postMessage
+  const initialize = (gzwebUrl: string) => {
+    if (_iframe.value) return  // 防止重复初始化
+    const el = document.createElement('iframe')
+    el.src = buildIframeSrc(gzwebUrl)
+    el.style.cssText = 'position:absolute;width:0;height:0;border:none;visibility:hidden;'
+    document.body.appendChild(el)
+    _iframe.value = el
     window.addEventListener('message', handleMessage)
-    // 启动心跳等...
   }
 
-  // 销毁，由 GzWebViewer 调用
+  // 销毁: 移除 iframe、清理所有监听器和定时器
   const dispose = () => {
+    stopHeartbeat()
     window.removeEventListener('message', handleMessage)
-    // 清理心跳等...
+    if (_iframe.value) { _iframe.value.remove(); _iframe.value = null }
+    resetState()
   }
 
-  // 指令方法，由 SimControlBar 调用
-  const togglePause = () => sendCommand({ type: 'gz:pause', payload: { paused: !isPaused.value } })
+  // ── 面板级集成（由 GzWebViewer 调用）──
+
+  // 将 iframe 移入可视容器
+  const attachToContainer = (container: HTMLElement) => {
+    if (!_iframe.value) return
+    container.appendChild(_iframe.value)
+    _iframe.value.style.cssText = 'width:100%;height:100%;border:none;display:block;'
+    _isAttached.value = true
+  }
+
+  // 将 iframe 移回 body 隐藏（通信不中断）
+  const detachFromContainer = () => {
+    if (!_iframe.value) return
+    document.body.appendChild(_iframe.value)
+    _iframe.value.style.cssText = 'position:absolute;width:0;height:0;border:none;visibility:hidden;'
+    _isAttached.value = false
+  }
+
+  // ── 指令方法 ──
+  const togglePause = () => sendCommand({ type: 'gz:pause', payload: { paused: !_isPaused.value } })
   const resetWorld = () => sendCommand({ type: 'gz:reset', payload: { resetType: 'world' } })
+  const updateGzwebUrl = (gzwebUrl: string) => { /* 重新设置 iframe.src */ }
   // ... 其他指令
 
   return {
-    // 只读状态 (供 UI 组件绑定)
-    connectionStatus: readonly(connectionStatus),
-    isPaused: readonly(isPaused),
-    simTime: readonly(simTime),
-    realTime: readonly(realTime),
-    isConnected: computed(() => connectionStatus.value === 'connected'),
+    connectionStatus: readonly(_connectionStatus),
+    isPaused: readonly(_isPaused),
+    simTime: readonly(_simTime),
+    realTime: readonly(_realTime),
+    isConnected: computed(() => _connectionStatus.value === 'connected'),
+    isAttached: readonly(_isAttached),
 
-    // 操作方法
-    initialize,
-    dispose,
-    togglePause,
-    resetWorld,
+    initialize, dispose,
+    attachToContainer, detachFromContainer,
+    togglePause, resetWorld, updateGzwebUrl,
+    // ... 其他方法
   }
 }
 ```
@@ -863,64 +874,78 @@ const {
 
 **文件路径**: `edubot-twin-web/src/views/Simulation/panels/GzWebViewer/index.vue`
 
-**职责**: 渲染 `iframe`，并在其生命周期内调用 `useGzBridge` 的 `initialize` 和 `dispose` 方法。
+**职责**: 作为 iframe 的**可视窗口**——将 `useGzBridge` 管理的 iframe 移入/移出面板容器。**不负责创建或销毁 iframe**。
 
 ```vue
 <template>
-  <iframe ref="gzIframe" :src="iframeSrc" style="width:100%; height:100%; border:none;"></iframe>
+  <div class="gzweb-viewer">
+    <!-- iframe 通过 attachToContainer 移入此 div -->
+    <div ref="iframeContainer" class="gzweb-iframe-container"></div>
+    <!-- 连接中遮罩层 -->
+    <div v-if="connectionStatus !== 'connected'" class="gzweb-overlay">...</div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { useGzBridge } from '@/composables/useGzBridge';
+import { useGzBridge } from '../../composables/useGzBridge';
 
-const { initialize, dispose } = useGzBridge();
-const gzIframe = ref<HTMLIFrameElement | null>(null);
-
-// iframe URL 从配置或API获取
-const iframeSrc = ref('http://localhost:8080/embed.html?origin=*'); // 示例 URL
+const { connectionStatus, attachToContainer, detachFromContainer, updateGzwebUrl } = useGzBridge();
+const iframeContainer = ref<HTMLElement | null>(null);
 
 onMounted(() => {
-  if (gzIframe.value) {
-    // 将 iframe 实例交给 useGzBridge 管理
-    initialize(gzIframe.value);
+  // 将 useGzBridge 管理的 iframe 移入面板容器
+  if (iframeContainer.value) {
+    attachToContainer(iframeContainer.value);
   }
 });
 
 onBeforeUnmount(() => {
-  // 组件销毁时，清理监听器和定时器
-  dispose();
+  // 将 iframe 移回 body（隐藏），通信不中断
+  detachFromContainer();
 });
 </script>
 ```
 **关键点**:
-- **生命周期管理**: 它是唯一负责调用 `initialize` 和 `dispose` 的地方。
-- **职责单一**: 只负责 `iframe` 的渲染和生命周期绑定，不关心具体的通信内容。
+- **不调用 `initialize` / `dispose`**: iframe 生命周期由 `Simulation.vue` 管理。
+- **attach/detach 模式**: 面板挂载时 `attachToContainer` 让用户看到 3D 场景；面板卸载时 `detachFromContainer` 让 iframe 回到 body 隐藏，但通信持续。
+- **面板关闭不影响仿真控制**: SimControlBar 仍可正常工作。
 
-### 5.6 状态与通信流程 (简化版)
+### 5.6 状态与通信流程 (页面级初始化版)
 
-1.  **应用启动**:
-    - `SimulationHeader.vue` 渲染 `SimControlBar.vue`。
-    - `SimControlBar` 调用 `useGzBridge()`，获取初始状态（如 `isConnected: false`），按钮为禁用状态。
-    - `GzWebViewer` 面板渲染，调用 `useGzBridge()`，然后渲染 `<iframe>`。
+1.  **仿真页面加载** (`Simulation.vue` onMounted):
+    - `Simulation.vue` 调用 `useGzBridge().initialize(gzwebUrl)`。
+    - `useGzBridge` 创建隐藏 iframe (`display:none`) 并挂到 `document.body`。
+    - 注册 `window` 的 `message` 事件监听器。
+    - **此时 GzWebViewer 面板可能尚未挂载，但通信模块已开始工作。**
 
-2.  **连接建立**:
-    - `GzWebViewer` 的 `onMounted` 被调用，它将 `<iframe>` 元素传递给 `useGzBridge` 的 `initialize` 方法。
-    - `useGzBridge` 内部开始监听 `window` 的 `message` 事件。
-    - `iframe` 内的 `embed-bridge.js` 加载完毕，发送 `gz:ready` 事件。
-    - `useGzBridge` 的 `handleMessage` 捕获到 `gz:ready`，将 `connectionStatus` 变为 `'connecting'`。
-    - `gz3d` 成功连接 WebSocket，`embed-bridge.js` 发送 `gz:connection` 事件。
-    - `useGzBridge` 捕获到该事件，将 `connectionStatus` 变为 `'connected'`。
+2.  **连接建立** (与 GzWebViewer 面板无关):
+    - 隐藏 iframe 加载 `embed.html`，`embed-bridge.js` 执行。
+    - `embed-bridge.js` 发送 `gz:ready` → `useGzBridge` 捕获，`connectionStatus = 'connecting'`，启动心跳。
+    - `gz3d` 连接 WebSocket 成功 → `embed-bridge.js` 发送 `gz:connection` → `connectionStatus = 'connected'`。
 
 3.  **UI 自动更新**:
     - `useGzBridge` 中的 `isConnected` computed 属性变为 `true`。
     - `SimControlBar` 依赖此 computed 属性，自动将按钮的 `disabled` 状态移除。**控制栏变为可用。**
+    - **即使 GzWebViewer 面板已关闭，SimControlBar 仍可控制仿真。**
 
-4.  **用户操作**:
+4.  **GzWebViewer 面板挂载** (可选):
+    - `GzWebViewer` 的 `onMounted` 调用 `attachToContainer(containerEl)`。
+    - iframe 从 body 移入面板容器 → 用户可见 3D 场景。
+
+5.  **GzWebViewer 面板关闭** (可选):
+    - `onBeforeUnmount` 调用 `detachFromContainer()`。
+    - iframe 移回 body (隐藏)，**通信不中断**。
+    - SimControlBar 连接灯仍为绿色，仿真时间继续更新。
+
+6.  **用户操作**:
     - 用户点击 `SimControlBar` 上的 "Pause" 按钮。
     - `@click` 事件触发 `useGzBridge` 的 `togglePause` 方法。
-    - `togglePause` 方法通过 `sendCommand` 向 `iframe` 发送 `gz:pause` 指令。
+    - `togglePause` 方法通过 `sendCommand` 向 (隐藏或可见的) iframe 发送 `gz:pause` 指令。
     - ...后续流程与 `postMessage` 协议定义一致。
+
+7.  **仿真页面卸载** (`Simulation.vue` onBeforeUnmount):
+    - 调用 `useGzBridge().dispose()` → 移除 iframe、清理定时器、重置状态。
 
 
 ---
