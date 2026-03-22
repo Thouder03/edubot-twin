@@ -645,7 +645,10 @@ export interface UseGzBridgeReturn {
 3. 心跳定时器 **必须** 在 `dispose()` 中清理
 4. 模块级单例：所有调用者共享同一组状态
 5. `initialize()` 自行创建隐藏 iframe 并挂到 `document.body` 上，无需外部传入 iframe 元素
-6. `attachToContainer()` / `detachFromContainer()` 仅做 DOM 移动，不影响通信状态
+6. iframe 始终是 `document.body` 的直接子元素，**绝不做 DOM 移动**（浏览器会重新加载被移动的 iframe）
+7. `attachToContainer()` 通过 `position:fixed` + RAF 循环将 iframe 视觉对齐到容器 `getBoundingClientRect()`
+8. `detachFromContainer()` 停止 RAF 循环并将 iframe 移到屏幕外隐藏，通信不中断
+9. `_syncPosition()` 内部检测容器是否脱离 DOM（`document.contains()`），自动回退到隐藏状态
 
 ### 4.3 iframe URL 构造规则
 
@@ -678,7 +681,7 @@ function buildIframeSrc(gzwebUrl: string): string {
 仿真页面加载 (Simulation.vue onMounted)
   │
   ├─ useGzBridge().initialize(gzwebUrl)
-  │   ├─ 创建隐藏 iframe (display:none) 挂到 document.body
+  │   ├─ 创建 iframe (position:fixed 移到屏幕外) 挂到 document.body
   │   ├─ 设置 iframe.src = buildIframeSrc(gzwebUrl)
   │   ├─ 注册 window 'message' 监听器
   │   │
@@ -696,7 +699,8 @@ GzWebViewer 面板挂载 (onMounted)
   │
   ├─ registerPanel()
   ├─ useGzBridge().attachToContainer(containerEl)
-  │   └─ 将 iframe 从 body 移入面板容器 → 用户可见 3D 场景
+  │   └─ 启动 RAF 位置同步: iframe position:fixed 对齐到容器 → 用户可见 3D 场景
+  │   └─ iframe 始终留在 body，不做 DOM 移动
   │
   └─ 正常运行:
       ├─ config.showGrid 变化 → sendCommand(gz:showGrid)
@@ -705,7 +709,8 @@ GzWebViewer 面板挂载 (onMounted)
 GzWebViewer 面板卸载 (onBeforeUnmount)
   │
   ├─ useGzBridge().detachFromContainer()
-  │   └─ 将 iframe 移回 body 并隐藏，通信不中断
+  │   └─ 停止 RAF 位置同步，将 iframe 移到屏幕外隐藏，通信不中断
+  │   └─ 若容器已被 GL 从 DOM 移除，_syncPosition 会自动回退
   └─ unregisterPanel()
 
 仿真页面卸载 (Simulation.vue onBeforeUnmount)

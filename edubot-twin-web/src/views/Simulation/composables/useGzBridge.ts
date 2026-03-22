@@ -8,8 +8,9 @@
  * - Simulation.vue 在 onBeforeUnmount 时调用 dispose() 销毁 iframe 和清理定时器
  *
  * ── GzWebViewer 面板级集成 ──
- * - GzWebViewer 调用 attachToContainer(el) 把 iframe 移入可视容器
- * - GzWebViewer 卸载时调用 detachFromContainer() 把 iframe 移回 body (隐藏)
+ * - GzWebViewer 调用 attachToContainer(el) 启动 CSS 定位同步
+ * - GzWebViewer 卸载时调用 detachFromContainer() 停止同步并隐藏 iframe
+ * - iframe 始终是 document.body 的子元素，从不做 DOM 移动（避免浏览器重新加载 iframe）
  * - GzWebViewer 面板关闭不影响通信，SimControlBar 仍可控制仿真
  *
  * ── SimControlBar ──
@@ -39,8 +40,16 @@ let _heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let _pongTimer: ReturnType<typeof setTimeout> | null = null
 let _messageHandler: ((event: MessageEvent) => void) | null = null
 
+// CSS 定位同步状态
+let _containerEl: HTMLElement | null = null
+let _rafId: number | null = null
+
 const HEARTBEAT_INTERVAL = 5000 // 5 秒
 const PONG_TIMEOUT = 3000 // 3 秒
+
+/** iframe 隐藏时的样式（移到屏幕外） */
+const HIDDEN_STYLE =
+  'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:none;pointer-events:none;'
 
 // ════════════════════════════════════════════
 // 内部方法
@@ -150,6 +159,57 @@ function _buildIframeSrc(gzwebUrl: string): string {
   }
 }
 
+// ── CSS 定位同步 ──
+
+/**
+ * RAF 循环：将 iframe 的 position:fixed 对齐到容器 getBoundingClientRect()
+ *
+ * 当容器元素被从 DOM 中移除（如 GL 销毁面板）时自动停止同步并隐藏 iframe。
+ */
+function _syncPosition(): void {
+  if (!_iframe.value || !_containerEl) return
+
+  // 容器已脱离 DOM → 自动 detach
+  if (!document.contains(_containerEl)) {
+    _containerEl = null
+    _iframe.value.style.cssText = HIDDEN_STYLE
+    _isAttached.value = false
+    _rafId = null
+    return
+  }
+
+  const rect = _containerEl.getBoundingClientRect()
+  const s = _iframe.value.style
+  s.position = 'fixed'
+  s.left = rect.left + 'px'
+  s.top = rect.top + 'px'
+  s.width = rect.width + 'px'
+  s.height = rect.height + 'px'
+  s.border = 'none'
+  s.visibility = 'visible'
+  s.pointerEvents = 'auto'
+  // z-index 设低，让 GzWebViewer 内部的 overlay 可以覆盖在上面
+  // 注意：overlay 使用 position:absolute + z-index:10 在 .gzweb-viewer 内
+  // 实际上 overlay 和 iframe 在不同时刻显示，不存在覆盖冲突
+  s.zIndex = '1'
+
+  _rafId = requestAnimationFrame(_syncPosition)
+}
+
+/** 启动 RAF 位置同步 */
+function _startPositionSync(): void {
+  _stopPositionSync()
+  _rafId = requestAnimationFrame(_syncPosition)
+}
+
+/** 停止 RAF 位置同步 */
+function _stopPositionSync(): void {
+  if (_rafId !== null) {
+    cancelAnimationFrame(_rafId)
+    _rafId = null
+  }
+}
+
 // ════════════════════════════════════════════
 // 公开 Composable
 // ════════════════════════════════════════════
@@ -161,7 +221,7 @@ export function useGzBridge() {
    * 初始化: 创建隐藏 iframe 并开始监听 postMessage
    *
    * 在仿真页面 onMounted 时调用，不依赖 GzWebViewer 面板是否已挂载。
-   * iframe 以 display:none 挂在 document.body 上，仍能正常加载和通信。
+   * iframe 以 position:fixed 移到屏幕外，始终是 body 的直接子元素。
    *
    * @param gzwebUrl gzbridge HTTP 服务地址 (如 "http://192.168.1.100:8080")
    */
@@ -169,10 +229,10 @@ export function useGzBridge() {
     // 防止重复初始化
     if (_iframe.value) return
 
-    // 创建隐藏 iframe
+    // 创建 iframe (始终挂在 body，永不做 DOM 移动)
     const el = document.createElement('iframe')
     el.src = _buildIframeSrc(gzwebUrl)
-    el.style.cssText = 'position:absolute;width:0;height:0;border:none;visibility:hidden;'
+    el.style.cssText = HIDDEN_STYLE
     el.setAttribute('allow', 'autoplay')
     el.setAttribute('sandbox', 'allow-scripts allow-same-origin')
     document.body.appendChild(el)
@@ -187,6 +247,7 @@ export function useGzBridge() {
 
   /** 销毁: 移除 iframe、清理所有监听器和定时器 */
   const dispose = (): void => {
+    _stopPositionSync()
     _stopHeartbeat()
     if (_messageHandler) {
       window.removeEventListener('message', _messageHandler)
@@ -197,39 +258,39 @@ export function useGzBridge() {
       _iframe.value.remove()
       _iframe.value = null
     }
+    _containerEl = null
     _resetState()
   }
 
   // ── 面板级集成（由 GzWebViewer 调用）──
 
   /**
-   * 将已有的 iframe 移入可视容器（GzWebViewer 面板的 DOM 容器）
+   * 将 iframe 通过 CSS position:fixed 对齐到容器上方
    *
-   * 移入后 iframe 变为可见、占满容器空间，用户可以看到 3D 场景。
+   * iframe 始终留在 body 中，不做 DOM 移动（防止浏览器重新加载 iframe）。
+   * 通过 RAF 循环持续同步 iframe 位置和尺寸到容器的 getBoundingClientRect()。
    *
-   * @param container GzWebViewer 面板内部用于承载 iframe 的容器元素
+   * @param container GzWebViewer 面板内部用于承载 iframe 的容器元素（作为定位参考）
    */
   const attachToContainer = (container: HTMLElement): void => {
     if (!_iframe.value) return
 
-    // 从隐藏位置移到容器
-    container.appendChild(_iframe.value)
-    _iframe.value.style.cssText = 'width:100%;height:100%;border:none;display:block;'
+    _containerEl = container
+    _startPositionSync()
     _isAttached.value = true
   }
 
   /**
-   * 将 iframe 从可视容器中移出，回到 body 隐藏
+   * 取消 CSS 定位同步，隐藏 iframe
    *
-   * GzWebViewer 面板关闭时调用。iframe 仍保持活跃连接，通信不中断。
+   * GzWebViewer 面板关闭时调用。iframe 仍保持在 body 中，通信不中断。
    */
   const detachFromContainer = (): void => {
-    if (!_iframe.value) return
-
-    // 移回 body 并隐藏
-    document.body.appendChild(_iframe.value)
-    _iframe.value.style.cssText =
-      'position:absolute;width:0;height:0;border:none;visibility:hidden;'
+    _stopPositionSync()
+    _containerEl = null
+    if (_iframe.value) {
+      _iframe.value.style.cssText = HIDDEN_STYLE
+    }
     _isAttached.value = false
   }
 
