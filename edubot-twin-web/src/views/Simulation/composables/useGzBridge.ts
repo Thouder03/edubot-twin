@@ -44,6 +44,10 @@ let _messageHandler: ((event: MessageEvent) => void) | null = null
 let _containerEl: HTMLElement | null = null
 let _rafId: number | null = null
 
+// 拖拽期间禁用 iframe 鼠标事件（防止 iframe 吞掉 GL 分割线的 mousemove）
+let _onMouseDown: (() => void) | null = null
+let _onMouseUp: (() => void) | null = null
+
 const HEARTBEAT_INTERVAL = 5000 // 5 秒
 const PONG_TIMEOUT = 3000 // 3 秒
 
@@ -187,10 +191,7 @@ function _syncPosition(): void {
   s.height = rect.height + 'px'
   s.border = 'none'
   s.visibility = 'visible'
-  s.pointerEvents = 'auto'
-  // z-index 设低，让 GzWebViewer 内部的 overlay 可以覆盖在上面
-  // 注意：overlay 使用 position:absolute + z-index:10 在 .gzweb-viewer 内
-  // 实际上 overlay 和 iframe 在不同时刻显示，不存在覆盖冲突
+  // pointerEvents 不在此处设置，由 mousedown/mouseup 处理器控制
   s.zIndex = '1'
 
   _rafId = requestAnimationFrame(_syncPosition)
@@ -243,6 +244,17 @@ export function useGzBridge() {
     // 注册消息监听
     _messageHandler = _handleMessage
     window.addEventListener('message', _messageHandler)
+
+    // 拖拽保护：mousedown 时禁用 iframe pointer-events，mouseup 时恢复
+    // 防止 iframe 吞掉 GL 分割线/Tab 拖拽的 mousemove 事件
+    _onMouseDown = () => {
+      if (_iframe.value) _iframe.value.style.pointerEvents = 'none'
+    }
+    _onMouseUp = () => {
+      if (_iframe.value && _isAttached.value) _iframe.value.style.pointerEvents = 'auto'
+    }
+    window.addEventListener('mousedown', _onMouseDown)
+    window.addEventListener('mouseup', _onMouseUp)
   }
 
   /** 销毁: 移除 iframe、清理所有监听器和定时器 */
@@ -252,6 +264,14 @@ export function useGzBridge() {
     if (_messageHandler) {
       window.removeEventListener('message', _messageHandler)
       _messageHandler = null
+    }
+    if (_onMouseDown) {
+      window.removeEventListener('mousedown', _onMouseDown)
+      _onMouseDown = null
+    }
+    if (_onMouseUp) {
+      window.removeEventListener('mouseup', _onMouseUp)
+      _onMouseUp = null
     }
     // 从 DOM 中移除 iframe
     if (_iframe.value) {

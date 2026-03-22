@@ -649,6 +649,7 @@ export interface UseGzBridgeReturn {
 7. `attachToContainer()` 通过 `position:fixed` + RAF 循环将 iframe 视觉对齐到容器 `getBoundingClientRect()`
 8. `detachFromContainer()` 停止 RAF 循环并将 iframe 移到屏幕外隐藏，通信不中断
 9. `_syncPosition()` 内部检测容器是否脱离 DOM（`document.contains()`），自动回退到隐藏状态
+10. **拖拽保护**: 全局 `mousedown` 时设置 iframe `pointer-events: none`，`mouseup` 时恢复，防止 `position:fixed` 的 iframe 吞掉 GL 分割线/Tab 拖拽的鼠标事件
 
 ### 4.3 iframe URL 构造规则
 
