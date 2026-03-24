@@ -566,12 +566,12 @@ async def start_my_container(
 ```typescript
 /** 销毁当前容器并创建新容器 */
 export const destroyAndRecreateApi = (): Promise<IResponse<ContainerResponse>> => {
-  return request.post({ url: '/students/container/destroy-and-recreate' })
+  return request.post({ url: '/api/v1/students/container/destroy-and-recreate' })
 }
 
 /** 启动学生的已停止容器 */
 export const startMyContainerApi = (): Promise<IResponse<ContainerStatusResponse>> => {
-  return request.post({ url: '/students/container/start' })
+  return request.post({ url: '/api/v1/students/container/start' })
 }
 ```
 
@@ -581,11 +581,11 @@ export const startMyContainerApi = (): Promise<IResponse<ContainerStatusResponse
 // BEFORE: getMyContainerApi(studentId: number)
 // AFTER:
 export const getMyContainerApi = (): Promise<IResponse<ContainerStatusResponse>> => {
-  return request.get({ url: '/students/container/mine' })
+  return request.get({ url: '/api/v1/students/container/mine' })
 }
 
 export const requestContainerApi = (): Promise<IResponse<ContainerResponse>> => {
-  return request.post({ url: '/students/container/request' })
+  return request.post({ url: '/api/v1/students/container/request' })
 }
 ```
 

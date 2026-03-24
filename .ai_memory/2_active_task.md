@@ -30,3 +30,8 @@
 - 学生端 Terminal 集成（xterm.js + WebSocket 反向代理）
 - 教师端容器监控看板（实时 CPU/内存）
 - 考试/测试模块
+
+### BUG修复
+- 修复了因为 `src/api/container/index.ts` 中请求路径缺少 `/api/v1` 前缀而导致的 Vite 代理拦截失败（404 NotFound）的错误。
+- 修复了因为 `src/axios/index.ts` 传递 JWT Token 时没有 `Bearer ` 前缀而导致的鉴权失败（401 Unauthorized）的错误。
+- 修复了因开发迭代中 `sim_containers` 模型添加 `error_message` 字段但未更新 SQLite 表结构导致的 `sqlalchemy.exc.OperationalError`。

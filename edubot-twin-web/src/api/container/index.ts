@@ -11,7 +11,7 @@ import type { ContainerCreate, ContainerResponse, ContainerStatusResponse } from
  * GET /api/v1/students/container/mine
  */
 export const getMyContainerApi = (): Promise<IResponse<ContainerStatusResponse>> => {
-  return request.get({ url: '/students/container/mine' })
+  return request.get({ url: '/api/v1/students/container/mine' })
 }
 
 /**
@@ -22,7 +22,7 @@ export const getMyContainerApi = (): Promise<IResponse<ContainerStatusResponse>>
  * 若已有容器则返回现有容器，否则自动创建新容器。
  */
 export const requestContainerApi = (): Promise<IResponse<ContainerResponse>> => {
-  return request.post({ url: '/students/container/request' })
+  return request.post({ url: '/api/v1/students/container/request' })
 }
 
 /**
@@ -31,7 +31,7 @@ export const requestContainerApi = (): Promise<IResponse<ContainerResponse>> => 
  * POST /api/v1/students/container/destroy-and-recreate
  */
 export const destroyAndRecreateApi = (): Promise<IResponse<ContainerResponse>> => {
-  return request.post({ url: '/students/container/destroy-and-recreate' })
+  return request.post({ url: '/api/v1/students/container/destroy-and-recreate' })
 }
 
 /**
@@ -40,7 +40,7 @@ export const destroyAndRecreateApi = (): Promise<IResponse<ContainerResponse>> =
  * POST /api/v1/students/container/start
  */
 export const startMyContainerApi = (): Promise<IResponse<ContainerStatusResponse>> => {
-  return request.post({ url: '/students/container/start' })
+  return request.post({ url: '/api/v1/students/container/start' })
 }
 
 // ───────────────────────────────────────────
@@ -56,7 +56,7 @@ export const listContainersApi = (
   skip = 0,
   limit = 100
 ): Promise<IResponse<ContainerResponse[]>> => {
-  return request.get({ url: '/teachers/containers/', params: { skip, limit } })
+  return request.get({ url: '/api/v1/teachers/containers/', params: { skip, limit } })
 }
 
 /**
@@ -67,7 +67,7 @@ export const listContainersApi = (
 export const createContainerApi = (
   data: ContainerCreate
 ): Promise<IResponse<ContainerResponse>> => {
-  return request.post({ url: '/teachers/containers/', data })
+  return request.post({ url: '/api/v1/teachers/containers/', data })
 }
 
 /**
@@ -76,7 +76,7 @@ export const createContainerApi = (
  * GET /api/v1/teachers/containers/{id}
  */
 export const getContainerApi = (id: number): Promise<IResponse<ContainerResponse>> => {
-  return request.get({ url: `/teachers/containers/${id}` })
+  return request.get({ url: `/api/v1/teachers/containers/${id}` })
 }
 
 /**
@@ -85,7 +85,7 @@ export const getContainerApi = (id: number): Promise<IResponse<ContainerResponse
  * POST /api/v1/teachers/containers/{id}/start
  */
 export const startContainerApi = (id: number): Promise<IResponse<ContainerResponse>> => {
-  return request.post({ url: `/teachers/containers/${id}/start` })
+  return request.post({ url: `/api/v1/teachers/containers/${id}/start` })
 }
 
 /**
@@ -94,7 +94,7 @@ export const startContainerApi = (id: number): Promise<IResponse<ContainerRespon
  * POST /api/v1/teachers/containers/{id}/stop
  */
 export const stopContainerApi = (id: number): Promise<IResponse<ContainerResponse>> => {
-  return request.post({ url: `/teachers/containers/${id}/stop` })
+  return request.post({ url: `/api/v1/teachers/containers/${id}/stop` })
 }
 
 /**
@@ -103,5 +103,5 @@ export const stopContainerApi = (id: number): Promise<IResponse<ContainerRespons
  * DELETE /api/v1/teachers/containers/{id}
  */
 export const deleteContainerApi = (id: number): Promise<IResponse<null>> => {
-  return request.delete({ url: `/teachers/containers/${id}` })
+  return request.delete({ url: `/api/v1/teachers/containers/${id}` })
 }
