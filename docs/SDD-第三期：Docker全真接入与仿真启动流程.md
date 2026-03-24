@@ -438,7 +438,7 @@ watch(containerRosUrl, (newUrl) => {
     │
     ├─ 调用 getMyContainerApi()
     │
-    ├── 情况 1: 404（无容器）
+    ├── 情况 1: api返回 data: null（无容器）
     │   └─ 自动调用 requestContainerApi() 创建
     │   └─ 等待 status → running（轮询，最多 60s）
     │   └─ 成功 → 打开仿真页 / 失败 → "启动失败，请联系教师"
@@ -540,7 +540,7 @@ async def destroy_and_recreate(
 ```python
 @router.post(
     "/start",
-    response_model=ContainerStatusResponse,
+    response_model=ApiResponse[ContainerStatusResponse],
     summary="启动学生的已停止容器",
 )
 async def start_my_container(
@@ -549,14 +549,14 @@ async def start_my_container(
 ):
     container = await crud_container.get_container_by_student(db, student_id)
     if not container:
-        raise HTTPException(404, "尚未分配容器")
+        return ApiResponse(code=0, data=None, message="尚未分配容器")
     if container.status == ContainerStatus.RUNNING:
-        return ContainerStatusResponse.from_orm_with_host(container)
+        return ApiResponse(code=0, data=ContainerStatusResponse.from_orm_with_host(container))
     if container.status not in (ContainerStatus.STOPPED,):
         raise HTTPException(400, f"容器状态 {container.status} 不可启动")
 
     container = await crud_container.start_container(db, container)
-    return ContainerStatusResponse.from_orm_with_host(container)
+    return ApiResponse(code=0, data=ContainerStatusResponse.from_orm_with_host(container))
 ```
 
 ### C.4 前端 API 层变更

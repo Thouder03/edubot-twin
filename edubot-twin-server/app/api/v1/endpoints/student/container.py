@@ -12,13 +12,15 @@ from app.crud import container as crud_container
 from app.core.port_allocator import PortExhaustedError
 from app.core.security import get_current_student_id
 from app.models.container import ContainerStatus
+from app.schemas.common import ApiResponse
+from typing import Optional
 
 router = APIRouter()
 
 
 @router.get(
     "/mine",
-    response_model=ContainerStatusResponse,
+    response_model=ApiResponse[Optional[ContainerStatusResponse]],
     summary="获取当前学生的容器信息",
 )
 async def get_my_container(
@@ -28,16 +30,13 @@ async def get_my_container(
     """从 JWT Token 自动解析 student_id，返回该学生的容器状态。"""
     container = await crud_container.get_container_by_student(db, student_id)
     if not container:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="尚未分配容器",
-        )
-    return ContainerStatusResponse.from_orm_with_host(container)
+        return ApiResponse(code=0, data=None, message="尚未分配容器")
+    return ApiResponse(code=0, data=ContainerStatusResponse.from_orm_with_host(container))
 
 
 @router.post(
     "/request",
-    response_model=ContainerResponse,
+    response_model=ApiResponse[ContainerResponse],
     status_code=status.HTTP_200_OK,
     summary="请求分配容器（无则创建）",
 )
@@ -53,7 +52,7 @@ async def request_container(
     """
     existing = await crud_container.get_container_by_student(db, student_id)
     if existing:
-        return ContainerResponse.model_validate(existing)
+        return ApiResponse(code=0, data=ContainerResponse.model_validate(existing))
 
     try:
         container = await crud_container.create_container(
@@ -66,12 +65,12 @@ async def request_container(
             detail=str(e),
         )
 
-    return ContainerResponse.model_validate(container)
+    return ApiResponse(code=0, data=ContainerResponse.model_validate(container))
 
 
 @router.post(
     "/start",
-    response_model=ContainerStatusResponse,
+    response_model=ApiResponse[Optional[ContainerStatusResponse]],
     summary="启动学生的已停止容器",
 )
 async def start_my_container(
@@ -81,9 +80,9 @@ async def start_my_container(
     """启动已停止的容器（status=stopped → running）。"""
     container = await crud_container.get_container_by_student(db, student_id)
     if not container:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="尚未分配容器")
+        return ApiResponse(code=0, data=None, message="尚未分配容器")
     if container.status == ContainerStatus.RUNNING:
-        return ContainerStatusResponse.from_orm_with_host(container)
+        return ApiResponse(code=0, data=ContainerStatusResponse.from_orm_with_host(container))
     if container.status not in (ContainerStatus.STOPPED,):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -91,12 +90,12 @@ async def start_my_container(
         )
 
     container = await crud_container.start_container(db, container)
-    return ContainerStatusResponse.from_orm_with_host(container)
+    return ApiResponse(code=0, data=ContainerStatusResponse.from_orm_with_host(container))
 
 
 @router.post(
     "/destroy-and-recreate",
-    response_model=ContainerResponse,
+    response_model=ApiResponse[ContainerResponse],
     summary="销毁当前容器并创建新容器",
 )
 async def destroy_and_recreate(
@@ -122,4 +121,4 @@ async def destroy_and_recreate(
             detail=str(e),
         )
 
-    return ContainerResponse.model_validate(container)
+    return ApiResponse(code=0, data=ContainerResponse.model_validate(container))

@@ -35,3 +35,8 @@
 - 修复了因为 `src/api/container/index.ts` 中请求路径缺少 `/api/v1` 前缀而导致的 Vite 代理拦截失败（404 NotFound）的错误。
 - 修复了因为 `src/axios/index.ts` 传递 JWT Token 时没有 `Bearer ` 前缀而导致的鉴权失败（401 Unauthorized）的错误。
 - 修复了因开发迭代中 `sim_containers` 模型添加 `error_message` 字段但未更新 SQLite 表结构导致的 `sqlalchemy.exc.OperationalError`。
+
+### 新增修复内容 (2026-03-24)
+- **前端 404 控制台报错修复**：修改了学生端 `/mine` 与 `/start` 接口逻辑，当找不到容器时，不再抛出 `HTTPException(404)`，而是返回 `ApiResponse(code=0, data=None, message="尚未分配容器")`，以避免浏览器控制台出现红色的 AxiosError 报错。同时同步更新了 `SDD-第三期` 文档的对应描述。
+- **仿真一直加载中修复**：发现学生端的后端容器相关接口（例如 `/mine`, `/request` 等）原先都未包裹在统一的 `ApiResponse[T]` 中返回，导致响应体内没有 `code: 0` 字段，进而触发前端 Axios 拦截器抛出 undefined 错误，最终导致 `waitForContainerRunning()` 轮询无限失败（一直在尝试）。修复：将所有返回接口包裹在了 `ApiResponse` 中。
+- **浏览器拦截新标签页处理**：由于 `requestContainerApi` 及其后续轮询是异步操作，`window.open` 可能会被浏览器的弹窗拦截器阻挡，现在在弹窗被拦截时会自动显示警告并在当前标签页中跳转 (`router.push`)。

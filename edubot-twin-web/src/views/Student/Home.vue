@@ -56,7 +56,11 @@ const handleMessageCardClick = () => {
 /** 打开仿真工作台（新标签页） */
 function openSimulationPage() {
   const url = router.resolve({ name: 'Simulation' }).href
-  window.open(url, '_blank')
+  const newWin = window.open(url, '_blank')
+  if (!newWin) {
+    ElMessage.warning('新标签页被浏览器拦截，将在当前标签页跳转')
+    router.push({ name: 'Simulation' })
+  }
 }
 
 /**
@@ -119,14 +123,11 @@ const handleStartSimulation = async () => {
       const res = await getMyContainerApi()
       containerInfo = res?.data ?? null
     } catch (e: any) {
-      if (e?.response?.status !== 404) {
-        ElMessage.error('网络错误，请检查连接')
-        return
-      }
-      // 404 = 尚未有容器，继续走创建流程
+      ElMessage.error('网络错误，请检查连接')
+      return
     }
 
-    // ── 情况 1：无容器（404）──
+    // ── 情况 1：无容器（返回 null）──
     if (!containerInfo) {
       loadingInstance.setText('首次启动，正在创建仿真环境...')
       try {

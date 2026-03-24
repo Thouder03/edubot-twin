@@ -61,10 +61,24 @@ async def create_container(
         except NotFound:
             pass
 
+        # 临时方案，TODO: 优化
+        # 准备启动命令：在启动前注入 websocket_external_port 以解决宿主机端口映射导致的 Host header 校验失败问题
+        entrypoint_cmd = "/home/ubuntu20/gzweb/dev_entrypoint.sh"
+        launch_file = "/home/ubuntu20/catkin_ws/src/bingda_tutorials/launch/simulation_robot.launch"
+        # 使用 sed 在 rosbridge_websocket.launch 的 include 块中动态插入 websocket_external_port 参数（幂等处理）
+        patch_cmd = (
+            f"grep -q 'websocket_external_port' {launch_file} || "
+            f"sed -i '/rosbridge_websocket.launch/,/<\/include>/ "
+            f"s|<\/include>|<arg name=\"websocket_external_port\" value=\"{ros_port}\" /><\/include>|' "
+            f"{launch_file}"
+        )
+        
         container = client.containers.run(
             image=image,
             detach=True,
             name=container_name,
+            entrypoint="/bin/bash",                             # 临时方案，TODO: 优化
+            command=["-c", f"{patch_cmd} && {entrypoint_cmd}"], # 临时方案，TODO: 优化
             ports={
                 "8080/tcp": gz_port,
                 "9090/tcp": ros_port,
