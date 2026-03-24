@@ -1,23 +1,29 @@
 # 当前任务状态
 
-## SDD 第一期：GzWeb iframe 嵌入 + 基础仿真控制 ✅ 已完成
+## 当前阶段：第二期已完成 ✅
 
-- [x] gzweb: `embed.html` + `embed-bridge.js` (postMessage L1/L2 桥接)
-- [x] 前端: `types.ts` (TypeScript 类型契约)
-- [x] 前端: `useGzBridge.ts` (Simulation/composables/ 下的模块级单例 composable)
-- [x] 前端: `GzWebViewer/index.vue` (占位 → iframe 嵌入 + 连接遮罩)
-- [x] 前端: `settings.ts` (showCollisions / showOrbitIndicator)
-- [x] 前端: `SimControlBar.vue` (状态灯 + 控制按钮 + 时间显示)
-- [x] 前端: `SimulationHeader.vue` (集成 SimControlBar)
-- [x] `vue-tsc --noEmit` 编译零错误
+第二期任务"容器管理 API + 动态连接"全部完成。
 
-## Bug 修复
+## 已完成事项
 
-- [x] **[BUG] gz:showCollisions 功能无效**
-  - 根因：直接赋值 `scene.showCollisions = ...` 属性，只更新了状态标志，未触发场景遍历
-  - 修复：改为调用 `scene.showCollision(show)` **方法**，该方法遍历场景所有 COLLISION_VISUAL 对象并设置子 Mesh 可见性
-  - 修改文件：`gzweb/http/client/js/embed-bridge.js`、`gzweb/gz3d/client/js/embed-bridge.js`、文档 `sdd-gzweb-proxy-integration.md`
+### 后端（edubot-twin-server）
+- `app/models/container.py` — SimContainer 模型 + ContainerStatus 枚举
+- `app/schemas/container.py` — Pydantic Schema（含 gzbridge_url/rosbridge_url 计算字段）
+- `app/core/port_allocator.py` — 端口分配器（9000-9499 / 9500-9999）
+- `app/crud/container.py` — 7 个 CRUD 函数（Docker 调用以 # TODO: DOCKER 注释占位）
+- `app/api/v1/endpoints/teacher/containers.py` — 教师端 6 个端点
+- `app/api/v1/endpoints/student/container.py` — 学生端 2 个端点
+- `app/api/v1/endpoints/teacher/__init__.py` — 注册 containers 路由
+- `app/api/v1/endpoints/student/__init__.py` — 注册 container 路由
+- `init_db.py` — 添加 SimContainer 导入，运行后创建 sim_containers 表
 
-## 下一步
+### 前端（edubot-twin-web）
+- `src/api/container/types.ts` — ContainerResponse、ContainerStatusResponse、ContainerCreate 类型
+- `src/api/container/index.ts` — 8 个 API 封装函数（教师/学生端全覆盖）
+- `panels/GzWebViewer/index.vue` — onMounted 新增 fetchAndApplyContainerUrl()，从 API 动态获取 gzbridge URL，失败时 fallback 到手动配置
 
-- [ ] 等待用户人工验收 gz:showCollisions 修复效果
+## 下一步（第三期）
+
+- [ ] 场景树：`gz:getSceneTree` / `gz:selectEntity` / `gz:setManipMode` / `gz:deleteEntity` / `gz:spawnEntity`
+- [ ] JWT 鉴权：GzWebViewer 中 studentId 改为从 userStore.userInfo.id 读取
+- [ ] Docker 真实接入：替换 crud/container.py 中所有 `# TODO: DOCKER` 注释处
