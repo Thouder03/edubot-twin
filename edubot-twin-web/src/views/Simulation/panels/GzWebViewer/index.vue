@@ -14,7 +14,6 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { usePanelState } from '../../stores/panelState'
 import { useGzBridge } from '../../composables/useGzBridge'
-import { getMyContainerApi } from '@/api/container'
 import {
   defaultConfig,
   buildSettingsTree,
@@ -37,7 +36,8 @@ const {
   showGrid,
   showCollisions,
   showOrbitIndicator,
-  updateGzwebUrl
+  updateGzwebUrl,
+  currentGzwebUrl
 } = useGzBridge()
 
 // ---------- 面板设置集成 ----------
@@ -77,42 +77,26 @@ function refreshSettingsTree() {
   })
 }
 
-/**
- * 从容器 API 获取分配的 gzbridge URL，并更新 useGzBridge 的连接。
- *
- * 若 API 成功且返回 gzbridge_url：
- *   - 优先使用 API 返回地址（覆盖 settings 中的手动 URL）
- * 若 API 失败或无容器：
- *   - Fallback：沿用 settings 中配置的手动 gzwebUrl（不报错，仅控制台警告）
- *
- * TODO: studentId 临时硬编码为 1，后续从 JWT userStore 读取
- */
-async function fetchAndApplyContainerUrl() {
-  try {
-    const TEMP_STUDENT_ID = 1 // TODO: 从 userStore.userInfo.id 读取
-    const res = await getMyContainerApi(TEMP_STUDENT_ID)
-    const gzUrl = res?.data?.gzbridge_url
-    if (gzUrl) {
-      console.info('[GzWebViewer] 从 API 获取 gzbridge URL:', gzUrl)
-      // 同步到 config（让 settings 面板显示实际地址）
-      config.value = { ...config.value, gzwebUrl: gzUrl }
-      updateGzwebUrl(gzUrl)
-      refreshSettingsTree()
-    } else {
-      console.warn('[GzWebViewer] API 未返回 gzbridge_url，使用手动配置:', config.value.gzwebUrl)
-    }
-  } catch (err) {
-    console.warn('[GzWebViewer] 获取容器信息失败，使用手动配置:', err)
-  }
-}
-
 // ---------- 生命周期 ----------
 onMounted(async () => {
   registerPanel(props.panelId, 'GzWebViewer')
+
+  // 初始化时同步当前 bridge 中有效的 URL 以便展示在设置面板中
+  if (currentGzwebUrl.value) {
+    config.value = { ...config.value, gzwebUrl: currentGzwebUrl.value }
+  }
   refreshSettingsTree()
 
-  // 先从 API 获取动态 URL（非阻塞，失败时 fallback 到手动配置）
-  await fetchAndApplyContainerUrl()
+  // 若页面级 (Simulation.vue) 的异步请求后来解析了真正的 URL，通过 watch 同步到设置板
+  watch(
+    currentGzwebUrl,
+    (newUrl) => {
+      if (newUrl && newUrl !== config.value.gzwebUrl) {
+        config.value = { ...config.value, gzwebUrl: newUrl }
+      }
+    },
+    { immediate: true }
+  )
 
   // 将 useGzBridge 管理的 iframe 移入本面板容器
   if (iframeContainer.value) {

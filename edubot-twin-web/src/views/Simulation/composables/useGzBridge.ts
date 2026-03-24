@@ -35,6 +35,8 @@ const _isBridgeReady = ref(false)
 /** iframe 是否已 attach 到某个可视容器（即 GzWebViewer 面板） */
 const _isAttached = ref(false)
 
+const _currentGzwebUrl = ref<string>('')
+
 // 心跳内部状态
 let _heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let _pongTimer: ReturnType<typeof setTimeout> | null = null
@@ -232,6 +234,7 @@ export function useGzBridge() {
 
     // 创建 iframe (始终挂在 body，永不做 DOM 移动)
     const el = document.createElement('iframe')
+    _currentGzwebUrl.value = gzwebUrl
     el.src = _buildIframeSrc(gzwebUrl)
     el.style.cssText = HIDDEN_STYLE
     el.setAttribute('allow', 'autoplay')
@@ -363,6 +366,7 @@ export function useGzBridge() {
     if (!_iframe.value) return
     const newSrc = _buildIframeSrc(gzwebUrl)
     if (_iframe.value.src !== newSrc) {
+      _currentGzwebUrl.value = gzwebUrl
       // 重置通信状态，iframe 重新加载后会重新走 ready → connecting → connected 流程
       _isBridgeReady.value = false
       _connectionStatus.value = 'disconnected'
@@ -373,6 +377,7 @@ export function useGzBridge() {
 
   return {
     // ── 只读状态 ──
+    currentGzwebUrl: readonly(_currentGzwebUrl),
     connectionStatus: readonly(_connectionStatus) as Ref<GzConnectionStatus>,
     isPaused: readonly(_isPaused),
     simTime: readonly(_simTime),

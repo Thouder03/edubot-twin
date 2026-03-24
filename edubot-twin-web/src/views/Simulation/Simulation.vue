@@ -20,6 +20,7 @@ import { defaultLayout } from './config/predefined-layouts'
 import { usePanelState } from './stores/panelState'
 import { useGzBridge } from './composables/useGzBridge'
 import { defaultConfig as gzDefaultConfig } from './panels/GzWebViewer/settings'
+import { getMyContainerApi } from '@/api/container'
 
 // ---------- GzWeb 通信（页面级初始化）----------
 const { initialize: initGzBridge, dispose: disposeGzBridge } = useGzBridge()
@@ -104,7 +105,7 @@ function saveLayoutToStorage() {
 let originalDarkClass = false
 
 // ---------- 生命周期 ----------
-onMounted(() => {
+onMounted(async () => {
   // 记录原始状态并强制暗色模式
   originalDarkClass = document.documentElement.classList.contains('dark')
   document.documentElement.classList.add('dark')
@@ -114,9 +115,26 @@ onMounted(() => {
   window.addEventListener('beforeunload', saveLayoutToStorage)
 
   // ── 页面级 GzWeb 通信初始化 ──
-  // 使用 GzWebViewer 默认配置中的 gzwebUrl
-  // 将来第二期从后端 API 获取动态地址后，此处改为 API 返回值
-  initGzBridge(gzDefaultConfig.gzwebUrl)
+  // 从后端 API 获取动态地址，若失败则 fallback 到默认值
+  try {
+    const TEMP_STUDENT_ID = 1 // TODO: 从 userStore 读取
+    const res = await getMyContainerApi(TEMP_STUDENT_ID)
+    const gzUrl = res?.data?.gzbridge_url
+    if (gzUrl) {
+      console.info('[Simulation] 页面级初始化: 从 API 获取 gzbridge URL:', gzUrl)
+      initGzBridge(gzUrl)
+    } else {
+      console.warn('[Simulation] API 未返回 gzbridge_url，使用 fallback:', gzDefaultConfig.gzwebUrl)
+      initGzBridge(gzDefaultConfig.gzwebUrl)
+    }
+  } catch (err) {
+    console.warn(
+      '[Simulation] 页面级初始化: 获取容器 API 失败, 使用 fallback:',
+      err,
+      gzDefaultConfig.gzwebUrl
+    )
+    initGzBridge(gzDefaultConfig.gzwebUrl)
+  }
 })
 
 onBeforeUnmount(() => {
