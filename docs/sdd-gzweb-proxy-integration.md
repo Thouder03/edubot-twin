@@ -1239,25 +1239,6 @@ COPY gzweb/http/client/ /opt/gzweb/http/client/
 2. 学生登录后自动获取分配的容器信息
 3. GzWebViewer 面板根据 API 返回的端口自动连接对应容器
 
-### 第三期：高级控制
-
-**目标**: 场景树、模型操作等进阶功能
-
-**扩展 postMessage 指令集**:
-
-| type | payload | 说明 |
-|---|---|---|
-| `gz:getSceneTree` | `{}` | 请求场景树数据 |
-| `gz:selectEntity` | `{ name: string }` | 选中指定实体 |
-| `gz:setManipMode` | `{ mode: 'view' \| 'translate' \| 'rotate' }` | 切换操控模式 |
-| `gz:deleteEntity` | `{ name: string }` | 删除指定实体 |
-| `gz:spawnEntity` | `{ type: string, position: {x,y,z} }` | 生成实体 |
-
-**验收标准**:
-1. Vue 侧可显示场景树（模型/灯光列表）
-2. 点击场景树中的模型，3D 场景中高亮选中
-3. 支持模型的平移/旋转/删除操作
-
 ---
 
 ## 附录 A: 风险与缓解
