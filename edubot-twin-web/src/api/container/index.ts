@@ -6,29 +6,41 @@ import type { ContainerCreate, ContainerResponse, ContainerStatusResponse } from
 // ───────────────────────────────────────────
 
 /**
- * 获取指定学生的容器状态
+ * 获取当前学生的容器状态（JWT 自动鉴权）
  *
- * GET /api/v1/students/container/mine?student_id=xxx
- *
- * @param studentId 学生 ID（临时参数，后续改为从 JWT 自动解析）
+ * GET /api/v1/students/container/mine
  */
-export const getMyContainerApi = (
-  studentId: number
-): Promise<IResponse<ContainerStatusResponse>> => {
-  return request.get({ url: '/students/container/mine', params: { student_id: studentId } })
+export const getMyContainerApi = (): Promise<IResponse<ContainerStatusResponse>> => {
+  return request.get({ url: '/students/container/mine' })
 }
 
 /**
- * 学生请求分配容器
+ * 学生请求分配容器（JWT 自动鉴权）
  *
- * POST /api/v1/students/container/request?student_id=xxx
+ * POST /api/v1/students/container/request
  *
  * 若已有容器则返回现有容器，否则自动创建新容器。
- *
- * @param studentId 学生 ID
  */
-export const requestContainerApi = (studentId: number): Promise<IResponse<ContainerResponse>> => {
-  return request.post({ url: '/students/container/request', params: { student_id: studentId } })
+export const requestContainerApi = (): Promise<IResponse<ContainerResponse>> => {
+  return request.post({ url: '/students/container/request' })
+}
+
+/**
+ * 销毁当前容器并创建新容器（原子操作）
+ *
+ * POST /api/v1/students/container/destroy-and-recreate
+ */
+export const destroyAndRecreateApi = (): Promise<IResponse<ContainerResponse>> => {
+  return request.post({ url: '/students/container/destroy-and-recreate' })
+}
+
+/**
+ * 启动学生的已停止容器
+ *
+ * POST /api/v1/students/container/start
+ */
+export const startMyContainerApi = (): Promise<IResponse<ContainerStatusResponse>> => {
+  return request.post({ url: '/students/container/start' })
 }
 
 // ───────────────────────────────────────────

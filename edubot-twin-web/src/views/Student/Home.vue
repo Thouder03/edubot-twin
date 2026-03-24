@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { useDesign } from '@/hooks/web/useDesign'
-import { ElCard, ElRow, ElCol, ElSkeleton } from 'element-plus'
+import { ElCard, ElRow, ElCol, ElSkeleton, ElLoading, ElMessage, ElMessageBox } from 'element-plus'
 import { BaseButton } from '@/components/Button'
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getStudentHomeDataApi } from '@/api/student'
+import {
+  getMyContainerApi,
+  requestContainerApi,
+  startMyContainerApi,
+  destroyAndRecreateApi
+} from '@/api/container'
+import type { ContainerStatusResponse } from '@/api/container/types'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('student-home')
@@ -44,10 +51,186 @@ const handleMessageCardClick = () => {
   console.log('TODO: 跳转到未读消息列表页面')
 }
 
-// 开始仿真：在新标签页打开仿真工作台
-const handleStartSimulation = () => {
+// ---------- 仿真启动核心逻辑 ----------
+
+/** 打开仿真工作台（新标签页） */
+function openSimulationPage() {
   const url = router.resolve({ name: 'Simulation' }).href
   window.open(url, '_blank')
+}
+
+/**
+ * 轮询等待容器进入 running 状态
+ * @returns 容器信息（成功）或 null（超时/错误）
+ */
+async function waitForContainerRunning(
+  maxWaitMs = 60_000,
+  intervalMs = 2_000
+): Promise<ContainerStatusResponse | null> {
+  const deadline = Date.now() + maxWaitMs
+  while (Date.now() < deadline) {
+    try {
+      const res = await getMyContainerApi()
+      if (res?.data?.status === 'running') return res.data
+      if (res?.data?.status === 'error') return null
+    } catch {
+      // 可能 404，继续轮询
+    }
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+  return null // 超时
+}
+
+/** 销毁旧容器、创建新容器并等待就绪 */
+async function recreateAndWait(loadingInstance: ReturnType<typeof ElLoading.service>) {
+  loadingInstance.setText('正在重建仿真环境...')
+  try {
+    await destroyAndRecreateApi()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail ?? '请求失败'
+    if (detail.includes('503') || e?.response?.status === 503) {
+      ElMessage.error('服务器资源已满，请稍后再试')
+    } else {
+      ElMessage.error(`启动失败：${detail}`)
+    }
+    return
+  }
+
+  loadingInstance.setText('等待仿真环境就绪（最多 60 秒）...')
+  const container = await waitForContainerRunning()
+  if (container) {
+    openSimulationPage()
+  } else {
+    ElMessage.error('仿真环境启动超时或发生错误，请联系教师')
+  }
+}
+
+/** 点击「开始仿真」按钮 */
+const handleStartSimulation = async () => {
+  const loadingInstance = ElLoading.service({
+    text: '正在检查仿真环境...',
+    background: 'rgba(0,0,0,0.5)'
+  })
+
+  try {
+    let containerInfo: ContainerStatusResponse | null = null
+
+    try {
+      const res = await getMyContainerApi()
+      containerInfo = res?.data ?? null
+    } catch (e: any) {
+      if (e?.response?.status !== 404) {
+        ElMessage.error('网络错误，请检查连接')
+        return
+      }
+      // 404 = 尚未有容器，继续走创建流程
+    }
+
+    // ── 情况 1：无容器（404）──
+    if (!containerInfo) {
+      loadingInstance.setText('首次启动，正在创建仿真环境...')
+      try {
+        await requestContainerApi()
+      } catch (e: any) {
+        const status = e?.response?.status
+        if (status === 503) {
+          ElMessage.error('服务器资源已满，请稍后再试')
+        } else {
+          ElMessage.error('创建仿真环境失败，请联系教师')
+        }
+        return
+      }
+
+      loadingInstance.setText('等待仿真环境就绪（最多 60 秒）...')
+      const ready = await waitForContainerRunning()
+      if (ready) {
+        openSimulationPage()
+      } else {
+        ElMessage.error('仿真环境启动超时，请联系教师')
+      }
+      return
+    }
+
+    const { status } = containerInfo
+
+    // ── 情况 2：running ──
+    if (status === 'running') {
+      loadingInstance.close()
+      try {
+        await ElMessageBox.confirm('发现正在运行的仿真环境，是否继续使用？', '仿真环境', {
+          confirmButtonText: '继续使用',
+          cancelButtonText: '重新创建',
+          type: 'info',
+          distinguishCancelAndClose: true
+        })
+        // 点「继续使用」
+        openSimulationPage()
+      } catch (action) {
+        if (action === 'cancel') {
+          // 点「重新创建」
+          const loadingInstance2 = ElLoading.service({
+            text: '正在重建...',
+            background: 'rgba(0,0,0,0.5)'
+          })
+          try {
+            await recreateAndWait(loadingInstance2)
+          } finally {
+            loadingInstance2.close()
+          }
+        }
+        // 点 X 关闭弹窗 → 不做任何操作
+      }
+      return
+    }
+
+    // ── 情况 3：stopped ──
+    if (status === 'stopped') {
+      loadingInstance.close()
+      try {
+        await ElMessageBox.confirm('发现上次的仿真环境（已暂停），是否恢复使用？', '仿真环境', {
+          confirmButtonText: '恢复使用',
+          cancelButtonText: '重新创建',
+          type: 'warning',
+          distinguishCancelAndClose: true
+        })
+        // 点「恢复使用」
+        const loadingInstance2 = ElLoading.service({
+          text: '正在启动仿真环境...',
+          background: 'rgba(0,0,0,0.5)'
+        })
+        try {
+          await startMyContainerApi()
+          const ready = await waitForContainerRunning()
+          if (ready) {
+            openSimulationPage()
+          } else {
+            ElMessage.error('仿真环境启动超时，请联系教师')
+          }
+        } finally {
+          loadingInstance2.close()
+        }
+      } catch (action) {
+        if (action === 'cancel') {
+          // 点「重新创建」
+          const loadingInstance2 = ElLoading.service({
+            text: '正在重建...',
+            background: 'rgba(0,0,0,0.5)'
+          })
+          try {
+            await recreateAndWait(loadingInstance2)
+          } finally {
+            loadingInstance2.close()
+          }
+        }
+      }
+      return
+    }
+
+    // ── 情况 4：error / creating（自动销毁重建）──
+    await recreateAndWait(loadingInstance)
+  } finally {
+    loadingInstance.close()
+  }
 }
 
 // TODO: 开始考试/测试按钮点击事件

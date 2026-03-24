@@ -9,7 +9,7 @@ from app.models.container import ContainerStatus
 class ContainerCreate(BaseModel):
     """创建容器请求体"""
     student_id: int
-    image_name: str = "edubot/gazebo-ros:latest"
+    image_name: str = "gzweb_sim:v1"
 
 
 class ContainerResponse(BaseModel):
@@ -21,6 +21,7 @@ class ContainerResponse(BaseModel):
     image_name: str
     gzbridge_port: Optional[int] = None
     rosbridge_port: Optional[int] = None
+    error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

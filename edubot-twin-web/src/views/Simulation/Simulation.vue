@@ -9,7 +9,7 @@
  * 页面加载时即初始化 GzWeb iframe 通信（不等 GzWebViewer 面板挂载），
  * 确保 SimControlBar 在 GzWebViewer 面板关闭时仍能控制仿真。
  */
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, provide, readonly } from 'vue'
 import { ElMessage } from 'element-plus'
 import { LayoutConfig, type ResolvedLayoutConfig } from 'golden-layout'
 
@@ -24,6 +24,10 @@ import { getMyContainerApi } from '@/api/container'
 
 // ---------- GzWeb 通信（页面级初始化）----------
 const { initialize: initGzBridge, dispose: disposeGzBridge } = useGzBridge()
+
+// ---------- 容器 ROS URL provide（供 ROS3DViewer 自动注入）----------
+const containerRosUrl = ref<string | null>(null)
+provide('containerRosUrl', readonly(containerRosUrl))
 
 // ---------- 布局持久化 ----------
 const LAYOUT_STORAGE_KEY = 'simulation-layout-config'
@@ -117,15 +121,22 @@ onMounted(async () => {
   // ── 页面级 GzWeb 通信初始化 ──
   // 从后端 API 获取动态地址，若失败则 fallback 到默认值
   try {
-    const TEMP_STUDENT_ID = 1 // TODO: 从 userStore 读取
-    const res = await getMyContainerApi(TEMP_STUDENT_ID)
+    const res = await getMyContainerApi()
     const gzUrl = res?.data?.gzbridge_url
+    const rosUrl = res?.data?.rosbridge_url
+
     if (gzUrl) {
-      console.info('[Simulation] 页面级初始化: 从 API 获取 gzbridge URL:', gzUrl)
+      console.info('[Simulation] 从 API 获取 gzbridge URL:', gzUrl)
       initGzBridge(gzUrl)
     } else {
       console.warn('[Simulation] API 未返回 gzbridge_url，使用 fallback:', gzDefaultConfig.gzwebUrl)
       initGzBridge(gzDefaultConfig.gzwebUrl)
+    }
+
+    // 注入 ROS URL 供 ROS3DViewer 自动连接
+    if (rosUrl) {
+      containerRosUrl.value = rosUrl
+      console.info('[Simulation] 已 provide 容器 rosbridge_url:', rosUrl)
     }
   } catch (err) {
     console.warn(

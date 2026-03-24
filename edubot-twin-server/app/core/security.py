@@ -7,6 +7,7 @@ JWT Token 安全工具模块
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from typing import Optional
+from fastapi import Header, HTTPException, status as http_status
 
 # JWT 配置
 # 生产环境请修改为随机强密码并使用环境变量
@@ -53,3 +54,44 @@ def verify_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+async def get_current_student_id(
+    authorization: str = Header(
+        ...,
+        description="Bearer token，格式: Bearer <jwt_token>"
+    ),
+) -> int:
+    """
+    从 Authorization Header 提取 student_id
+
+    用法: student_id: int = Depends(get_current_student_id)
+
+    Raises:
+        HTTPException(401): Token 无效或角色不是学生
+    """
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header 格式错误，需要 'Bearer <token>'"
+        )
+
+    token = authorization[7:]  # 去掉 "Bearer " 前缀
+    payload = verify_token(token)
+
+    if not payload:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Token 无效或已过期"
+        )
+
+    user_id = payload.get("user_id")
+    role = payload.get("role")
+
+    if not user_id or role != "student":
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="仅学生可访问此接口"
+        )
+
+    return user_id

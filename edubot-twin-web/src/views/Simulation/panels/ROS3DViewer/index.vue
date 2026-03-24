@@ -8,7 +8,8 @@
  * 3. TF / 消息自动路由到 SceneExtension 体系
  * 4. 设置树集成（侧栏实时控制）
  */
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, inject } from 'vue'
+import type { Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/Icon'
 import { Topic as RosTopic } from 'roslib'
@@ -56,6 +57,23 @@ const {
     setTimeout(() => t.unadvertise(), 300)
   }
 })
+
+// ---------- 容器 ROS URL 自动注入（来自 Simulation.vue provide）----------
+// 当后端分配容器后，自动将 rosbridge_url 注入 Renderer 配置，无需手动修改设置
+const containerRosUrl = inject<Ref<string | null>>('containerRosUrl', ref(null))
+
+watch(
+  containerRosUrl,
+  (newUrl) => {
+    if (newUrl && renderer.value) {
+      renderer.value.updateConfig((draft) => {
+        draft.connection = { ...(draft.connection ?? {}), rosUrl: newUrl } as any
+      })
+      console.info('[ROS3D] 已自动注入容器 rosbridge_url:', newUrl)
+    }
+  },
+  { immediate: true }
+)
 
 // ---------- 发布模式状态 ----------
 const isPublishing = ref(false)

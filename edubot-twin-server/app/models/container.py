@@ -1,6 +1,6 @@
 import enum
-from datetime import datetime
 from typing import Optional
+from datetime import datetime
 
 from sqlalchemy import String, Integer, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
@@ -44,6 +44,10 @@ class SimContainer(Base):
     rosbridge_port: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True,
         comment="rosbridge WebSocket 宿主机映射端口"
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True,
+        comment="Docker 操作异常信息"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False

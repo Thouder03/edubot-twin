@@ -18,6 +18,7 @@ export interface ContainerResponse {
   rosbridge_port: number | null
   gzbridge_url: string | null
   rosbridge_url: string | null
+  error_message: string | null
   created_at: string
   updated_at: string
 }
