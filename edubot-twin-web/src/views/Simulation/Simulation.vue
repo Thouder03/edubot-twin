@@ -164,7 +164,11 @@ function handleVisibilityChange() {
 }
 
 // ─── 重新激活检查与弹窗 ─────────────────────────────────
+let isAlertShowing = false
+
 async function checkContainerOnReactivation() {
+  if (isAlertShowing) return
+
   try {
     const res = await getMyContainerApi()
     const status = res?.data?.status
@@ -177,19 +181,25 @@ async function checkContainerOnReactivation() {
     if (status === 'stopped') {
       await handleContainerStopped()
     } else if (status) {
+      if (isAlertShowing) return
+      isAlertShowing = true
       // error / creating / removing → 提示异常
       await ElMessageBox.alert('仿真容器状态异常，请返回首页重新操作。', '容器异常', {
         confirmButtonText: '返回首页',
         type: 'error'
-      })
+      }).catch(() => {})
+      isAlertShowing = false
       navigateToHome()
     }
   } catch (err: any) {
     if (err?.response?.status === 404) {
+      if (isAlertShowing) return
+      isAlertShowing = true
       await ElMessageBox.alert('您的仿真容器已被管理员回收，请返回首页重新申请。', '容器已回收', {
         confirmButtonText: '返回首页',
         type: 'warning'
-      })
+      }).catch(() => {})
+      isAlertShowing = false
       navigateToHome()
     } else {
       ElMessage.warning('网络连接异常，请检查网络')
@@ -198,6 +208,8 @@ async function checkContainerOnReactivation() {
 }
 
 async function handleContainerStopped() {
+  if (isAlertShowing) return
+  isAlertShowing = true
   try {
     await ElMessageBox.confirm(
       '由于长时间未活动，您的仿真容器已自动关闭。是否重新启动？',
@@ -210,9 +222,11 @@ async function handleContainerStopped() {
         closeOnPressEscape: false
       }
     )
+    isAlertShowing = false
     // 用户点击"重新启动"
     await restartContainer()
   } catch {
+    isAlertShowing = false
     // 用户点击"返回首页"
     navigateToHome()
   }
