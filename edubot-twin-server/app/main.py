@@ -1,8 +1,60 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.api import api_router
-from app.db.database import engine
+from app.db.database import engine, AsyncSessionLocal
 from app.db.base import Base
+from app.crud import container as crud_container
+
+logger = logging.getLogger(__name__)
+
+# ─── 定时任务参数 ────────────────────────────────────────
+STALE_CHECK_INTERVAL = 60    # 每 60 秒扫描一次
+HEARTBEAT_TIMEOUT = 120      # 心跳超时阈值：2 分钟
+
+
+async def _stale_container_cleanup_loop():
+    """后台循环：定期扫描并停止心跳超时的容器"""
+    logger.info("[定时任务] 心跳超时容器清理任务已启动")
+    while True:
+        await asyncio.sleep(STALE_CHECK_INTERVAL)
+        try:
+            async with AsyncSessionLocal() as db:
+                stale = await crud_container.find_stale_containers(
+                    db, timeout_seconds=HEARTBEAT_TIMEOUT
+                )
+                for container in stale:
+                    logger.info(
+                        f"[定时任务] 容器 {container.id} (学生 {container.student_id}) "
+                        f"心跳超时，自动停止"
+                    )
+                    await crud_container.stop_container(db, container)
+        except Exception as e:
+            logger.error(f"[定时任务] Stale container cleanup error: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan：启动 → yield → 关闭"""
+    # 启动后台清理任务
+    task = asyncio.create_task(_stale_container_cleanup_loop())
+    logger.info("🚀 Edubot Twin API 启动中...")
+    logger.info("📚 API 文档: http://localhost:8000/docs")
+
+    yield  # 应用运行中
+
+    # 关闭时取消后台任务
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    await engine.dispose()
+    logger.info("👋 Edubot Twin API 已关闭")
+
 
 # 创建 FastAPI 实例
 app = FastAPI(
@@ -10,7 +62,8 @@ app = FastAPI(
     description="数字孪生机器人实训平台后端 API",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # 配置 CORS
@@ -28,26 +81,6 @@ app.add_middleware(
 
 # 挂载 API 路由
 app.include_router(api_router, prefix="/api/v1")
-
-
-# 注意: 健康检查端点已移至 /api/v1/health
-
-
-# 应用启动事件
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时的初始化操作"""
-    print("🚀 Edubot Twin API 启动中...")
-    print(f"📚 API 文档: http://localhost:8000/docs")
-    print(f"🔄 异步数据库引擎已初始化")
-
-
-# 应用关闭事件
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭时的清理操作"""
-    await engine.dispose()
-    print("👋 Edubot Twin API 已关闭")
 
 
 if __name__ == "__main__":

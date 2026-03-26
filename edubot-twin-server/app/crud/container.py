@@ -1,7 +1,7 @@
 """
 容器 CRUD 操作（第三期：接入真实 Docker SDK）
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -130,3 +130,35 @@ async def delete_container(db: AsyncSession, container: SimContainer) -> bool:
     await db.delete(container)
     await db.commit()
     return True
+
+
+async def update_heartbeat(db: AsyncSession, container: SimContainer) -> None:
+    """更新心跳时间"""
+    container.last_heartbeat_at = datetime.utcnow()
+    container.updated_at = datetime.utcnow()
+    await db.commit()
+
+
+async def find_stale_containers(
+    db: AsyncSession,
+    timeout_seconds: int = 120,
+) -> list:
+    """
+    查找心跳超时的 running 容器
+
+    Args:
+        timeout_seconds: 超时阈值（秒），默认 120 秒（2 分钟）
+
+    Returns:
+        超时容器列表
+    """
+    cutoff = datetime.utcnow() - timedelta(seconds=timeout_seconds)
+    result = await db.execute(
+        select(SimContainer).where(
+            SimContainer.status == ContainerStatus.RUNNING,
+            # last_heartbeat_at 为 NULL 或早于 cutoff
+            (SimContainer.last_heartbeat_at == None)  # noqa: E711
+            | (SimContainer.last_heartbeat_at < cutoff),
+        )
+    )
+    return list(result.scalars().all())

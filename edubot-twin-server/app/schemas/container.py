@@ -74,3 +74,8 @@ class ContainerStatusResponse(BaseModel):
             gzbridge_url=gzbridge_url,
             rosbridge_url=rosbridge_url,
         )
+
+
+class StopOnExitRequest(BaseModel):
+    """页面退出时停止容器的请求体（供 sendBeacon 使用，Token 放 body）"""
+    token: str

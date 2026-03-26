@@ -43,6 +43,40 @@ export const startMyContainerApi = (): Promise<IResponse<ContainerStatusResponse
   return request.post({ url: '/api/v1/students/container/start' })
 }
 
+/**
+ * 心跳上报（JWT 自动鉴权）
+ *
+ * POST /api/v1/students/container/heartbeat
+ *
+ * 前端定期调用，更新后端的 last_heartbeat_at。
+ * 返回容器当前状态，前端据此判断容器是否仍然存活。
+ */
+export const heartbeatApi = (): Promise<IResponse<ContainerStatusResponse>> => {
+  return request.post({ url: '/api/v1/students/container/heartbeat' })
+}
+
+/**
+ * 主动停止学生自己的容器（JWT 自动鉴权）
+ *
+ * POST /api/v1/students/container/stop
+ */
+export const stopMyContainerApi = (): Promise<IResponse<ContainerStatusResponse>> => {
+  return request.post({ url: '/api/v1/students/container/stop' })
+}
+
+/**
+ * 页面退出时停止容器（Token in body，供 sendBeacon 使用）
+ *
+ * POST /api/v1/students/container/stop-on-exit
+ *
+ * navigator.sendBeacon 无法携带 Authorization Header，
+ * 因此使用专用端点将 Token 放在请求体中传递。
+ */
+export const stopOnExitApi = (token: string): void => {
+  const blob = new Blob([JSON.stringify({ token })], { type: 'application/json' })
+  navigator.sendBeacon('/api/v1/students/container/stop-on-exit', blob)
+}
+
 // ───────────────────────────────────────────
 // 教师端 API
 // ───────────────────────────────────────────

@@ -36,3 +36,8 @@ export interface ContainerCreate {
   student_id: number
   image_name?: string
 }
+
+/** 页面退出时停止容器的请求体（Token in body，供 sendBeacon 使用） */
+export interface StopOnExitRequest {
+  token: string
+}

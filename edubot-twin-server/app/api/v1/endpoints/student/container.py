@@ -1,5 +1,5 @@
 """
-学生端容器 API（第三期：JWT 鉴权改造）
+学生端容器 API（第四期：心跳上报 + 生命周期管理）
 
 路由前缀：/api/v1/students/container
 """
@@ -7,10 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.schemas.container import ContainerCreate, ContainerResponse, ContainerStatusResponse
+from app.schemas.container import (
+    ContainerCreate, ContainerResponse,
+    ContainerStatusResponse, StopOnExitRequest,
+)
 from app.crud import container as crud_container
 from app.core.port_allocator import PortExhaustedError
-from app.core.security import get_current_student_id
+from app.core.security import get_current_student_id, verify_token
 from app.models.container import ContainerStatus
 from app.schemas.common import ApiResponse
 from typing import Optional
@@ -122,3 +125,84 @@ async def destroy_and_recreate(
         )
 
     return ApiResponse(code=0, data=ContainerResponse.model_validate(container))
+
+
+@router.post(
+    "/heartbeat",
+    response_model=ApiResponse[ContainerStatusResponse],
+    summary="心跳上报",
+)
+async def heartbeat(
+    student_id: int = Depends(get_current_student_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    前端定期调用，更新 last_heartbeat_at。
+
+    返回容器当前状态，前端据此判断容器是否仍然存活。
+    若容器不存在或已停止，前端可触发重新激活弹窗。
+    """
+    container = await crud_container.get_container_by_student(db, student_id)
+    if not container:
+        raise HTTPException(status_code=404, detail="尚未分配容器")
+
+    await crud_container.update_heartbeat(db, container)
+    await db.refresh(container)
+
+    return ApiResponse(
+        code=0,
+        data=ContainerStatusResponse.from_orm_with_host(container)
+    )
+
+
+@router.post(
+    "/stop",
+    response_model=ApiResponse[ContainerStatusResponse],
+    summary="停止我的容器",
+)
+async def stop_my_container(
+    student_id: int = Depends(get_current_student_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """学生主动停止自己的容器（退出仿真时调用）。"""
+    container = await crud_container.get_container_by_student(db, student_id)
+    if not container:
+        raise HTTPException(status_code=404, detail="尚未分配容器")
+    if container.status != ContainerStatus.RUNNING:
+        return ApiResponse(
+            code=0,
+            data=ContainerStatusResponse.from_orm_with_host(container)
+        )
+
+    container = await crud_container.stop_container(db, container)
+    return ApiResponse(
+        code=0,
+        data=ContainerStatusResponse.from_orm_with_host(container)
+    )
+
+
+@router.post(
+    "/stop-on-exit",
+    summary="页面退出时停止容器（Token in body）",
+)
+async def stop_on_exit(
+    body: StopOnExitRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    供 navigator.sendBeacon() 调用（无法携带 Authorization Header）。
+    Token 放在请求体中验证，静默成功/失败（均返回 200）。
+    """
+    payload = verify_token(body.token)
+    if not payload:
+        return {"ok": False, "reason": "invalid_token"}
+
+    student_id = payload.get("user_id")
+    if not student_id:
+        return {"ok": False, "reason": "no_user_id"}
+
+    container = await crud_container.get_container_by_student(db, student_id)
+    if container and container.status == ContainerStatus.RUNNING:
+        await crud_container.stop_container(db, container)
+
+    return {"ok": True}

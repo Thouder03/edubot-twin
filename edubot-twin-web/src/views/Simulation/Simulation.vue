@@ -8,10 +8,16 @@
  * ── GzWeb 通信 ──
  * 页面加载时即初始化 GzWeb iframe 通信（不等 GzWebViewer 面板挂载），
  * 确保 SimControlBar 在 GzWebViewer 面板关闭时仍能控制仿真。
+ *
+ * ── 第四期：容器生命周期管理 ──
+ * 心跳上报（30s/前台，120s/后台）
+ * 页面重新激活弹窗
+ * 退出仿真确认（beforeunload + sendBeacon）
  */
 import { ref, onMounted, onBeforeUnmount, provide, readonly } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { LayoutConfig, type ResolvedLayoutConfig } from 'golden-layout'
+import { useRouter } from 'vue-router'
 
 import SimulationHeader from './components/SimulationHeader.vue'
 import GLayout from './components/GLayout.vue'
@@ -20,10 +26,29 @@ import { defaultLayout } from './config/predefined-layouts'
 import { usePanelState } from './stores/panelState'
 import { useGzBridge } from './composables/useGzBridge'
 import { defaultConfig as gzDefaultConfig } from './panels/GzWebViewer/settings'
-import { getMyContainerApi } from '@/api/container'
+import {
+  getMyContainerApi,
+  heartbeatApi,
+  startMyContainerApi,
+  stopOnExitApi
+} from '@/api/container'
+import { useUserStore } from '@/store/modules/user'
+
+// ---------- 路由 ----------
+const router = useRouter()
+const userStore = useUserStore()
 
 // ---------- GzWeb 通信（页面级初始化）----------
 const { initialize: initGzBridge, dispose: disposeGzBridge } = useGzBridge()
+
+/** 重新初始化 GzBridge（容器重启后使用） */
+function reinitGzBridge(newUrl: string) {
+  disposeGzBridge()
+  // dispose 是同步清理，直接重新初始化
+  setTimeout(() => {
+    initGzBridge(newUrl)
+  }, 500)
+}
 
 // ---------- 容器 ROS URL provide（供 ROS3DViewer 自动注入）----------
 const containerRosUrl = ref<string | null>(null)
@@ -32,18 +57,11 @@ provide('containerRosUrl', readonly(containerRosUrl))
 // ---------- 布局持久化 ----------
 const LAYOUT_STORAGE_KEY = 'simulation-layout-config'
 
-/**
- * 同步读取 localStorage 中保存的布局
- * 必须在组件 setup 阶段执行（GLayout onMounted 之前），
- * 否则 GLayout 会先用 defaultLayout 初始化
- */
 function loadLayoutFromStorage(): LayoutConfig | null {
   try {
     const saved = localStorage.getItem(LAYOUT_STORAGE_KEY)
     if (saved) {
       const resolvedConfig = JSON.parse(saved) as ResolvedLayoutConfig
-      // saveLayout() 返回的是 ResolvedLayoutConfig，
-      // 必须用 LayoutConfig.fromResolved() 转换回 LayoutConfig
       return LayoutConfig.fromResolved(resolvedConfig)
     }
   } catch (e) {
@@ -54,7 +72,6 @@ function loadLayoutFromStorage(): LayoutConfig | null {
 }
 
 // ---------- 状态 ----------
-// 在 setup 阶段同步确定初始布局（GLayout onMounted 之前）
 const glLayoutRef = ref<InstanceType<typeof GLayout> | null>(null)
 const currentLayout = ref<LayoutConfig>(loadLayoutFromStorage() || defaultLayout)
 
@@ -65,7 +82,6 @@ function handleSettingsToggle(panelId: string) {
   if (panelState.state.selectedPanelId === panelId) {
     // 同一面板 → 保持打开
   } else {
-    // 不同面板或当前未打开 → 打开/切换
     panelState.selectPanel(panelId)
   }
 }
@@ -84,13 +100,6 @@ function handleAddPanel(type: string, title: string) {
   }
 }
 
-function handleBack() {
-  window.close()
-  setTimeout(() => {
-    ElMessage.info('请手动关闭此标签页')
-  }, 300)
-}
-
 function saveLayoutToStorage() {
   if (glLayoutRef.value) {
     const config = glLayoutRef.value.saveLayout()
@@ -104,8 +113,169 @@ function saveLayoutToStorage() {
   }
 }
 
+// ─── 心跳定时器 ──────────────────────────────────────────
+const HEARTBEAT_INTERVAL = 30_000 // 前台：30 秒
+const HEARTBEAT_INTERVAL_BG = 120_000 // 后台/低频：120 秒
+
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+let currentInterval = HEARTBEAT_INTERVAL
+
+function startHeartbeat() {
+  stopHeartbeat()
+  heartbeatTimer = setInterval(sendHeartbeat, currentInterval)
+  sendHeartbeat() // 立即发一次
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+}
+
+async function sendHeartbeat() {
+  try {
+    const res = await heartbeatApi()
+    const status = res?.data?.status
+
+    if (status && status !== 'running') {
+      // 容器已不在运行 → 触发重新激活弹窗
+      stopHeartbeat()
+      handleContainerStopped()
+    }
+  } catch (err) {
+    // 网络错误：静默处理，等下次心跳重试
+    console.warn('[Heartbeat] 心跳失败:', err)
+  }
+}
+
+// ─── Page Visibility 联动 ────────────────────────────────
+function handleVisibilityChange() {
+  if (document.hidden) {
+    // 页面进入后台：降频心跳
+    currentInterval = HEARTBEAT_INTERVAL_BG
+    startHeartbeat()
+  } else {
+    // 页面恢复前台：恢复正常心跳 + 立即检查状态
+    currentInterval = HEARTBEAT_INTERVAL
+    startHeartbeat()
+    checkContainerOnReactivation()
+  }
+}
+
+// ─── 重新激活检查与弹窗 ─────────────────────────────────
+async function checkContainerOnReactivation() {
+  try {
+    const res = await getMyContainerApi()
+    const status = res?.data?.status
+
+    if (status === 'running') {
+      // 一切正常，无需操作
+      return
+    }
+
+    if (status === 'stopped') {
+      await handleContainerStopped()
+    } else if (status) {
+      // error / creating / removing → 提示异常
+      await ElMessageBox.alert('仿真容器状态异常，请返回首页重新操作。', '容器异常', {
+        confirmButtonText: '返回首页',
+        type: 'error'
+      })
+      navigateToHome()
+    }
+  } catch (err: any) {
+    if (err?.response?.status === 404) {
+      await ElMessageBox.alert('您的仿真容器已被管理员回收，请返回首页重新申请。', '容器已回收', {
+        confirmButtonText: '返回首页',
+        type: 'warning'
+      })
+      navigateToHome()
+    } else {
+      ElMessage.warning('网络连接异常，请检查网络')
+    }
+  }
+}
+
+async function handleContainerStopped() {
+  try {
+    await ElMessageBox.confirm(
+      '由于长时间未活动，您的仿真容器已自动关闭。是否重新启动？',
+      '仿真容器已关闭',
+      {
+        confirmButtonText: '重新启动',
+        cancelButtonText: '返回首页',
+        type: 'warning',
+        closeOnClickModal: false,
+        closeOnPressEscape: false
+      }
+    )
+    // 用户点击"重新启动"
+    await restartContainer()
+  } catch {
+    // 用户点击"返回首页"
+    navigateToHome()
+  }
+}
+
+async function restartContainer() {
+  const loading = ElLoading.service({ text: '正在重新启动仿真容器...' })
+  try {
+    await startMyContainerApi()
+
+    // 轮询等待容器 running（最多 60s）
+    const result = await waitForContainerRunning()
+    if (result) {
+      const gzUrl = result.gzbridge_url
+      const rosUrl = result.rosbridge_url
+      if (gzUrl) reinitGzBridge(gzUrl)
+      if (rosUrl) containerRosUrl.value = rosUrl
+      startHeartbeat()
+      ElMessage.success('仿真容器已重新启动')
+    } else {
+      ElMessage.error('容器启动超时，请返回首页重试')
+      navigateToHome()
+    }
+  } catch (err) {
+    console.error('[Simulation] 重启容器失败:', err)
+    ElMessage.error('重启失败，请返回首页重试')
+    navigateToHome()
+  } finally {
+    loading.close()
+  }
+}
+
+async function waitForContainerRunning(maxAttempts = 30, intervalMs = 2000) {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+    try {
+      const res = await getMyContainerApi()
+      const data = res?.data
+      if (data?.status === 'running') return data
+      if (data?.status === 'error') return null
+    } catch {
+      // 继续重试
+    }
+  }
+  return null
+}
+
+function navigateToHome() {
+  // 仿真页是新标签页打开的，尝试关闭
+  window.close()
+  // 如果 window.close() 不起作用（非 JS 打开的标签页）
+  setTimeout(() => {
+    router.push('/student/home')
+  }, 300)
+}
+
+// ─── beforeunload 拦截 ────────────────────────────────────
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  event.preventDefault()
+  event.returnValue = '退出将关闭仿真容器，确定要离开吗？'
+}
+
 // ---------- 局部暗色模式 ----------
-// 仿真页在新标签页打开，强制暗色模式不影响全局设置
 let originalDarkClass = false
 
 // ---------- 生命周期 ----------
@@ -117,9 +287,10 @@ onMounted(async () => {
 
   document.body.style.overflow = 'hidden'
   window.addEventListener('beforeunload', saveLayoutToStorage)
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   // ── 页面级 GzWeb 通信初始化 ──
-  // 从后端 API 获取动态地址，若失败则 fallback 到默认值
   try {
     const res = await getMyContainerApi()
     const gzUrl = res?.data?.gzbridge_url
@@ -133,7 +304,6 @@ onMounted(async () => {
       initGzBridge(gzDefaultConfig.gzwebUrl)
     }
 
-    // 注入 ROS URL 供 ROS3DViewer 自动连接
     if (rosUrl) {
       containerRosUrl.value = rosUrl
       console.info('[Simulation] 已 provide 容器 rosbridge_url:', rosUrl)
@@ -146,13 +316,21 @@ onMounted(async () => {
     )
     initGzBridge(gzDefaultConfig.gzwebUrl)
   }
+
+  // ── 启动心跳 ──
+  startHeartbeat()
 })
 
 onBeforeUnmount(() => {
+  stopHeartbeat()
   saveLayoutToStorage()
-
-  // ── 销毁 GzWeb 通信 ──
   disposeGzBridge()
+
+  // 组件卸载时用 sendBeacon 通知后端停止容器
+  const token = userStore.getToken
+  if (token) {
+    stopOnExitApi(token)
+  }
 
   // 恢复原始暗色模式状态
   if (!originalDarkClass) {
@@ -162,7 +340,18 @@ onBeforeUnmount(() => {
 
   document.body.style.overflow = ''
   window.removeEventListener('beforeunload', saveLayoutToStorage)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
+
+// ---------- 退出（来自 SimulationHeader 的 back 事件）----------
+async function handleBack() {
+  // SimulationHeader 已自行弹窗确认并停止容器，这里只需关闭标签页
+  window.close()
+  setTimeout(() => {
+    router.push('/student/home')
+  }, 300)
+}
 </script>
 
 <template>

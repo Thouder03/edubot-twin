@@ -49,6 +49,10 @@ class SimContainer(Base):
         String(500), nullable=True,
         comment="Docker 操作异常信息"
     )
+    last_heartbeat_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True,
+        comment="前端最后一次心跳时间，用于超时检测"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )

@@ -4,11 +4,19 @@
  *
  * 集成 SimControlBar 仿真控制栏（中间区域）
  */
+import {
+  ElButton,
+  ElDropdown,
+  ElDropdownMenu,
+  ElDropdownItem,
+  ElDivider,
+  ElMessageBox
+} from 'element-plus'
 import { Icon } from '@/components/Icon'
-import { ElButton, ElDropdown, ElDropdownMenu, ElDropdownItem, ElDivider } from 'element-plus'
 import { layoutPresets, availablePanels } from '../config/predefined-layouts'
 import SimControlBar from './SimControlBar.vue'
 import type { LayoutConfig } from 'golden-layout'
+import { stopMyContainerApi } from '@/api/container'
 
 interface Emits {
   (e: 'layoutChange', config: LayoutConfig): void
@@ -18,8 +26,23 @@ interface Emits {
 
 const emit = defineEmits<Emits>()
 
-function handleBack() {
-  emit('back')
+async function handleBack() {
+  try {
+    await ElMessageBox.confirm('退出将关闭仿真容器，确定要离开吗？', '退出确认', {
+      confirmButtonText: '确定退出',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    // 用户确认退出 → 停止容器（失败也要退出，后端定时任务兜底）
+    try {
+      await stopMyContainerApi()
+    } catch {
+      // 容器停止失败不阻止退出
+    }
+    emit('back')
+  } catch {
+    // 用户点击取消 → 不操作
+  }
 }
 
 function handleLayoutChange(key: string) {
