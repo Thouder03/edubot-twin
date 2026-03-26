@@ -242,7 +242,14 @@ export function useGzBridge() {
     document.body.appendChild(el)
 
     _iframe.value = el
-    _isAttached.value = false
+
+    // 如果在初始化前已经有组件尝试 attach，则现在立即绑定
+    if (_containerEl) {
+      _startPositionSync()
+      _isAttached.value = true
+    } else {
+      _isAttached.value = false
+    }
 
     // 注册消息监听
     _messageHandler = _handleMessage
@@ -281,7 +288,7 @@ export function useGzBridge() {
       _iframe.value.remove()
       _iframe.value = null
     }
-    _containerEl = null
+    // 不清理 _containerEl，以便 reinitGzBridge 后仍能附着到现存的面板
     _resetState()
   }
 
@@ -296,9 +303,9 @@ export function useGzBridge() {
    * @param container GzWebViewer 面板内部用于承载 iframe 的容器元素（作为定位参考）
    */
   const attachToContainer = (container: HTMLElement): void => {
+    _containerEl = container
     if (!_iframe.value) return
 
-    _containerEl = container
     _startPositionSync()
     _isAttached.value = true
   }
