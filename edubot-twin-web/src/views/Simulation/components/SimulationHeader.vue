@@ -33,12 +33,10 @@ async function handleBack() {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    // 用户确认退出 → 停止容器（失败也要退出，后端定时任务兜底）
-    try {
-      await stopMyContainerApi()
-    } catch {
-      // 容器停止失败不阻止退出
-    }
+    // 用户确认退出 → 放开阻塞立即 emit back
+    stopMyContainerApi().catch(() => {
+      // 容器停止失败不管，后端会有心跳超时兜底
+    })
     emit('back')
   } catch {
     // 用户点击取消 → 不操作

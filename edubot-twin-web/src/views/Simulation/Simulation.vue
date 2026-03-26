@@ -271,8 +271,11 @@ function navigateToHome() {
 
 // ─── beforeunload 拦截 ────────────────────────────────────
 function handleBeforeUnload(event: BeforeUnloadEvent) {
+  // 现代浏览器标准规范
   event.preventDefault()
+  // 兼容 Safari 及某些旧版浏览器
   event.returnValue = '退出将关闭仿真容器，确定要离开吗？'
+  return event.returnValue
 }
 
 // ---------- 局部暗色模式 ----------

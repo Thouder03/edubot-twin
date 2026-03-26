@@ -64,7 +64,46 @@ function openSimulationPage() {
 }
 
 /**
- * 轮询等待容器进入 running 状态
+ * 测试 WebSocket 连接是否真正可用
+ */
+function testWebSocketConnection(url: string, timeoutMs = 3000): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const ws = new WebSocket(url)
+      let resolved = false
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true
+          ws.close()
+          resolve(false)
+        }
+      }, timeoutMs)
+
+      ws.onopen = () => {
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timer)
+          ws.close()
+          resolve(true)
+        }
+      }
+
+      ws.onerror = () => {
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timer)
+          ws.close()
+          resolve(false)
+        }
+      }
+    } catch {
+      resolve(false)
+    }
+  })
+}
+
+/**
+ * 轮询等待容器进入 running 状态并彻底就绪
  * @returns 容器信息（成功）或 null（超时/错误）
  */
 async function waitForContainerRunning(
@@ -75,8 +114,24 @@ async function waitForContainerRunning(
   while (Date.now() < deadline) {
     try {
       const res = await getMyContainerApi()
-      if (res?.data?.status === 'running') return res.data
-      if (res?.data?.status === 'error') return null
+      const data = res?.data
+      if (data?.status === 'running') {
+        // 后端说 running 了，还需要探测一下容器里的 ROSBridge WebSockets 服务是否真的起来了
+        if (data.rosbridge_url && data.gzbridge_url) {
+          const isReady =
+            (await testWebSocketConnection(data.rosbridge_url)) &&
+            (await testWebSocketConnection(data.gzbridge_url))
+          if (isReady) {
+            return data
+          }
+          // 不 ready 则继续等
+        } else {
+          // 如果没有 rosbridge_url 和 gzbridge_url 字段，那就强制等 2 秒当做缓冲然后返回
+          await new Promise((r) => setTimeout(r, 2000))
+          return data
+        }
+      }
+      if (data?.status === 'error') return null
     } catch {
       // 可能 404，继续轮询
     }
