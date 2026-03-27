@@ -7,6 +7,9 @@
 				"@modelcontextprotocol/server-filesystem",
 				"/home/ubuntu20/code/edubot-twin",
 				"/home/ubuntu20/lichtblick"
+			],
+			"alwaysAllow": [
+				"read_text_file"
 			]
 		},
 		"git": {
