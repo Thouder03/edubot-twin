@@ -18,10 +18,24 @@ async def init_database():
     
     print("✅ 数据库表创建完成!")
     
-    # 插入示例学生数据
-    print("\n📝 插入示例学生数据...")
+    # 插入示例数据
+    print("\n📝 插入示例数据...")
     
     sample_students = [
+        # 教师测试账号
+        StudentCreate(
+            username="teacher",
+            password="teacher123",
+            real_name="教师测试账号",
+            email="teacher@example.com"
+        ),
+        StudentCreate(
+            username="admin",
+            password="admin123",
+            real_name="管理员测试账号",
+            email="admin@example.com"
+        ),
+        # 学生账号
         StudentCreate(
             username="student001",
             password="123456",

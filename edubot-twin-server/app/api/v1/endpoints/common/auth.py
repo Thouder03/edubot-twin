@@ -47,13 +47,24 @@ async def unified_login(
         if not student.is_active:
             return ApiResponse(code=403, message="账号已被禁用", data=None)
         
-        # 返回学生角色信息
+        # 根据用户名判断角色
+        if student.username == "admin":
+            role = "admin"
+            roleId = "1"
+        elif student.username == "teacher":
+            role = "teacher"
+            roleId = "2"
+        else:
+            role = "student"
+            roleId = "3"
+        
+        # 返回角色信息
         return ApiResponse(
             code=0,
             data=LoginData(
                 username=student.username,
-                role="student",
-                roleId="3"
+                role=role,
+                roleId=roleId
             )
         )
     
@@ -87,11 +98,19 @@ async def get_token(
         if not student.is_active:
             return ApiResponse(code=403, message="账号已被禁用", data=None)
         
-        # 生成学生 Token
+        # 根据用户名判断角色
+        if student.username == "admin":
+            role = "admin"
+        elif student.username == "teacher":
+            role = "teacher"
+        else:
+            role = "student"
+        
+        # 生成 Token
         token_data = {
             "sub": student.username,
             "user_id": student.id,
-            "role": "student"
+            "role": role
         }
         access_token = create_access_token(token_data)
         return ApiResponse(
