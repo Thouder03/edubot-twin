@@ -10,7 +10,7 @@ import {
   batchStopContainersApi,
   batchDeleteContainersApi
 } from '@/api/monitor'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElButton } from 'element-plus'
 
 const { tableRegister, tableState, tableMethods } = useTable({
   fetchDataApi: async () => {
@@ -144,10 +144,10 @@ const batchDelete = async () => {
 <template>
   <ContentWrap>
     <div class="mb-10px">
-      <el-button type="primary" @click="batchStart">批量启动</el-button>
-      <el-button type="warning" @click="batchStop">批量停止</el-button>
-      <el-button type="danger" @click="batchDelete">批量删除</el-button>
-      <el-button @click="getList">刷新</el-button>
+      <ElButton type="primary" @click="batchStart">批量启动</ElButton>
+      <ElButton type="warning" @click="batchStop">批量停止</ElButton>
+      <ElButton type="danger" @click="batchDelete">批量删除</ElButton>
+      <ElButton @click="getList">刷新</ElButton>
     </div>
     <Table
       :columns="allSchemas.tableColumns"

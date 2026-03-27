@@ -1,22 +1,22 @@
 import request from '@/axios'
-import type { StudentItem, StudentCreate, StudentUpdate } from './types'
+import type { StudentCreate, StudentUpdate } from './types'
 
 export const getStudentListApi = (params?: any) => {
-  return request.get({ url: '/teacher/students', params })
+  return request.get({ url: '/api/v1/teachers/students', params })
 }
 
 export const getStudentApi = (id: number) => {
-  return request.get({ url: `/teacher/students/${id}` })
+  return request.get({ url: `/api/v1/teachers/students/${id}` })
 }
 
 export const createStudentApi = (data: StudentCreate) => {
-  return request.post({ url: '/teacher/students', data })
+  return request.post({ url: '/api/v1/teachers/students', data })
 }
 
 export const updateStudentApi = (id: number, data: StudentUpdate) => {
-  return request.put({ url: `/teacher/students/${id}`, data })
+  return request.put({ url: `/api/v1/teachers/students/${id}`, data })
 }
 
 export const deleteStudentApi = (id: number) => {
-  return request.delete({ url: `/teacher/students/${id}` })
+  return request.delete({ url: `/api/v1/teachers/students/${id}` })
 }

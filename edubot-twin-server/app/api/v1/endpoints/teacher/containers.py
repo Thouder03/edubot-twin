@@ -11,6 +11,7 @@ from app.schemas.container import (
     ContainerCreate, ContainerResponse,
     BatchOperationRequest, BatchOperationResponse, BatchOperationResult
 )
+from app.schemas.common import ApiResponse
 from app.crud import container as crud_container
 from app.core.port_allocator import PortExhaustedError
 from app.core.security import get_current_teacher
@@ -26,7 +27,7 @@ def _to_response(obj) -> ContainerResponse:
 
 @router.post(
     "/",
-    response_model=ContainerResponse,
+    response_model=ApiResponse[ContainerResponse],
     status_code=status.HTTP_201_CREATED,
     summary="为学生创建仿真容器",
 )
@@ -47,12 +48,12 @@ async def create_container(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         )
-    return _to_response(container)
+    return ApiResponse(data=_to_response(container))
 
 
 @router.get(
     "/",
-    response_model=list[ContainerResponse],
+    response_model=ApiResponse[list[ContainerResponse]],
     summary="列出所有容器",
 )
 async def list_containers(
@@ -62,12 +63,12 @@ async def list_containers(
 ):
     """获取所有仿真容器列表（分页）"""
     containers = await crud_container.list_containers(db, skip=skip, limit=limit)
-    return [_to_response(c) for c in containers]
+    return ApiResponse(data=[_to_response(c) for c in containers])
 
 
 @router.get(
     "/{container_id}",
-    response_model=ContainerResponse,
+    response_model=ApiResponse[ContainerResponse],
     summary="获取容器详情",
 )
 async def get_container(
@@ -81,12 +82,12 @@ async def get_container(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"容器 ID={container_id} 不存在",
         )
-    return _to_response(container)
+    return ApiResponse(data=_to_response(container))
 
 
 @router.post(
     "/{container_id}/start",
-    response_model=ContainerResponse,
+    response_model=ApiResponse[ContainerResponse],
     summary="启动已停止的容器",
 )
 async def start_container(
@@ -103,12 +104,12 @@ async def start_container(
         raise HTTPException(status_code=400, detail="容器已在运行中")
 
     container = await crud_container.start_container(db, container)
-    return _to_response(container)
+    return ApiResponse(data=_to_response(container))
 
 
 @router.post(
     "/{container_id}/stop",
-    response_model=ContainerResponse,
+    response_model=ApiResponse[ContainerResponse],
     summary="停止运行中的容器",
 )
 async def stop_container(
@@ -125,12 +126,12 @@ async def stop_container(
         raise HTTPException(status_code=400, detail="容器未在运行中")
 
     container = await crud_container.stop_container(db, container)
-    return _to_response(container)
+    return ApiResponse(data=_to_response(container))
 
 
 @router.delete(
     "/{container_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=ApiResponse[dict],
     summary="删除容器",
 )
 async def delete_container(
@@ -143,11 +144,12 @@ async def delete_container(
         raise HTTPException(status_code=404, detail=f"容器 ID={container_id} 不存在")
 
     await crud_container.delete_container(db, container)
+    return ApiResponse(data={"deleted": True})
 
 
 @router.post(
     "/batch-start",
-    response_model=BatchOperationResponse,
+    response_model=ApiResponse[BatchOperationResponse],
     summary="批量启动容器",
 )
 async def batch_start_containers(
@@ -197,17 +199,17 @@ async def batch_start_containers(
             ))
             log_container_event("batch_start", container_id, message=f"批量启动失败: {e}", level="ERROR")
     
-    return BatchOperationResponse(
+    return ApiResponse(data=BatchOperationResponse(
         total=len(data.container_ids),
         success_count=success_count,
         failed_count=len(data.container_ids) - success_count,
         results=results
-    )
+    ))
 
 
 @router.post(
     "/batch-stop",
-    response_model=BatchOperationResponse,
+    response_model=ApiResponse[BatchOperationResponse],
     summary="批量停止容器",
 )
 async def batch_stop_containers(
@@ -257,17 +259,17 @@ async def batch_stop_containers(
             ))
             log_container_event("batch_stop", container_id, message=f"批量停止失败: {e}", level="ERROR")
     
-    return BatchOperationResponse(
+    return ApiResponse(data=BatchOperationResponse(
         total=len(data.container_ids),
         success_count=success_count,
         failed_count=len(data.container_ids) - success_count,
         results=results
-    )
+    ))
 
 
 @router.post(
     "/batch-delete",
-    response_model=BatchOperationResponse,
+    response_model=ApiResponse[BatchOperationResponse],
     summary="批量删除容器",
 )
 async def batch_delete_containers(
@@ -307,9 +309,9 @@ async def batch_delete_containers(
             ))
             log_container_event("batch_delete", container_id, message=f"批量删除失败: {e}", level="ERROR")
     
-    return BatchOperationResponse(
+    return ApiResponse(data=BatchOperationResponse(
         total=len(data.container_ids),
         success_count=success_count,
         failed_count=len(data.container_ids) - success_count,
         results=results
-    )
+    ))

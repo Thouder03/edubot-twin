@@ -5,7 +5,7 @@ import { ref, reactive, unref } from 'vue'
 import { useTable } from '@/hooks/web/useTable'
 import { CrudSchema, useCrudSchemas } from '@/hooks/web/useCrudSchemas'
 import { getStudentListApi, deleteStudentApi } from '@/api/student'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElButton } from 'element-plus'
 import Write from './components/Write.vue'
 import { Dialog } from '@/components/Dialog'
 
@@ -103,7 +103,7 @@ const onSubmit = () => {
 <template>
   <ContentWrap>
     <div class="mb-10px">
-      <el-button type="primary" @click="AddAction">新增学生</el-button>
+      <ElButton type="primary" @click="AddAction">新增学生</ElButton>
     </div>
     <Table
       v-model:current-page="currentPage"
@@ -114,8 +114,8 @@ const onSubmit = () => {
       @register="tableRegister"
     >
       <template #action="{ row }">
-        <el-button link type="primary" @click="editAction(row)">编辑</el-button>
-        <el-button link type="danger" @click="delData(row)">删除</el-button>
+        <ElButton link type="primary" @click="editAction(row)">编辑</ElButton>
+        <ElButton link type="danger" @click="delData(row)">删除</ElButton>
       </template>
     </Table>
   </ContentWrap>
@@ -125,6 +125,7 @@ const onSubmit = () => {
       v-if="dialogVisible"
       :current-row="currentRow"
       :action-type="actionType"
+      @close="dialogVisible = false"
       @submit="onSubmit"
     />
   </Dialog>
