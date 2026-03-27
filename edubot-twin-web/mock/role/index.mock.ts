@@ -674,6 +674,22 @@ const adminList = [
         meta: {
           title: 'router.role'
         }
+      },
+      {
+        path: 'student',
+        component: 'views/Authorization/Student/Student',
+        name: 'StudentManagement',
+        meta: {
+          title: '学生管理'
+        }
+      },
+      {
+        path: 'monitor',
+        component: 'views/Authorization/Monitor/Monitor',
+        name: 'ContainerMonitor',
+        meta: {
+          title: '容器监控'
+        }
       }
     ]
   }

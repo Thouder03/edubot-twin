@@ -735,6 +735,22 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         meta: {
           title: t('router.role')
         }
+      },
+      {
+        path: 'student',
+        component: () => import('@/views/Authorization/Student/Student.vue'),
+        name: 'StudentManagement',
+        meta: {
+          title: '学生管理'
+        }
+      },
+      {
+        path: 'monitor',
+        component: () => import('@/views/Authorization/Monitor/Monitor.vue'),
+        name: 'ContainerMonitor',
+        meta: {
+          title: '容器监控'
+        }
       }
     ]
   },

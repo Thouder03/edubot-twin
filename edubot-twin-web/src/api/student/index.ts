@@ -1,7 +1,22 @@
 import request from '@/axios'
-import type { StudentHomeData } from './types'
+import type { StudentItem, StudentCreate, StudentUpdate } from './types'
 
-// 获取学生首页数据
-export const getStudentHomeDataApi = (): Promise<IResponse<StudentHomeData>> => {
-  return request.get({ url: '/mock/student/home' })
+export const getStudentListApi = (params?: any) => {
+  return request.get({ url: '/teacher/students', params })
+}
+
+export const getStudentApi = (id: number) => {
+  return request.get({ url: `/teacher/students/${id}` })
+}
+
+export const createStudentApi = (data: StudentCreate) => {
+  return request.post({ url: '/teacher/students', data })
+}
+
+export const updateStudentApi = (id: number, data: StudentUpdate) => {
+  return request.put({ url: `/teacher/students/${id}`, data })
+}
+
+export const deleteStudentApi = (id: number) => {
+  return request.delete({ url: `/teacher/students/${id}` })
 }
