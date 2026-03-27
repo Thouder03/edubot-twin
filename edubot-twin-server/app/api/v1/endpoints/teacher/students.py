@@ -103,72 +103,36 @@ async def delete_student(
     db: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_teacher)
 ):
-    """
-    删除学生（带事务和容错）
-    - 数据库是单一事实来源
-    - Docker 失败时容错继续
-    """
+    """删除学生（级联删除容器记录，容错清理 Docker）"""
     student = await student_crud.get_student(db, student_id)
     if not student:
         raise HTTPException(status_code=404, detail="学生不存在")
     
-    # 获取学生的所有容器
     containers = await container_crud.get_containers_by_student(db, student_id)
-    
     docker_errors = []
-    docker_client = get_docker_client()
     
-    # 尝试删除 Docker 容器（容错模式）
-    for container in containers:
-        if container.container_id:
-            try:
-                docker_container = docker_client.containers.get(container.container_id)
-                docker_container.remove(force=True)
-                log_container_event(
-                    "container_deleted",
-                    container_id=container.id,
-                    student_id=student_id,
-                    docker_container_id=container.container_id
-                )
-            except Exception as e:
-                # Docker 失败不阻塞删除，记录错误
-                error_msg = f"容器 {container.container_id} Docker删除失败: {str(e)}"
-                docker_errors.append(error_msg)
-                log_container_event(
-                    "container_delete_failed",
-                    container_id=container.id,
-                    student_id=student_id,
-                    error=str(e)
-                )
-    
-    # 数据库删除（事务保证）
+    # 容错清理 Docker 容器
     try:
-        await student_crud.delete_student(db, student_id)
-        await db.commit()
-        
-        log_container_event(
-            "student_deleted",
-            student_id=student_id,
-            username=student.username,
-            containers_count=len(containers)
-        )
-        
-        result = {
-            "deleted": True,
-            "student_id": student_id,
-            "containers_deleted": len(containers)
-        }
-        
-        if docker_errors:
-            result["docker_warnings"] = docker_errors
-        
-        return ApiResponse(data=result)
-        
+        docker_client = get_docker_client()
+        for container in containers:
+            if container.container_id:
+                try:
+                    docker_container = docker_client.containers.get(container.container_id)
+                    docker_container.remove(force=True)
+                except Exception as e:
+                    docker_errors.append(f"容器 {container.container_id}: {str(e)}")
     except Exception as e:
-        await db.rollback()
-        log_container_event(
-            "student_delete_failed",
-            student_id=student_id,
-            error=str(e)
-        )
-        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+        docker_errors.append(f"Docker 连接失败: {str(e)}")
+    
+    # 数据库删除（级联删除容器记录）
+    await student_crud.delete_student(db, student_id)
+    
+    result = {
+        "deleted": True,
+        "student_id": student_id,
+        "containers_deleted": len(containers)
+    }
+    if docker_errors:
+        result["docker_warnings"] = docker_errors
+    
+    return ApiResponse(data=result)

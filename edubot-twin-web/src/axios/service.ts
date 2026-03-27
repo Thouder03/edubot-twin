@@ -34,7 +34,9 @@ axiosInstance.interceptors.response.use(
   },
   (error: AxiosError) => {
     console.log('err： ' + error) // for debug
-    ElMessage.error(error.message)
+    // 优先显示后端返回的详细错误信息
+    const errorMsg = (error.response?.data as any)?.detail || error.message
+    ElMessage.error(errorMsg)
     return Promise.reject(error)
   }
 )

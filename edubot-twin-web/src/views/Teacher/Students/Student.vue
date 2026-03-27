@@ -1,4 +1,4 @@
-<script setup lang="ts">
+<script setup lang="tsx">
 import { ContentWrap } from '@/components/ContentWrap'
 import { Table } from '@/components/Table'
 import { ref, reactive, unref } from 'vue'
@@ -58,7 +58,23 @@ const crudSchemas = reactive<CrudSchema[]>([
   {
     field: 'action',
     label: '操作',
-    table: { width: 200 }
+    table: {
+      width: 200,
+      slots: {
+        default: (data: any) => {
+          return (
+            <>
+              <ElButton link type="primary" onClick={() => editAction(data.row)}>
+                编辑
+              </ElButton>
+              <ElButton link type="danger" onClick={() => delData(data.row)}>
+                删除
+              </ElButton>
+            </>
+          )
+        }
+      }
+    }
   }
 ])
 
@@ -112,12 +128,7 @@ const onSubmit = () => {
       :data="dataList"
       :loading="loading"
       @register="tableRegister"
-    >
-      <template #action="{ row }">
-        <ElButton link type="primary" @click="editAction(row)">编辑</ElButton>
-        <ElButton link type="danger" @click="delData(row)">删除</ElButton>
-      </template>
-    </Table>
+    />
   </ContentWrap>
 
   <Dialog v-model="dialogVisible" :title="dialogTitle">

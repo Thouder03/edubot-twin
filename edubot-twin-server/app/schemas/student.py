@@ -17,6 +17,7 @@ class StudentCreate(StudentBase):
 
 class StudentUpdate(BaseModel):
     """更新学生时的请求模型(所有字段可选)"""
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
     real_name: Optional[str] = Field(None, max_length=50)
     email: Optional[EmailStr] = None
     password: Optional[str] = Field(None, min_length=6, max_length=50)

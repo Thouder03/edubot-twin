@@ -4,7 +4,7 @@ import { useForm } from '@/hooks/web/useForm'
 import { PropType, reactive, watch, ref } from 'vue'
 import { useValidator } from '@/hooks/web/useValidator'
 import { createStudentApi, updateStudentApi } from '@/api/student'
-import { ElButton } from 'element-plus'
+import { ElButton, ElMessage } from 'element-plus'
 
 const { required } = useValidator()
 
@@ -56,7 +56,38 @@ const formSchema = reactive<FormSchema[]>([
 
 const rules = reactive({
   username: [required()],
-  real_name: [required()]
+  real_name: [],
+  password: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (props.actionType === 'add' && (!value || value.length < 6)) {
+          callback(new Error('密码至少需要6个字符'))
+        } else if (props.actionType === 'edit' && value && value.length < 6) {
+          callback(new Error('密码至少需要6个字符'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ],
+  email: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (value && value.trim() !== '') {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+          if (!emailRegex.test(value)) {
+            callback(new Error('请输入有效的邮箱地址'))
+          } else {
+            callback()
+          }
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ]
 })
 
 const { formRegister, formMethods } = useForm()
@@ -73,6 +104,12 @@ const submit = async () => {
     loading.value = true
     try {
       const formData = await getFormData()
+
+      // email如果是空字符串，Pydantic EmailStr验证会报错422，需要删除
+      if (formData.email === '') {
+        delete formData.email
+      }
+
       if (props.actionType === 'add') {
         if (!formData.password) {
           // 这里如果是增加必须有密码
@@ -86,9 +123,14 @@ const submit = async () => {
         }
         await updateStudentApi(props.currentRow?.id, formData as any)
       }
+      ElMessage.success(props.actionType === 'add' ? '添加成功' : '更新成功')
       emit('submit')
-    } catch (e) {
-      console.error(e)
+    } catch (e: any) {
+      // axios 拦截器已经显示了通用错误，这里不再重复显示
+      // 只在有详细错误信息时才覆盖显示
+      if (e?.response?.data?.detail) {
+        ElMessage.error(e.response.data.detail)
+      }
     } finally {
       loading.value = false
     }
