@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime
 
 from sqlalchemy import String, Integer, DateTime, Enum, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -59,6 +59,9 @@ class SimContainer(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
+
+    # Relationships
+    student: Mapped["Student"] = relationship(lazy='selectin', back_populates="containers")
 
     def __repr__(self) -> str:
         return (

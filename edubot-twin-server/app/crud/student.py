@@ -37,6 +37,11 @@ async def get_students(
     return list(result.scalars().all())
 
 
+async def get_student(db: AsyncSession, student_id: int) -> Optional[Student]:
+    """获取学生（别名）"""
+    return await get_student_by_id(db, student_id)
+
+
 async def get_student_by_id(db: AsyncSession, student_id: int) -> Optional[Student]:
     """
     根据 ID 获取学生

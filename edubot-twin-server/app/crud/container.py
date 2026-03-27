@@ -89,6 +89,16 @@ async def get_container_by_student(
     return result.scalar_one_or_none()
 
 
+async def get_containers_by_student(
+    db: AsyncSession, student_id: int
+) -> list[SimContainer]:
+    """获取学生的所有容器"""
+    result = await db.execute(
+        select(SimContainer).where(SimContainer.student_id == student_id)
+    )
+    return list(result.scalars().all())
+
+
 async def start_container(
     db: AsyncSession, container: SimContainer
 ) -> SimContainer:
