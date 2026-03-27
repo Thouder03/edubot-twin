@@ -11,13 +11,16 @@
 """
 
 from fastapi import APIRouter
-from . import containers
+from . import containers, students
 
 # 创建教师路由聚合器
 router = APIRouter()
 
 # 容器管理（第二期已实现）
 router.include_router(containers.router, prefix="/containers", tags=["教师-容器管理"])
+
+# 学生管理（第五期）
+router.include_router(students.router, prefix="/students", tags=["教师-学生管理"])
 
 # 后续添加教师模块路由:
 # from . import basic, auth, exams, students, resources

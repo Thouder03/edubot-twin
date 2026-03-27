@@ -95,3 +95,45 @@ async def get_current_student_id(
         )
 
     return user_id
+
+
+async def get_current_teacher(
+    authorization: str = Header(
+        ...,
+        description="Bearer token，格式: Bearer <jwt_token>"
+    ),
+) -> int:
+    """
+    从 Authorization Header 提取 teacher user_id
+    
+    用法: teacher_id: int = Depends(get_current_teacher)
+    
+    Raises:
+        HTTPException(401): Token 无效
+        HTTPException(403): 角色不是教师或管理员
+    """
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header 格式错误，需要 'Bearer <token>'"
+        )
+    
+    token = authorization[7:]
+    payload = verify_token(token)
+    
+    if not payload:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Token 无效或已过期"
+        )
+    
+    user_id = payload.get("user_id")
+    role = payload.get("role")
+    
+    if not user_id or role not in ["teacher", "admin"]:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="需要教师或管理员权限"
+        )
+    
+    return user_id

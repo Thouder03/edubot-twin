@@ -5,7 +5,6 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.schemas.common import ApiResponse
@@ -33,16 +32,7 @@ async def unified_login(
     自动识别用户角色并返回对应信息
     """
     # 统一错误响应
-    error_response = JSONResponse(
-        status_code=200,
-        content={
-            "code": 500,
-            "message": "用户名或密码错误",
-            "data": None
-        }
-    )
-
-    # ... (前文中已定义的 error_response)
+    error_response = ApiResponse(code=500, message="用户名或密码错误", data=None)
 
     # 1. 先在学生表中查找
     student = await crud_student.get_student_by_username(db, login_data.username)
@@ -55,14 +45,7 @@ async def unified_login(
         
         # 检查账号状态
         if not student.is_active:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "code": 403,
-                    "message": "账号已被禁用",
-                    "data": None
-                }
-            )
+            return ApiResponse(code=403, message="账号已被禁用", data=None)
         
         # 返回学生角色信息
         return ApiResponse(
@@ -91,14 +74,7 @@ async def get_token(
     自动识别用户角色并生成对应 Token
     """
     # 统一错误响应
-    error_response = JSONResponse(
-        status_code=200,
-        content={
-            "code": 500,
-            "message": "用户名或密码错误",
-            "data": None
-        }
-    )
+    error_response = ApiResponse(code=500, message="用户名或密码错误", data=None)
 
     # 1. 学生表查找
     student = await crud_student.get_student_by_username(db, login_data.username)
@@ -109,14 +85,7 @@ async def get_token(
             return error_response
         
         if not student.is_active:
-             return JSONResponse(
-                status_code=200,
-                content={
-                    "code": 403,
-                    "message": "账号已被禁用",
-                    "data": None
-                }
-            )
+            return ApiResponse(code=403, message="账号已被禁用", data=None)
         
         # 生成学生 Token
         token_data = {
@@ -146,14 +115,7 @@ async def get_current_user(
     
     - **token**: JWT Token (查询参数)
     """
-    auth_error = JSONResponse(
-        status_code=200,
-        content={
-            "code": 401,
-            "message": "Token 无效或已过期",
-            "data": None
-        }
-    )
+    auth_error = ApiResponse(code=401, message="Token 无效或已过期", data=None)
 
     # 验证 Token
     payload = verify_token(token)
@@ -164,40 +126,19 @@ async def get_current_user(
     role = payload.get("role")
     
     if not username or not role:
-        return JSONResponse(
-            status_code=200,
-            content={
-                "code": 401,
-                "message": "Token 数据无效",
-                "data": None
-            }
-        )
+        return ApiResponse(code=401, message="Token 数据无效", data=None)
     
     # 根据角色查询对应表
     if role == "student":
         student = await crud_student.get_student_by_username(db, username)
         if not student:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "code": 404,
-                    "message": "用户不存在",
-                    "data": None
-                }
-            )
+            return ApiResponse(code=404, message="用户不存在", data=None)
         return ApiResponse(code=0, data=student)
     
     # 教师逻辑 (未来实现)
     # ...
     
-    return JSONResponse(
-        status_code=200,
-        content={
-            "code": 400,
-            "message": "未知的用户角色",
-            "data": None
-        }
-    )
+    return ApiResponse(code=400, message="未知的用户角色", data=None)
 
 
 @router.get("/routes", response_model=ApiResponse[list[str]], summary="获取用户路由权限")

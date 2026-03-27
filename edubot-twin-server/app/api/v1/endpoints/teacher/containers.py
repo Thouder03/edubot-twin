@@ -7,9 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.schemas.container import ContainerCreate, ContainerResponse
+from app.schemas.container import (
+    ContainerCreate, ContainerResponse,
+    BatchOperationRequest, BatchOperationResponse, BatchOperationResult
+)
 from app.crud import container as crud_container
 from app.core.port_allocator import PortExhaustedError
+from app.core.security import get_current_teacher
+from app.core.logger import log_container_event
 
 router = APIRouter()
 
@@ -138,3 +143,173 @@ async def delete_container(
         raise HTTPException(status_code=404, detail=f"容器 ID={container_id} 不存在")
 
     await crud_container.delete_container(db, container)
+
+
+@router.post(
+    "/batch-start",
+    response_model=BatchOperationResponse,
+    summary="批量启动容器",
+)
+async def batch_start_containers(
+    data: BatchOperationRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    """批量启动容器（部分成功模式）"""
+    results = []
+    success_count = 0
+    
+    for container_id in data.container_ids:
+        try:
+            container = await crud_container.get_container(db, container_id)
+            if not container:
+                results.append(BatchOperationResult(
+                    container_id=container_id,
+                    success=False,
+                    message="容器不存在"
+                ))
+                continue
+            
+            from app.models.container import ContainerStatus
+            if container.status == ContainerStatus.RUNNING:
+                results.append(BatchOperationResult(
+                    container_id=container_id,
+                    success=True,
+                    message="容器已在运行中"
+                ))
+                success_count += 1
+                continue
+            
+            await crud_container.start_container(db, container)
+            results.append(BatchOperationResult(
+                container_id=container_id,
+                success=True,
+                message="启动成功"
+            ))
+            success_count += 1
+            log_container_event("batch_start", container_id, message="批量启动成功")
+            
+        except Exception as e:
+            results.append(BatchOperationResult(
+                container_id=container_id,
+                success=False,
+                message=str(e)
+            ))
+            log_container_event("batch_start", container_id, message=f"批量启动失败: {e}", level="ERROR")
+    
+    return BatchOperationResponse(
+        total=len(data.container_ids),
+        success_count=success_count,
+        failed_count=len(data.container_ids) - success_count,
+        results=results
+    )
+
+
+@router.post(
+    "/batch-stop",
+    response_model=BatchOperationResponse,
+    summary="批量停止容器",
+)
+async def batch_stop_containers(
+    data: BatchOperationRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    """批量停止容器（部分成功模式）"""
+    results = []
+    success_count = 0
+    
+    for container_id in data.container_ids:
+        try:
+            container = await crud_container.get_container(db, container_id)
+            if not container:
+                results.append(BatchOperationResult(
+                    container_id=container_id,
+                    success=False,
+                    message="容器不存在"
+                ))
+                continue
+            
+            from app.models.container import ContainerStatus
+            if container.status != ContainerStatus.RUNNING:
+                results.append(BatchOperationResult(
+                    container_id=container_id,
+                    success=True,
+                    message="容器未在运行中"
+                ))
+                success_count += 1
+                continue
+            
+            await crud_container.stop_container(db, container)
+            results.append(BatchOperationResult(
+                container_id=container_id,
+                success=True,
+                message="停止成功"
+            ))
+            success_count += 1
+            log_container_event("batch_stop", container_id, message="批量停止成功")
+            
+        except Exception as e:
+            results.append(BatchOperationResult(
+                container_id=container_id,
+                success=False,
+                message=str(e)
+            ))
+            log_container_event("batch_stop", container_id, message=f"批量停止失败: {e}", level="ERROR")
+    
+    return BatchOperationResponse(
+        total=len(data.container_ids),
+        success_count=success_count,
+        failed_count=len(data.container_ids) - success_count,
+        results=results
+    )
+
+
+@router.post(
+    "/batch-delete",
+    response_model=BatchOperationResponse,
+    summary="批量删除容器",
+)
+async def batch_delete_containers(
+    data: BatchOperationRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    """批量删除容器（部分成功模式）"""
+    results = []
+    success_count = 0
+    
+    for container_id in data.container_ids:
+        try:
+            container = await crud_container.get_container(db, container_id)
+            if not container:
+                results.append(BatchOperationResult(
+                    container_id=container_id,
+                    success=False,
+                    message="容器不存在"
+                ))
+                continue
+            
+            await crud_container.delete_container(db, container)
+            results.append(BatchOperationResult(
+                container_id=container_id,
+                success=True,
+                message="删除成功"
+            ))
+            success_count += 1
+            log_container_event("batch_delete", container_id, message="批量删除成功")
+            
+        except Exception as e:
+            results.append(BatchOperationResult(
+                container_id=container_id,
+                success=False,
+                message=str(e)
+            ))
+            log_container_event("batch_delete", container_id, message=f"批量删除失败: {e}", level="ERROR")
+    
+    return BatchOperationResponse(
+        total=len(data.container_ids),
+        success_count=success_count,
+        failed_count=len(data.container_ids) - success_count,
+        results=results
+    )

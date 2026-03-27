@@ -1,5 +1,5 @@
 import os
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, computed_field, Field
 from typing import Optional
 from datetime import datetime
 
@@ -10,6 +10,8 @@ class ContainerCreate(BaseModel):
     """创建容器请求体"""
     student_id: int
     image_name: str = "gzweb_sim:v1"
+    cpu_limit: float = Field(default=1.0, ge=0.1, le=4.0, description="CPU 配额 (核心数)")
+    memory_limit: int = Field(default=2048, ge=256, le=8192, description="内存配额 (MB)")
 
 
 class ContainerResponse(BaseModel):
@@ -79,3 +81,23 @@ class ContainerStatusResponse(BaseModel):
 class StopOnExitRequest(BaseModel):
     """页面退出时停止容器的请求体（供 sendBeacon 使用，Token 放 body）"""
     token: str
+
+
+class BatchOperationRequest(BaseModel):
+    """批量操作请求体"""
+    container_ids: list[int]
+
+
+class BatchOperationResult(BaseModel):
+    """批量操作结果"""
+    container_id: int
+    success: bool
+    message: str
+
+
+class BatchOperationResponse(BaseModel):
+    """批量操作响应"""
+    total: int
+    success_count: int
+    failed_count: int
+    results: list[BatchOperationResult]
