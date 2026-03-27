@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
 from app.models.container_metrics import ContainerMetrics
 from app.schemas.container_metrics import ContainerMetricsCreate
@@ -16,7 +16,7 @@ async def create_metrics(db: AsyncSession, metrics: ContainerMetricsCreate) -> C
     return db_metrics
 
 
-async def get_latest_metrics(db: AsyncSession, container_id: int) -> ContainerMetrics | None:
+async def get_latest_metrics(db: AsyncSession, container_id: int) -> Optional[ContainerMetrics]:
     """获取容器最新的性能指标"""
     result = await db.execute(
         select(ContainerMetrics)

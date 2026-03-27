@@ -4,16 +4,23 @@ from typing import AsyncGenerator
 # SQLite 异步数据库 URL
 DATABASE_URL = "sqlite+aiosqlite:///./edubot.db"
 
-# 创建异步引擎
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=True,  # 开发环境打印 SQL 日志
-    future=True,
-    pool_size=20,  # 连接池大小
-    max_overflow=10,  # 超出 pool_size 后最多创建的连接数
-    pool_timeout=30,  # 获取连接的超时时间（秒）
-    pool_recycle=3600,  # 连接回收时间（秒），防止连接过期
-)
+# 创建异步引擎（SQLite 不支持连接池参数）
+if "sqlite" in DATABASE_URL:
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=True,
+        future=True,
+    )
+else:
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=True,
+        future=True,
+        pool_size=20,
+        max_overflow=10,
+        pool_timeout=30,
+        pool_recycle=3600,
+    )
 
 # 创建异步会话工厂
 AsyncSessionLocal = async_sessionmaker(
