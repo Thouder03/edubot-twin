@@ -9,6 +9,10 @@ engine = create_async_engine(
     DATABASE_URL,
     echo=True,  # 开发环境打印 SQL 日志
     future=True,
+    pool_size=20,  # 连接池大小
+    max_overflow=10,  # 超出 pool_size 后最多创建的连接数
+    pool_timeout=30,  # 获取连接的超时时间（秒）
+    pool_recycle=3600,  # 连接回收时间（秒），防止连接过期
 )
 
 # 创建异步会话工厂
