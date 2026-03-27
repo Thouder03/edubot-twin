@@ -242,3 +242,12 @@
 - [x] 将面板设置的组标题样式改为 Lichtblick 风格 (箭头居左，菜单项居右)
 - [x] 调整组标题左侧 margin (padding-left) 为 22px，并确保标题靠左对齐
 - [x] 显式设置组标题的 justify-content 和 text-align 为 left，解决“仍居中”的问题
+
+## 2026-03-27
+
+### 容器性能采集功能修复
+
+- **时间**: 20:50
+- **内容**: 修复了后端在轮询采集 Docker 容器属性时发生的 `"module 'asyncio' has no attribute 'timeout'"` 错误。
+  - **原因**: 当前 Python 版本不支持 `asyncio.timeout` 语法 (`Python < 3.11`)。
+  - **修复**: 将 `edubot-twin-server/app/main.py` 中的 `async with asyncio.timeout(5):` 改写为向下兼容的 `await asyncio.wait_for(..., timeout=5)` 标准语法。

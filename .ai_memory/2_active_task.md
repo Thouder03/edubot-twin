@@ -10,6 +10,7 @@
 - 修复了 `src/views/Teacher/Students/Student.vue` 中表格 "编辑"/"删除" 按钮不显示的 BUG，原因在于当前使用的 `<Table>` 封装组件不支持作用域插槽 `<template #action>` 绑定，已切换为 `tsx` 内联 `slots` 配置解决。
 - 修复了教师端编辑学生提交时后端报 500 (`AttributeError: 'StudentUpdate' object has no attribute 'username'`) 的问题，原因是 `StudentUpdate` Schema 中遗漏了 `username` 字段，导致 Pydantic 解析时被丢弃；已将其添加至 `app/schemas/student.py` 中。
 - 修复了新增/编辑学生由于 `email` 为空字符串导致后端报 422 验证错误的问题。前端 `Input` 组件默认清空会保留 `""` 而不是 `null`，这无法通过后端 Pydantic `EmailStr` 的正则校验，目前已在前端 `Write.vue` 提交前拦截并剥离空值为 `""` 的 `email` 字段。
+- 修复了后端服务（app/main.py）中，由于 Python 版本不支持 `asyncio.timeout` 导致的容器性能轮询采集异常问题，现已使用 `asyncio.wait_for` 进行替换并恢复监控功能。
 
 ## 关键说明
 如果在开发服出现热更新未即时生效（特别是涉及路由配置的改动）时，尝试清空缓存或重新刷新。

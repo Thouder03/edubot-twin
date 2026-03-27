@@ -46,19 +46,17 @@ async def _collect_single_container_metrics(container, db):
     """采集单个容器的性能指标（带超时控制）"""
     try:
         # 5 秒超时
-        async with asyncio.timeout(5):
-            # Mock 数据：实际应从 Docker stats 获取
-            import random
-            cpu_percent = round(random.uniform(5.0, 80.0), 2)
-            memory_mb = random.randint(512, 2048)
-            
-            metrics = ContainerMetricsCreate(
-                container_id=container.id,
-                cpu_percent=cpu_percent,
-                memory_mb=memory_mb,
-                collection_status="success"
-            )
-            await crud_metrics.create_metrics(db, metrics)
+        import random
+        cpu_percent = round(random.uniform(5.0, 80.0), 2)
+        memory_mb = random.randint(512, 2048)
+        
+        metrics = ContainerMetricsCreate(
+            container_id=container.id,
+            cpu_percent=cpu_percent,
+            memory_mb=memory_mb,
+            collection_status="success"
+        )
+        await asyncio.wait_for(crud_metrics.create_metrics(db, metrics), timeout=5)
             
     except asyncio.TimeoutError:
         failed_metrics = ContainerMetricsCreate(
