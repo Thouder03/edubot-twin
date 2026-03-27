@@ -675,21 +675,59 @@ const adminList = [
           title: 'router.role'
         }
       },
+    ]
+  },
+  {
+    path: '/teacher',
+    component: '#',
+    redirect: '/teacher/home',
+    name: 'Teacher',
+    meta: {
+      title: 'router.teacher',
+      icon: 'vi-carbon:user-role',
+      alwaysShow: true
+    },
+    children: [
       {
-        path: 'student',
-        component: 'views/Authorization/Student/Student',
-        name: 'StudentManagement',
+        path: 'home',
+        component: 'views/Teacher/Home',
+        name: 'TeacherHome',
         meta: {
-          title: '学生管理'
+          title: 'router.teacherHome',
+          icon: 'vi-carbon:home',
+          noCache: true
         }
       },
       {
-        path: 'monitor',
-        component: 'views/Authorization/Monitor/Monitor',
-        name: 'ContainerMonitor',
+        path: 'students',
+        component: 'views/Teacher/Students/Student',
+        name: 'TeacherStudents',
         meta: {
-          title: '容器监控'
+          title: 'router.studentManagement',
+          icon: 'vi-carbon:user-multiple'
         }
+      },
+      {
+        path: 'containers',
+        component: '##',
+        redirect: '/teacher/containers/monitor',
+        name: 'TeacherContainers',
+        meta: {
+          title: 'router.containerManagement',
+          icon: 'vi-carbon:container-software',
+          alwaysShow: true
+        },
+        children: [
+          {
+            path: 'monitor',
+            component: 'views/Teacher/Containers/Monitor',
+            name: 'ContainerMonitor',
+            meta: {
+              title: 'router.containerMonitor',
+              icon: 'vi-carbon:dashboard'
+            }
+          }
+        ]
       }
     ]
   }

@@ -735,22 +735,60 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         meta: {
           title: t('router.role')
         }
-      },
+      }
+    ]
+  },
+  {
+    path: '/teacher',
+    component: Layout,
+    redirect: '/teacher/home',
+    name: 'Teacher',
+    meta: {
+      title: 'router.teacher',
+      icon: 'vi-carbon:user-role',
+      alwaysShow: true
+    },
+    children: [
       {
-        path: 'student',
-        component: () => import('@/views/Authorization/Student/Student.vue'),
-        name: 'StudentManagement',
+        path: 'home',
+        component: () => import('@/views/Teacher/Home.vue'),
+        name: 'TeacherHome',
         meta: {
-          title: '学生管理'
+          title: 'router.teacherHome',
+          icon: 'vi-carbon:home',
+          noCache: true
         }
       },
       {
-        path: 'monitor',
-        component: () => import('@/views/Authorization/Monitor/Monitor.vue'),
-        name: 'ContainerMonitor',
+        path: 'students',
+        component: () => import('@/views/Teacher/Students/Student.vue'),
+        name: 'TeacherStudents',
         meta: {
-          title: '容器监控'
+          title: 'router.studentManagement',
+          icon: 'vi-carbon:user-multiple'
         }
+      },
+      {
+        path: 'containers',
+        component: getParentLayout(),
+        redirect: '/teacher/containers/monitor',
+        name: 'TeacherContainers',
+        meta: {
+          title: 'router.containerManagement',
+          icon: 'vi-carbon:container-software',
+          alwaysShow: true
+        },
+        children: [
+          {
+            path: 'monitor',
+            component: () => import('@/views/Teacher/Containers/Monitor.vue'),
+            name: 'ContainerMonitor',
+            meta: {
+              title: 'router.containerMonitor',
+              icon: 'vi-carbon:dashboard'
+            }
+          }
+        ]
       }
     ]
   },
