@@ -744,7 +744,7 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
     redirect: '/teacher/home',
     name: 'Teacher',
     meta: {
-      title: 'router.teacher',
+      title: t('router.teacher'),
       icon: 'vi-carbon:user-role',
       alwaysShow: true
     },
@@ -754,7 +754,7 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         component: () => import('@/views/Teacher/Home.vue'),
         name: 'TeacherHome',
         meta: {
-          title: 'router.teacherHome',
+          title: t('router.teacherHome'),
           icon: 'vi-carbon:home',
           noCache: true
         }
@@ -764,7 +764,7 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         component: () => import('@/views/Teacher/Students/Student.vue'),
         name: 'TeacherStudents',
         meta: {
-          title: 'router.studentManagement',
+          title: t('router.studentManagement'),
           icon: 'vi-carbon:user-multiple'
         }
       },
@@ -774,7 +774,7 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         redirect: '/teacher/containers/monitor',
         name: 'TeacherContainers',
         meta: {
-          title: 'router.containerManagement',
+          title: t('router.containerManagement'),
           icon: 'vi-carbon:container-software',
           alwaysShow: true
         },
@@ -784,7 +784,7 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
             component: () => import('@/views/Teacher/Containers/Monitor.vue'),
             name: 'ContainerMonitor',
             meta: {
-              title: 'router.containerMonitor',
+              title: t('router.containerMonitor'),
               icon: 'vi-carbon:dashboard'
             }
           }

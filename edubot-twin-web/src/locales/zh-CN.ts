@@ -189,7 +189,12 @@ export default {
     iAgree: '我同意',
     tree: 'Tree 树形控件',
     studentHome: '首页',
-    simulation: '机器人仿真'
+    simulation: '机器人仿真',
+    teacher: '教师版',
+    teacherHome: '首页',
+    studentManagement: '学生管理',
+    containerManagement: '容器管理',
+    containerMonitor: '容器监控'
   },
   permission: {
     hasPermission: '请设置操作权限值'

@@ -1,15 +1,14 @@
 # 当前任务状态
 
-## 当前阶段：前端体验问题修复（第四期补充）已完成 ✅
+## 当前阶段：教师的路由相关问题修复 ✅
 
 ## 已完成事项
-- 修复未立即连接必须刷新的问题：在 `Home.vue` 的 `waitForContainerRunning` 中增加 `testWebSocketConnection`，探测容器 WebSockets 服务是否真的握手成功后才放行。
-- 修复点击“退出返回”反应慢：`SimulationHeader.vue` 中的 `stopMyContainerApi()` 改为异步不等待 (`.catch()`)，让界面先立即退回首页。
-- 修复关闭标签页无拦截系统弹窗：`Simulation.vue` 的 `handleBeforeUnload` 已经增加了 `return event.returnValue` 支持各现代浏览器原生拦截弹窗标准。
-- 修复进入仿真页面并成功连接 gzweb 后 GzWebViewer 无法加载页面的 bug：通过调整 `useGzBridge.ts`，支持组件在全局 iframe 初始化前预先 `attachToContainer`，待 iframe 挂载后自动触发 `_startPositionSync()`。
+- 修复了 `edubot-twin-web/src/router/index.ts` 中 `Teacher` 及其下属路由缺失 `t()` 函数调用的问题，导致无法正确进行 i18n 多语言翻译并在菜单栏显示为 `router.teacher` 等字符。
+- 补充了 `src/locales/zh-CN.ts` 和 `src/locales/en.ts` 翻译文件中针对教师专属菜单项（`teacher`、`teacherHome`、`studentManagement`、`containerManagement`、`containerMonitor`）的本地化字符串配置。
+- 修正了 `edubot-twin-server/app/api/v1/endpoints/common/auth.py` 中 `get_user_routes` 接口关于 `teacher` 和 `admin` 角色的路由权限白名单，正确添加了 `/teacher` 及以下子路由的访问权限（以防开启了服务端动态路由时报 404）。
 
 ## 关键说明
-现代浏览器的反垃圾安全策略：如果页面没有任何人为交互（比如完全没点击直接点浏览器关闭X），弹窗将静默失败。这是不可更改的浏览器标准，仅能在用户操作过后触发拦截。
+如果在开发服出现热更新未即时生效（特别是涉及路由配置的改动）时，尝试清空缓存或重新刷新。
 
 ## 下一步（候选）
 - 学生端 Terminal 集成（xterm.js + WebSocket 反向代理）

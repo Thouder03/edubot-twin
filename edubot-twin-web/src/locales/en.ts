@@ -193,7 +193,12 @@ export default {
     iAgree: 'I agree',
     tree: 'Tree',
     studentHome: 'Home',
-    simulation: 'Robot Simulation'
+    simulation: 'Robot Simulation',
+    teacher: 'Teacher Portal',
+    teacherHome: 'Home',
+    studentManagement: 'Student Management',
+    containerManagement: 'Container Management',
+    containerMonitor: 'Container Monitor'
   },
   permission: {
     hasPermission: 'Please set the operation permission value'

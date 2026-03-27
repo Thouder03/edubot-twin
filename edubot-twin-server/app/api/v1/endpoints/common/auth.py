@@ -176,9 +176,11 @@ async def get_user_routes(role: str):
             "/student/home"
         ],
         "teacher": [
-            "/dashboard",
-            "/dashboard/analysis",
-            "/dashboard/workplace"
+            "/teacher",
+            "/teacher/home",
+            "/teacher/students",
+            "/teacher/containers",
+            "/teacher/containers/monitor"
         ],
         "admin": [
             "/dashboard",
@@ -197,7 +199,12 @@ async def get_user_routes(role: str):
             "/components/table/default-table",
             "/components/table/use-table",
             "/student",
-            "/student/home"
+            "/student/home",
+            "/teacher",
+            "/teacher/home",
+            "/teacher/students",
+            "/teacher/containers",
+            "/teacher/containers/monitor"
         ]
     }
     
