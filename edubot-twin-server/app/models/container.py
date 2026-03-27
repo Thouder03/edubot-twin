@@ -53,6 +53,10 @@ class SimContainer(Base):
         DateTime, nullable=True,
         comment="前端最后一次心跳时间，用于超时检测"
     )
+    purpose: Mapped[Optional[str]] = mapped_column(
+        String(200), nullable=True,
+        comment="容器用途说明（实验名称等）"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
