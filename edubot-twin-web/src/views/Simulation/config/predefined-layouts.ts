@@ -131,17 +131,63 @@ export const nestedLayout: LayoutConfig = {
   }
 }
 
+// 四面板全功能布局（ROS 3D + GzWeb + 键盘控制 + 终端）
+export const fullWorkbenchLayout: LayoutConfig = {
+  root: {
+    type: 'row',
+    content: [
+      {
+        type: 'column',
+        size: '50%',
+        content: [
+          {
+            type: 'component',
+            componentType: 'ROS3DViewer',
+            title: 'ROS 3D 视图'
+          },
+          {
+            type: 'component',
+            componentType: 'KeyboardControl',
+            title: '键盘控制',
+            size: '30%'
+          }
+        ]
+      },
+      {
+        type: 'column',
+        size: '50%',
+        content: [
+          {
+            type: 'component',
+            componentType: 'GzWebViewer',
+            title: 'Gazebo 仿真'
+          },
+          {
+            type: 'component',
+            componentType: 'ContainerTerminal',
+            title: '容器终端',
+            size: '30%'
+          }
+        ]
+      }
+    ]
+  }
+}
+
 // 所有预设布局
 export const layoutPresets = [
   { key: 'default', label: '左右等分', config: defaultLayout },
   { key: 'leftWide', label: '左侧宽', config: leftWideLayout },
   { key: 'rightWide', label: '右侧宽', config: rightWideLayout },
   { key: 'threeColumn', label: '三栏布局', config: threeColumnLayout },
-  { key: 'nested', label: '成组缩放演示', config: nestedLayout }
+  { key: 'nested', label: '成组缩放演示', config: nestedLayout },
+  { key: 'fullWorkbench', label: '全功能工作台', config: fullWorkbenchLayout }
 ] as const
 
 // 可动态添加的面板类型
 export const availablePanels = [
   { type: 'ROS3DViewer', label: 'ROS 3D 视图' },
-  { type: 'GzWebViewer', label: 'Gazebo 仿真' }
+  { type: 'GzWebViewer', label: 'Gazebo 仿真' },
+  { type: 'KeyboardControl', label: '键盘控制' },
+  { type: 'ContainerTerminal', label: '容器终端' }
 ] as const

@@ -146,7 +146,8 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
         // 选项写法
         '/api': {
           target: 'http://127.0.0.1:8000',
-          changeOrigin: true
+          changeOrigin: true,
+          ws: true
           // rewrite: (path) => path.replace(/^\/api/, '') // 移除此行以透传路径
         }
       },

@@ -32,6 +32,7 @@ import {
   startMyContainerApi,
   stopOnExitApi
 } from '@/api/container'
+import type { ContainerStatus } from '@/api/container/types'
 import { useUserStore } from '@/store/modules/user'
 
 // ---------- 路由 ----------
@@ -53,6 +54,10 @@ function reinitGzBridge(newUrl: string) {
 // ---------- 容器 ROS URL provide（供 ROS3DViewer 自动注入）----------
 const containerRosUrl = ref<string | null>(null)
 provide('containerRosUrl', readonly(containerRosUrl))
+
+// ---------- 容器状态 provide（供各面板联动：键盘控制、终端等）----------
+const containerStatus = ref<ContainerStatus | null>(null)
+provide('containerStatus', readonly(containerStatus))
 
 // ---------- 布局持久化 ----------
 const LAYOUT_STORAGE_KEY = 'simulation-layout-config'
@@ -137,6 +142,11 @@ async function sendHeartbeat() {
   try {
     const res = await heartbeatApi()
     const status = res?.data?.status
+
+    if (status) {
+      // 始终同步最新状态给子面板
+      containerStatus.value = status
+    }
 
     if (status && status !== 'running') {
       // 容器已不在运行 → 触发重新激活弹窗
@@ -310,8 +320,14 @@ onMounted(async () => {
   // ── 页面级 GzWeb 通信初始化 ──
   try {
     const res = await getMyContainerApi()
-    const gzUrl = res?.data?.gzbridge_url
-    const rosUrl = res?.data?.rosbridge_url
+    const data = res?.data
+    const gzUrl = data?.gzbridge_url
+    const rosUrl = data?.rosbridge_url
+
+    // 同步初始容器状态
+    if (data?.status) {
+      containerStatus.value = data.status
+    }
 
     if (gzUrl) {
       console.info('[Simulation] 从 API 获取 gzbridge URL:', gzUrl)

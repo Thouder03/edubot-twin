@@ -1,15 +1,9 @@
-/**
- * 面板注册表
- *
- * 统一管理所有面板组件和设置构建器。
- * 扩展新面板只需:
- * 1. 创建 panels/XxxPanel/index.vue + settings.ts
- * 2. 在此文件 import 并注册
- */
 import { markRaw, type Component as VueComponent } from 'vue'
 
 import ROS3DViewer from './ROS3DViewer/index.vue'
 import GzWebViewer from './GzWebViewer/index.vue'
+import KeyboardControl from './KeyboardControl/index.vue'
+import ContainerTerminal from './ContainerTerminal/index.vue'
 
 export interface PanelRegistryEntry {
   /** Vue 组件 */
@@ -27,6 +21,14 @@ export const panelRegistry: Record<string, PanelRegistryEntry> = {
   GzWebViewer: {
     component: markRaw(GzWebViewer),
     label: 'Gazebo 仿真'
+  },
+  KeyboardControl: {
+    component: markRaw(KeyboardControl),
+    label: '键盘控制'
+  },
+  ContainerTerminal: {
+    component: markRaw(ContainerTerminal),
+    label: '容器终端'
   }
 }
 
