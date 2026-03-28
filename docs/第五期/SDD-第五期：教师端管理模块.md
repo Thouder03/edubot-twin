@@ -248,8 +248,7 @@ edubot-twin-web/src/views/Teacher/
 ├── Students/
 │   ├── Students.vue            # 学生管理主页面（内嵌 Table与Search）
 │   └── components/
-│       ├── Write.vue           # 学生表单（新增/编辑，替代原 Form 命名）
-│       └── Detail.vue          # 学生详情
+│       └── Write.vue           # 学生表单（新增/编辑，替代原 Form 命名）
 └── Containers/
     ├── Monitor.vue             # 容器监控主页面（内嵌 Table）
     └── components/
