@@ -1,10 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, or_
 from sqlalchemy.exc import IntegrityError
 from app.models.student import Student
 from app.schemas.student import StudentCreate, StudentUpdate
 import bcrypt
-from typing import Optional
+from typing import Optional, Tuple, List
 
 
 def hash_password(password: str) -> str:
@@ -18,23 +18,38 @@ def hash_password(password: str) -> str:
 async def get_students(
     db: AsyncSession,
     skip: int = 0,
-    limit: int = 100
-) -> list[Student]:
+    limit: int = 100,
+    keyword: Optional[str] = None,
+) -> Tuple[List[Student], int]:
     """
-    获取学生列表(分页)
+    获取学生列表(分页 + 可选关键词过滤)
     
     Args:
         db: 数据库会话
         skip: 跳过的记录数
         limit: 返回的最大记录数
+        keyword: 可选，按 username 或 real_name 模糊搜索
     
     Returns:
-        学生列表
+        (学生列表, 总数)
     """
-    result = await db.execute(
-        select(Student).offset(skip).limit(limit)
-    )
-    return list(result.scalars().all())
+    base_query = select(Student)
+    count_query = select(func.count()).select_from(Student)
+
+    if keyword:
+        like_expr = f"%{keyword}%"
+        filter_cond = or_(
+            Student.username.like(like_expr),
+            Student.real_name.like(like_expr),
+        )
+        base_query = base_query.where(filter_cond)
+        count_query = count_query.where(filter_cond)
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar_one()
+
+    result = await db.execute(base_query.offset(skip).limit(limit))
+    return list(result.scalars().all()), total
 
 
 async def get_student(db: AsyncSession, student_id: int) -> Optional[Student]:

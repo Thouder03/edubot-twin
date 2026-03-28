@@ -1,6 +1,6 @@
 import os
 from pydantic import BaseModel, computed_field, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 from app.models.container import ContainerStatus
@@ -76,6 +76,32 @@ class ContainerStatusResponse(BaseModel):
             gzbridge_url=gzbridge_url,
             rosbridge_url=rosbridge_url,
         )
+
+
+class ContainerMonitorInfo(BaseModel):
+    """容器实时监控信息（教师监控端专用）"""
+    id: int
+    container_id: Optional[str] = None
+    student_id: int
+    student_name: str
+    student_username: str
+    purpose: str = ""
+    status: str
+    image_name: str
+    cpu_percent: float = 0.0
+    memory_mb: int = 0
+    memory_limit_mb: int = 2048
+    uptime_seconds: int = 0
+    created_at: datetime
+    last_heartbeat_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ContainerMonitorListResponse(BaseModel):
+    """容器监控列表响应"""
+    total: int
+    list: List[ContainerMonitorInfo]
 
 
 class StopOnExitRequest(BaseModel):

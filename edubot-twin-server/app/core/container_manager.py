@@ -7,6 +7,7 @@
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Optional
 
 from docker.errors import NotFound, APIError
@@ -158,6 +159,69 @@ async def inspect_container(container_id: str) -> Optional[str]:
             container.reload()
             return container.status
         except NotFound:
+            return None
+
+    return await _run_in_executor(_sync)
+
+
+# ─── 容器性能数据获取 ─────────────────────────────────────────────
+
+@dataclass
+class ContainerStats:
+    """容器实时性能数据"""
+    cpu_percent: float
+    memory_usage: int    # bytes
+    memory_limit: int    # bytes
+
+
+async def get_container_stats(container_id: str) -> Optional[ContainerStats]:
+    """
+    获取容器实时 CPU / 内存性能数据
+
+    使用 docker-py 的 stats(stream=False) 获取单次快照。
+    CPU 百分比使用 Docker 官方算法计算：
+        cpu_delta = cpu_total - pre_cpu_total
+        system_delta = system_cpu - pre_system_cpu
+        cpu_percent = (cpu_delta / system_delta) * num_cpus * 100
+
+    Returns:
+        ContainerStats 实例，容器不存在或非 running 时返回 None
+    """
+    def _sync() -> Optional[ContainerStats]:
+        client = get_docker_client()
+        try:
+            container = client.containers.get(container_id)
+            raw = container.stats(stream=False)
+
+            # CPU 计算
+            cpu_delta = (
+                raw["cpu_stats"]["cpu_usage"]["total_usage"]
+                - raw["precpu_stats"]["cpu_usage"]["total_usage"]
+            )
+            system_delta = (
+                raw["cpu_stats"].get("system_cpu_usage", 0)
+                - raw["precpu_stats"].get("system_cpu_usage", 0)
+            )
+            num_cpus = raw["cpu_stats"].get("online_cpus") or len(
+                raw["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])
+            )
+            if system_delta > 0 and cpu_delta >= 0:
+                cpu_percent = (cpu_delta / system_delta) * num_cpus * 100.0
+            else:
+                cpu_percent = 0.0
+
+            # 内存
+            mem_stats = raw.get("memory_stats", {})
+            memory_usage = mem_stats.get("usage", 0)
+            memory_limit = mem_stats.get("limit", 2 * 1024 ** 3)  # 默认 2GB
+
+            return ContainerStats(
+                cpu_percent=round(cpu_percent, 1),
+                memory_usage=memory_usage,
+                memory_limit=memory_limit,
+            )
+        except (NotFound, KeyError, ZeroDivisionError) as e:
+            logger.debug(f"get_container_stats({container_id}) 异常: {e}")
             return None
 
     return await _run_in_executor(_sync)

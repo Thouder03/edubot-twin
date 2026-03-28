@@ -3,7 +3,7 @@ import { Form, FormSchema } from '@/components/Form'
 import { useForm } from '@/hooks/web/useForm'
 import { PropType, reactive, watch, ref } from 'vue'
 import { useValidator } from '@/hooks/web/useValidator'
-import { createStudentApi, updateStudentApi } from '@/api/student'
+import { createStudentApi, updateStudentApi } from '@/api/teacher'
 import { ElButton, ElMessage } from 'element-plus'
 
 const { required } = useValidator()

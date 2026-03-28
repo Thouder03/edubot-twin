@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 
 class StudentBase(BaseModel):
@@ -32,3 +32,9 @@ class StudentResponse(StudentBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class StudentListResponse(BaseModel):
+    """学生列表分页响应（与 SDD 对齐）"""
+    total: int
+    list: List[StudentResponse]

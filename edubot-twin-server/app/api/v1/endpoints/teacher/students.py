@@ -1,14 +1,17 @@
 """
 教师端 - 学生管理 API
 """
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.core.security import get_current_teacher
-from app.core.logger import log_container_event
 from app.schemas.common import ApiResponse
-from app.schemas.student import StudentCreate, StudentUpdate, StudentResponse
+from app.schemas.student import (
+    StudentCreate, StudentUpdate, StudentResponse, StudentListResponse
+)
 from app.crud import student as student_crud
 from app.crud import container as container_crud
 from app.core.docker_client import get_docker_client
@@ -18,18 +21,22 @@ router = APIRouter()
 
 @router.get(
     "",
-    response_model=ApiResponse[list[StudentResponse]],
+    response_model=ApiResponse[StudentListResponse],
     summary="获取学生列表"
 )
 async def list_students(
-    skip: int = 0,
-    limit: int = 100,
+    pageIndex: int = Query(default=1, ge=1, description="页码"),
+    pageSize: int = Query(default=20, ge=1, le=200, description="每页数量"),
+    keyword: Optional[str] = Query(default=None, description="搜索关键词（用户名或姓名）"),
     db: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_teacher)
 ):
-    """教师查看所有学生"""
-    students = await student_crud.get_students(db, skip=skip, limit=limit)
-    return ApiResponse(data=students)
+    """教师查看所有学生（支持分页和关键词搜索）"""
+    skip = (pageIndex - 1) * pageSize
+    students, total = await student_crud.get_students(
+        db, skip=skip, limit=pageSize, keyword=keyword
+    )
+    return ApiResponse(data=StudentListResponse(total=total, list=students))
 
 
 @router.get(
