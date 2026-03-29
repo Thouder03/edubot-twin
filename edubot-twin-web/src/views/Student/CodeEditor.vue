@@ -8,7 +8,6 @@
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  ElIcon,
   ElButton,
   ElTooltip,
   ElDrawer,
@@ -21,6 +20,7 @@ import {
 import WorkspacePanel from '@/views/Simulation/panels/WorkspacePanel/index.vue'
 import { useWorkspaceSettings } from '@/composables/useWorkspaceSettings'
 import { useDesign } from '@/hooks/web/useDesign'
+import { Icon } from '@/components/Icon'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('code-editor-page')
@@ -40,7 +40,7 @@ const initialPath = route.query.path as string | undefined
     <!-- 顶部标题栏 -->
     <div :class="`${prefixCls}__topbar`">
       <div :class="`${prefixCls}__topbar-title`">
-        <el-icon><i class="vi-carbon:code"></i></el-icon>
+        <Icon icon="vi-carbon:code" />
         <span>代码编辑器</span>
         <span v-if="initialPath" :class="`${prefixCls}__topbar-path`">
           {{ initialPath }}
@@ -49,7 +49,7 @@ const initialPath = route.query.path as string | undefined
       <div :class="`${prefixCls}__topbar-actions`">
         <el-tooltip content="编辑器设置" placement="bottom">
           <el-button type="info" text size="small" @click="showSettings = true">
-            <el-icon><i class="vi-ep:setting"></i></el-icon>
+            <Icon icon="vi-ep:setting" />
             设置
           </el-button>
         </el-tooltip>

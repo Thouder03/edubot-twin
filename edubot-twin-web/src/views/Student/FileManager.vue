@@ -7,7 +7,6 @@
  */
 import { ref } from 'vue'
 import {
-  ElIcon,
   ElButton,
   ElTooltip,
   ElDrawer,
@@ -20,6 +19,7 @@ import {
 import WorkspacePanel from '@/views/Simulation/panels/WorkspacePanel/index.vue'
 import { useWorkspaceSettings } from '@/composables/useWorkspaceSettings'
 import { useDesign } from '@/hooks/web/useDesign'
+import { Icon } from '@/components/Icon'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('file-manager-page')
@@ -35,18 +35,13 @@ const showSettings = ref(false)
     <!-- 顶部标题栏 -->
     <div :class="`${prefixCls}__topbar`">
       <div :class="`${prefixCls}__topbar-title`">
-        <el-icon><i class="vi-carbon:folder-open" /></el-icon>
+        <Icon icon="vi-carbon:folder-open" />
         <span>文件管理</span>
       </div>
       <div :class="`${prefixCls}__topbar-actions`">
         <el-tooltip content="编辑器设置" placement="bottom">
-          <el-button
-            type="info"
-            text
-            size="small"
-            @click="showSettings = true"
-          >
-            <el-icon><i class="vi-ep:setting" /></el-icon>
+          <el-button type="info" text size="small" @click="showSettings = true">
+            <Icon icon="vi-ep:setting" />
             设置
           </el-button>
         </el-tooltip>
@@ -93,11 +88,7 @@ const showSettings = ref(false)
         <!-- 自动换行 -->
         <div :class="`${prefixCls}__setting-item`">
           <label>自动换行</label>
-          <el-switch
-            v-model="settings.wordWrap"
-            active-value="on"
-            inactive-value="off"
-          />
+          <el-switch v-model="settings.wordWrap" active-value="on" inactive-value="off" />
         </div>
 
         <!-- 显示小地图 -->
@@ -119,12 +110,7 @@ const showSettings = ref(false)
         <el-divider />
 
         <!-- 重置 -->
-        <el-button
-          size="small"
-          @click="resetSettings"
-        >
-          恢复默认设置
-        </el-button>
+        <el-button size="small" @click="resetSettings"> 恢复默认设置 </el-button>
       </div>
     </el-drawer>
   </div>

@@ -7,22 +7,25 @@
  *
  * 可作为仿真页面 Golden Layout 面板，也可内嵌到独立页面。
  */
-import { onMounted, ref, onUnmounted } from 'vue'
-import { ElMessage, ElIcon, ElButton, ElTooltip } from 'element-plus'
+import { onMounted, ref, onUnmounted, watch } from 'vue'
+import { ElMessage, ElButton, ElTooltip } from 'element-plus'
 import FileTree from './FileTree.vue'
 import MonacoEditor from '@/components/Monaco/MonacoEditor.vue'
 import { useWorkspace } from './composables/useWorkspace'
-import { useWorkspaceSettings } from '@/composables/useWorkspaceSettings'
+import { useWorkspaceSettings, type WorkspaceSettings } from '@/composables/useWorkspaceSettings'
 import { useDesign } from '@/hooks/web/useDesign'
+import { Icon } from '@/components/Icon'
+import { usePanelState } from '@/views/Simulation/stores/panelState'
+import { buildSettingsTree, createActionHandler } from './settings'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('workspace-panel')
 
-// ─── Props（面板集成时可传入 containerId 显示状态）
+// ─── Props（面板集成时可传入 panelId 显示状态）
 interface Props {
-  containerId?: string
+  panelId?: string
 }
-defineProps<Props>()
+const props = defineProps<Props>()
 
 // ─── Composables
 const {
@@ -41,10 +44,32 @@ const {
   handleMkdir
 } = useWorkspace()
 
-const { settings } = useWorkspaceSettings()
+const { settings, resetSettings } = useWorkspaceSettings()
+const { registerPanel, unregisterPanel, updateSettingsTree } = usePanelState()
+
+// ─── Settings Tree
+function saveSettings(newConfig: Partial<WorkspaceSettings>) {
+  settings.value = { ...settings.value, ...newConfig }
+}
+
+function refreshSettingsTree() {
+  if (!props.panelId) return
+  updateSettingsTree(props.panelId, {
+    actionHandler: createActionHandler(saveSettings, resetSettings),
+    nodes: buildSettingsTree(settings.value)
+  })
+}
+
+watch(
+  () => settings.value,
+  () => {
+    if (props.panelId) refreshSettingsTree()
+  },
+  { deep: true }
+)
 
 // ─── 可拖拽分隔线
-const splitRatio = ref(25)  // 左侧宽度百分比
+const splitRatio = ref(25) // 左侧宽度百分比
 const isResizing = ref(false)
 const panelRef = ref<HTMLDivElement>()
 
@@ -98,22 +123,26 @@ function formatCode() {
 
 // ─── 生命周期
 onMounted(() => {
+  if (props.panelId) {
+    registerPanel(props.panelId, 'WorkspacePanel')
+    refreshSettingsTree()
+  }
   loadTree()
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mouseup', stopResize)
 })
 
 onUnmounted(() => {
+  if (props.panelId) {
+    unregisterPanel(props.panelId)
+  }
   document.removeEventListener('mousemove', onMouseMove)
   document.removeEventListener('mouseup', stopResize)
 })
 </script>
 
 <template>
-  <div
-    ref="panelRef"
-    :class="[prefixCls, isResizing && `${prefixCls}--resizing`]"
-  >
+  <div ref="panelRef" :class="[prefixCls, isResizing && `${prefixCls}--resizing`]">
     <!-- 隐藏上传 input -->
     <input
       ref="uploaderRef"
@@ -126,32 +155,25 @@ onUnmounted(() => {
     <!-- 顶部工具栏 -->
     <div :class="`${prefixCls}__header`">
       <div :class="`${prefixCls}__header-left`">
-        <el-icon><i class="vi-carbon:folder" /></el-icon>
+        <Icon icon="vi-carbon:folder" />
         <span>{{ currentFile ? currentFile.name : '文件管理' }}</span>
-        <span
-          v-if="currentFile?.isDirty"
-          :class="`${prefixCls}__dirty`"
-          title="有未保存修改"
-        >●</span>
+        <span v-if="currentFile?.isDirty" :class="`${prefixCls}__dirty`" title="有未保存修改"
+          >●</span
+        >
       </div>
 
       <div :class="`${prefixCls}__header-right`">
         <!-- 上传 -->
         <el-tooltip content="上传文件" placement="top">
           <el-button text size="small" @click="triggerUpload">
-            <el-icon><i class="vi-ep:upload" /></el-icon>
+            <Icon icon="vi-ep:upload" />
           </el-button>
         </el-tooltip>
 
         <!-- 格式化 -->
         <el-tooltip content="格式化代码" placement="top">
-          <el-button
-            text
-            size="small"
-            :disabled="!currentFile"
-            @click="formatCode"
-          >
-            <el-icon><i class="vi-carbon:code" /></el-icon>
+          <el-button text size="small" :disabled="!currentFile" @click="formatCode">
+            <Icon icon="vi-carbon:code" />
           </el-button>
         </el-tooltip>
 
@@ -163,7 +185,7 @@ onUnmounted(() => {
           :disabled="!currentFile || !currentFile.isDirty"
           @click="saveCurrentFile()"
         >
-          <el-icon><i class="vi-ep:check" /></el-icon>
+          <Icon icon="vi-ep:check" />
           保存
         </el-button>
       </div>
@@ -172,10 +194,7 @@ onUnmounted(() => {
     <!-- 主体：左树 + 分隔线 + 右编辑器 -->
     <div :class="`${prefixCls}__body`">
       <!-- 左侧文件树 -->
-      <div
-        :class="`${prefixCls}__left`"
-        :style="{ width: `${splitRatio}%` }"
-      >
+      <div :class="`${prefixCls}__left`" :style="{ width: `${splitRatio}%` }">
         <FileTree
           :tree-data="treeData"
           :loading="loading"
@@ -188,16 +207,10 @@ onUnmounted(() => {
       </div>
 
       <!-- 分隔拖拽线 -->
-      <div
-        :class="`${prefixCls}__divider`"
-        @mousedown="startResize"
-      />
+      <div :class="`${prefixCls}__divider`" @mousedown="startResize"></div>
 
       <!-- 右侧 Monaco 编辑器 -->
-      <div
-        :class="`${prefixCls}__right`"
-        :style="{ width: `${100 - splitRatio}%` }"
-      >
+      <div :class="`${prefixCls}__right`" :style="{ width: `${100 - splitRatio}%` }">
         <MonacoEditor
           ref="monacoRef"
           :model-value="currentFile?.content ?? ''"

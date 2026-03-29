@@ -133,7 +133,7 @@ export function useWorkspace() {
 
   // ─── 内容变化（标记为脏）
   function onContentChange(val: string) {
-    if (currentFile.value) {
+    if (currentFile.value && currentFile.value.content !== val) {
       currentFile.value.content = val
       currentFile.value.isDirty = true
     }

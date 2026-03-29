@@ -36,7 +36,8 @@ const isOpen = computed(() => panelState.state.selectedPanelId !== null)
 const panelTypeLabel = computed(() => {
   const map: Record<string, string> = {
     ROS3DViewer: 'ROS 3D 视图',
-    GzWebViewer: 'Gazebo 仿真'
+    GzWebViewer: 'Gazebo 仿真',
+    WorkspacePanel: '代码编辑'
   }
   return (
     map[panelState.selectedPanelType.value ?? ''] ??

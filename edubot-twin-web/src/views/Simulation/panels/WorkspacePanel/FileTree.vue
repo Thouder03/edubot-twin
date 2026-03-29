@@ -12,6 +12,7 @@ import { ref } from 'vue'
 import { ElTree, ElIcon, ElTooltip, ElDialog, ElInput, ElButton, ElMessage } from 'element-plus'
 import type { TreeNode } from '@/api/files/types'
 import { useDesign } from '@/hooks/web/useDesign'
+import { Icon } from '@/components/Icon'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('file-tree')
@@ -105,10 +106,48 @@ function confirmMkdir() {
 
 // ─── 拖拽上传
 const isDragOver = ref(false)
+let lastDragDebugAt = 0
+
+function debugDragLayer(e: DragEvent, phase: 'dragover' | 'drop') {
+  if (!import.meta.env.DEV) return
+
+  const now = Date.now()
+  // dragover 高频触发，做简单节流，避免控制台刷屏
+  if (phase === 'dragover' && now - lastDragDebugAt < 600) return
+  lastDragDebugAt = now
+
+  const root = e.currentTarget as HTMLElement | null
+  if (!root) return
+
+  const ancestry: Array<Record<string, string>> = []
+  let node: HTMLElement | null = root
+  for (let i = 0; i < 6 && node; i += 1) {
+    const style = window.getComputedStyle(node)
+    ancestry.push({
+      className: node.className || '(no-class)',
+      position: style.position,
+      zIndex: style.zIndex,
+      overflow: style.overflow,
+      transform: style.transform !== 'none' ? style.transform : 'none'
+    })
+    node = node.parentElement
+  }
+
+  const style = window.getComputedStyle(root)
+  console.groupCollapsed(`[FileTree][${phase}] drag-layer debug`)
+  console.log('isDragOver:', isDragOver.value)
+  console.log('outline:', style.outline)
+  console.log('outlineOffset:', style.outlineOffset)
+  console.log('rootRect:', root.getBoundingClientRect())
+  console.log('inStandalonePage:', Boolean(root.closest('.v-file-manager-page, .v-code-editor-page')))
+  console.table(ancestry)
+  console.groupEnd()
+}
 
 function onDragOver(e: DragEvent) {
   e.preventDefault()
   isDragOver.value = true
+  debugDragLayer(e, 'dragover')
 }
 
 function onDragLeave() {
@@ -118,6 +157,7 @@ function onDragLeave() {
 function onDrop(e: DragEvent, targetNode?: TreeNode) {
   e.preventDefault()
   isDragOver.value = false
+  debugDragLayer(e, 'drop')
   const files = Array.from(e.dataTransfer?.files ?? [])
   if (!files.length) return
 
@@ -156,19 +196,19 @@ function onContextDeleteClick() {
       <span :class="`${prefixCls}__title`">WORKSPACE</span>
       <el-tooltip content="新建根目录" placement="top">
         <el-icon :class="`${prefixCls}__action`" @click.stop="openMkdirDialog('.')">
-          <i class="vi-ep:folder-add"></i>
+          <Icon icon="vi-ep:folder-add" />
         </el-icon>
       </el-tooltip>
     </div>
 
     <!-- 加载态 -->
     <div v-if="loading" :class="`${prefixCls}__loading`">
-      <el-icon class="is-loading"><i class="vi-ep:loading"></i></el-icon>
+      <el-icon class="is-loading"><Icon icon="vi-ep:loading" /></el-icon>
     </div>
 
     <!-- 空态 -->
     <div v-else-if="!treeData.length" :class="`${prefixCls}__empty`">
-      <el-icon :size="32"><i class="vi-carbon:folder"></i></el-icon>
+      <el-icon :size="32"><Icon icon="vi-carbon:folder" /></el-icon>
       <p>工作区为空</p>
       <p class="hint">拖拽文件到此处上传</p>
     </div>
@@ -190,11 +230,11 @@ function onContextDeleteClick() {
         <div :class="`${prefixCls}__node`" @drop.stop="onDrop($event, data)">
           <!-- 图标 -->
           <el-icon :class="`${prefixCls}__node-icon`">
-            <i
+            <Icon
               v-if="data.type === 'directory'"
-              :class="treeNode.expanded ? 'vi-ep:folder-opened' : 'vi-ep:folder'"
-            ></i>
-            <i v-else :class="getFileIcon(data.extension)"></i>
+              :icon="treeNode.expanded ? 'vi-ep:folder-opened' : 'vi-ep:folder'"
+            />
+            <Icon v-else :icon="getFileIcon(data.extension)" />
           </el-icon>
 
           <!-- 文件名 -->
@@ -204,7 +244,7 @@ function onContextDeleteClick() {
           <div :class="`${prefixCls}__node-actions`">
             <el-tooltip v-if="data.type === 'directory'" content="新建子目录" placement="top">
               <el-icon :size="13" @click.stop="openMkdirDialog(data.path)">
-                <i class="vi-ep:folder-add"></i>
+                <Icon icon="vi-ep:folder-add" />
               </el-icon>
             </el-tooltip>
             <el-tooltip content="删除" placement="top">
@@ -213,7 +253,7 @@ function onContextDeleteClick() {
                 class="danger"
                 @click.stop="emit('delete', data.path, data.label)"
               >
-                <i class="vi-ep:delete"></i>
+                <Icon icon="vi-ep:delete" />
               </el-icon>
             </el-tooltip>
           </div>
@@ -235,14 +275,14 @@ function onContextDeleteClick() {
             :class="`${prefixCls}__context-item`"
             @click="openMkdirDialog(contextMenu.node!.path)"
           >
-            <el-icon><i class="vi-ep:folder-add"></i></el-icon>
+            <el-icon><Icon icon="vi-ep:folder-add" /></el-icon>
             新建子目录
           </div>
           <div
             :class="`${prefixCls}__context-item ${prefixCls}__context-item--danger`"
             @click="onContextDeleteClick"
           >
-            <el-icon><i class="vi-ep:delete"></i></el-icon>
+            <el-icon><Icon icon="vi-ep:delete" /></el-icon>
             删除
           </div>
         </div>
@@ -271,11 +311,19 @@ function onContextDeleteClick() {
   background: var(--el-bg-color-page);
   border-right: 1px solid var(--el-border-color);
   position: relative;
-  transition: outline 0.2s;
+  isolation: isolate;
+  transition: box-shadow 0.2s;
 
   &--dragover {
-    outline: 2px dashed var(--el-color-primary);
-    outline-offset: -4px;
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border: 2px dashed var(--el-color-primary);
+      border-radius: 6px;
+      pointer-events: none;
+      z-index: 20;
+    }
   }
 
   &__toolbar {
