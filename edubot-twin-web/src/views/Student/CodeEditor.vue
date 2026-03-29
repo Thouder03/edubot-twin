@@ -40,24 +40,16 @@ const initialPath = route.query.path as string | undefined
     <!-- 顶部标题栏 -->
     <div :class="`${prefixCls}__topbar`">
       <div :class="`${prefixCls}__topbar-title`">
-        <el-icon><i class="vi-carbon:code" /></el-icon>
+        <el-icon><i class="vi-carbon:code"></i></el-icon>
         <span>代码编辑器</span>
-        <span
-          v-if="initialPath"
-          :class="`${prefixCls}__topbar-path`"
-        >
+        <span v-if="initialPath" :class="`${prefixCls}__topbar-path`">
           {{ initialPath }}
         </span>
       </div>
       <div :class="`${prefixCls}__topbar-actions`">
         <el-tooltip content="编辑器设置" placement="bottom">
-          <el-button
-            type="info"
-            text
-            size="small"
-            @click="showSettings = true"
-          >
-            <el-icon><i class="vi-ep:setting" /></el-icon>
+          <el-button type="info" text size="small" @click="showSettings = true">
+            <el-icon><i class="vi-ep:setting"></i></el-icon>
             设置
           </el-button>
         </el-tooltip>
@@ -101,11 +93,7 @@ const initialPath = route.query.path as string | undefined
 
         <div :class="`${prefixCls}__setting-item`">
           <label>自动换行</label>
-          <el-switch
-            v-model="settings.wordWrap"
-            active-value="on"
-            inactive-value="off"
-          />
+          <el-switch v-model="settings.wordWrap" active-value="on" inactive-value="off" />
         </div>
 
         <div :class="`${prefixCls}__setting-item`">
