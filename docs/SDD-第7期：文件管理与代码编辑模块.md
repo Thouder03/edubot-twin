@@ -546,9 +546,10 @@ END FUNCTION
 |------|---------|--------|
 | 后端文件管理 API 开发 | 1 天 | P0 |
 | 容器 Volume 挂载配置 | 0.5 天 | P0 |
-| 前端 Monaco Editor 集成 | 1 天 | P0 |
+| `useWorkspaceSettings` composable 开发 | 0.5 天 | P0 |
+| 前端 Monaco Editor 集成（CDN 方案） | 1 天 | P0 |
 | WorkspacePanel 组件开发 | 1 天 | P0 |
-| 独立页面开发 | 0.5 天 | P1 |
+| 独立页面开发（含设置面板） | 0.5 天 | P1 |
 | 路由配置与权限控制 | 0.5 天 | P1 |
 | 安全测试与优化 | 0.5 天 | P1 |
 
@@ -573,7 +574,7 @@ END FUNCTION
 
 | 风险 | 影响 | 应对措施 |
 |------|------|---------|
-| Monaco Editor 体积大（2MB+） | 首次加载慢 | 使用 CDN + 懒加载 |
+| Monaco Editor 体积大（2MB+） | 首次加载慢 | 使用 CDN + 懒加载（见第十一节离线备用方案） |
 | 文件编码问题（GBK/UTF-8） | 乱码 | 自动检测编码，提供手动切换 |
 | 并发写入冲突 | 文件损坏 | 文件锁机制（可选） |
 | Volume 挂载权限问题 | 容器内无法写入 | 容器内使用 UID 1000 用户 |
@@ -581,7 +582,119 @@ END FUNCTION
 
 ---
 
-## 十一、后续优化方向
+## 十一、Monaco Editor 方案详解
+
+### 11.1 当前采用方案（CDN 懒加载）
+
+**安装依赖**（使用 pnpm）：
+```bash
+pnpm add @monaco-editor/loader
+```
+
+**初始化代码**：
+```typescript
+import loader from '@monaco-editor/loader'
+
+// 指定 CDN（可切换为国内镜像）
+loader.config({
+  paths: {
+    vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs'
+  }
+})
+
+// 在 onMounted 中异步加载
+const monaco = await loader.init()
+const editor = monaco.editor.create(container, { ...options })
+```
+
+**优点**：
+- 不增加 bundle 体积（Monaco 约 2MB）
+- 首次加载后浏览器缓存，后续秒开
+
+**缺点**：
+- 需要公网访问（或内网 CDN）
+
+### 11.2 离线支持备用方案
+
+> 如部署环境无公网访问，切换至本方案。
+
+**安装依赖**：
+```bash
+pnpm add monaco-editor
+pnpm add -D vite-plugin-monaco-editor
+```
+
+**vite.config.ts 配置**：
+```typescript
+import monacoEditorPlugin from 'vite-plugin-monaco-editor'
+
+export default defineConfig({
+  plugins: [
+    monacoEditorPlugin({
+      languageWorkers: ['editorWorkerService', 'python', 'json', 'yaml', 'xml', 'shell']
+    })
+  ]
+})
+```
+
+**组件中使用**：
+```typescript
+import * as monaco from 'monaco-editor'
+// 直接调用 monaco.editor.create()，无需 loader
+```
+
+**切换成本**：仅修改 `MonacoEditor.vue` 的导入方式 + `vite.config.ts` 添加插件，其他代码不变。
+
+---
+
+## 十二、独立页面设置面板设计
+
+### 12.1 设置共享机制
+
+`useWorkspaceSettings` composable 统一管理所有设置状态：
+
+```typescript
+// src/composables/useWorkspaceSettings.ts
+const SETTINGS_KEY = 'workspace_settings'
+
+export function useWorkspaceSettings() {
+  const settings = useStorage(SETTINGS_KEY, {
+    fontSize: 14,
+    theme: 'vs-dark' as 'vs-dark' | 'vs' | 'hc-black',
+    wordWrap: 'on' as 'on' | 'off',
+    minimap: true,
+    tabSize: 4,
+    autoSave: false
+  })
+  
+  return { settings }
+}
+```
+
+**持久化 Key**: `workspace_settings`（localStorage）  
+**适用范围**: WorkspacePanel（仿真页面面板）、FileManager.vue、CodeEditor.vue 三者共享同一配置。
+
+### 12.2 独立页面设置入口 UI
+
+```
+┌─────────────────────────────────────────────────────┐
+│  文件管理                              [⚙️ 设置]    │
+├──────────────┬──────────────────────────────────────┤
+│  文件树       │  Monaco Editor                      │
+│              │                                      │
+└──────────────┴──────────────────────────────────────┘
+```
+
+点击「⚙️ 设置」按钮 → 右侧抽屉弹出，包含：
+- 字体大小（10-20px）
+- 编辑器主题（Dark / Light / High Contrast）
+- 代码换行（开启/关闭）
+- 显示小地图（开启/关闭）
+- Tab 大小（2/4 空格）
+
+---
+
+## 后续优化方向
 
 1. **版本控制**: 集成 Git，支持提交、回滚
 2. **协作编辑**: 多人同时编辑同一文件（WebSocket 同步）
