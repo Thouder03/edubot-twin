@@ -46,7 +46,7 @@ const {
 // 兼容老逻辑的几个计算属性
 const currentFile = computed(() => {
   if (!activePath.value) return null
-  const fileData = fileCache.value.get(activePath.value)
+  const fileData = fileCache[activePath.value]
   return fileData ? fileData : null
 })
 const saving = ref(false)
@@ -162,7 +162,7 @@ function handleKeyDown(e: KeyboardEvent) {
 
 // ─── 脏数据拦截 (Dirty Data Guard)
 function hasDirtyFiles() {
-  for (const dirty of workspace.dirtyMap.value.values()) {
+  for (const dirty of Object.values(workspace.dirtyMap)) {
     if (dirty) return true
   }
   return false
@@ -239,9 +239,7 @@ onUnmounted(() => {
         <Icon icon="vi-carbon:folder" />
         <span>{{ currentFile ? currentFile.name : '文件管理' }}</span>
         <span
-          v-if="
-            workspace.activePath.value && workspace.dirtyMap.value.get(workspace.activePath.value)
-          "
+          v-if="workspace.activePath.value && workspace.dirtyMap[workspace.activePath.value]"
           :class="`${prefixCls}__dirty`"
           title="有未保存修改"
         >
@@ -269,7 +267,7 @@ onUnmounted(() => {
           type="primary"
           size="small"
           :loading="saving"
-          :disabled="!currentFile || !workspace.dirtyMap.value.get(workspace.activePath.value!)"
+          :disabled="!currentFile || !workspace.dirtyMap[workspace.activePath.value!]"
           @click="onSave(currentFile?.content || '')"
         >
           <Icon icon="vi-ep:check" />
@@ -302,13 +300,21 @@ onUnmounted(() => {
           :preview-path="workspace.previewPath.value"
           :active-path="workspace.activePath.value"
           :pinned-tabs="workspace.pinnedTabs.value"
-          :file-cache="workspace.fileCache.value"
-          :dirty-map="workspace.dirtyMap.value"
+          :file-cache="workspace.fileCache"
+          :dirty-map="workspace.dirtyMap"
           @content-change="
             (content) => {
               if (workspace.activePath.value) {
-                workspace.markDirty(workspace.activePath.value, true)
-                const fc = workspace.fileCache.value.get(workspace.activePath.value)
+                const active = workspace.activePath.value
+                const fc = workspace.fileCache[active]
+                const changed = (fc?.content ?? '') !== content
+                console.log('[Workspace/DirtyCheck]', {
+                  path: active,
+                  changed,
+                  oldLength: (fc?.content ?? '').length,
+                  newLength: content.length
+                })
+                workspace.markDirty(active, changed)
                 if (fc) fc.content = content
               }
             }

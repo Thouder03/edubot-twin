@@ -35,29 +35,26 @@ const emit = defineEmits<{
 // 右键菜单组件引用
 const contextMenuRef = ref<InstanceType<typeof WorkspaceContextMenu> | null>(null)
 
-// ─── 事件转发
 function onSelectFile(path: string, event: MouseEvent) {
   props.workspace.toggleSelection(path, event.metaKey || event.ctrlKey || event.shiftKey)
   const node = props.workspace.findNodeByPath(props.treeData, path)
-  if (node && node.type === 'directory') {
-    props.workspace.toggleNodeExpand(node)
-  } else {
+  // 目录展开由 FileTreeContainer 内部通过 he-tree addMulti API 处理
+  if (!node || node.type === 'file') {
     emit('select-file', path)
   }
 }
 
 function onOpenFilePinned(path: string) {
-  props.workspace.openFile(path, false)
+  const node = props.workspace.findNodeByPath(props.treeData, path)
+  if (node && node.type === 'file') {
+    props.workspace.openFile(path, false)
+  }
 }
 
 function onNodeContextMenu(node: any, event: MouseEvent) {
   event.preventDefault()
   props.workspace.determineContextMenuSelection(node.path)
   contextMenuRef.value?.show(event, node)
-}
-
-function onToggleExpand(node: any) {
-  props.workspace.toggleNodeExpand(node)
 }
 
 function onDropExternal(files: FileList, targetPath: string) {
@@ -89,7 +86,6 @@ function onMoveInternal(sourcePaths: string[], targetDir: string) {
       @select-file="onSelectFile"
       @open-file-pinned="onOpenFilePinned"
       @node-contextmenu="onNodeContextMenu"
-      @toggle-expand="onToggleExpand"
       @drop-external="onDropExternal"
       @move-internal="onMoveInternal"
       @rename-submit="props.workspace.renameCommand"

@@ -1,13 +1,30 @@
 # 当前任务状态
 
-## 最新进展：Workspace 面板与文件工作台重构 (全阶段完成)
-- **Phase 5：零感切换的工作台** 现已竣工！
-- **完成项**：
-  - **预览与常驻标签 (Preview / Pinned)**：实现了点击文件以斜体呈现 Preview，双击文件或者修改代码后自动转为长驻 Pinned 的行为模型。保证了代码工作区的清爽，不会因大量单次点选而产生垃圾 Tab。
-  - **组件通信与脏防护**：`EditorWorkbench.vue` 进行了界面化重组，渲染了多 Tab 工具条。并在 Tab 层面加入了 `@close-tab` 事件的向上反馈；通过 `safeCloseTab` 方法封装，当特定文件存在未保存的 dirty 记录时，不仅全局 F5 及路由跳转会被拦截，当你点击该 `x` 号试图关闭它时，也会被 `ElMessageBox` 进行安全确认。
-  - **Lint 规范对齐**：修复了在 `index.vue`, `EditorWorkbench.vue` 等文件中的未使用变量警告和组件内部结构语法告警。
+## 最新进展：文件树 Bug 修复 (2026-03-29)
 
-## 下一步行动指引 (Next Actions) 
-当前 `Workspace` 与文件编辑器模块的所有预期设计目标均以高标准全部闭环，您可以随时进行其他领域的探索或将此分支合入主线！
-- [x] Workspace 文件管理器 100% On-line。
-- [ ] 等待分配新的系统功能迭代。
+### 已修复的三个 Bug
+**文件：** `FileTreeContainer.vue`
+
+**Bug 1 - 文件打不开**：
+- 根因：旧代码用 `@click` 绑定在 `FileTreeNodeRenderer` 上，但 `@he-tree/vue` 会拦截拖拽相关的鼠标事件，导致 click 不触发
+- 修复：改用 he-tree 官方的 `@click:node` 事件，回调参数是 `stat` 对象（`.data` 包含节点数据）
+
+**Bug 2 - 文件夹打不开**：
+- 根因：同 Bug 1，click 事件被 he-tree 拦截，导致 `onSelectFile` → `toggleNodeExpand` 无法触发
+- 修复：同 Bug 1（`@click:node` 统一处理点击）
+
+**Bug 3 - 拖拽无法移动文件**：
+- 根因：旧代码监听 `@drop` 事件，但 he-tree 实际发出的是 `@after-drop`（无参数）
+- 旧代码的 `stat.dragNode?.data` 等属性路径全部错误
+- 修复：改用 `@after-drop` + 从 `dragContext`（`import { dragContext } from '@he-tree/vue'`）读取拖拽信息
+  - `dragContext.dragNode.data` = 被拖动节点数据
+  - `dragContext.targetInfo.parent?.data?.path` = 目标目录路径
+
+### he-tree v2.10.x API 关键笔记
+- 点击事件：`@click:node` → 回调参数 `(stat: Stat)`, `stat.data` 是节点数据
+- 拖拽完成：`@after-drop` → 无参数，从 `dragContext` 读取
+- `dragContext.targetInfo` 类型是 `StartInfo { parent: Stat | null, dragNode: Stat, ... }`
+- `eachDroppable` 参数是 `Stat`，通过 `stat.data` 访问节点
+
+## 下一步行动
+- [ ] 等待分配新功能

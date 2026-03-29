@@ -443,6 +443,11 @@ async def move_files(
                 continue
 
             target = target_dir / source.name
+
+            # 如果源文件和目标文件一样（比如只是在同一个文件夹里拖拽重排），直接视为成功
+            if target.resolve() == source.resolve():
+                success_paths.append(str(target.relative_to(workspace)))
+                continue
             if target.exists():
                 failed_paths.append({"path": path, "reason": "目标目录已存在同名文件"})
                 continue
