@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { ContextMenu } from '@/components/ContextMenu'
 import type { ContextMenuSchema } from '@/components/ContextMenu/src/types'
 
@@ -11,12 +12,44 @@ const visible = ref(false)
 const position = ref({ x: 0, y: 0 })
 const currentNode = ref<any>(null)
 
+async function createFolder() {
+  const node = currentNode.value
+  const targetDir = node?.type === 'directory' ? node.path : (node?.parentPath ?? '.')
+
+  try {
+    const { value } = await ElMessageBox.prompt('请输入文件夹名称', '新建文件夹', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputPlaceholder: '例如：new-folder',
+      inputPattern: /^[^\\/]+$/,
+      inputErrorMessage: '文件夹名称不能包含 / 或 \\',
+      inputValidator: (val: string) => {
+        if (!val.trim()) return '文件夹名称不能为空'
+        return true
+      }
+    })
+
+    const folderName = value.trim()
+    const path = targetDir === '.' ? folderName : `${targetDir}/${folderName}`
+    await props.commands.mkdirCommand(path)
+  } catch {
+    // 用户取消
+  }
+}
+
 const schema = computed<ContextMenuSchema[]>(() => {
   const node = currentNode.value
   const singleSelected = props.commands.selectedPaths.value.size === 1
   const paths = Array.from(props.commands.selectedPaths.value) as string[]
 
   return [
+    {
+      icon: 'vi-carbon:folder',
+      label: '新建文件夹 (New Folder)',
+      command: () => {
+        void createFolder()
+      }
+    },
     {
       icon: 'vi-carbon:edit',
       label: '重命名 (Rename)',

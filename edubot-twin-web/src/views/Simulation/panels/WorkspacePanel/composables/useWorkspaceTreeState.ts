@@ -10,9 +10,14 @@ export function useWorkspaceTreeState() {
   const expandedPaths = ref<Set<string>>(new Set())
 
   // 将后端数据转换为 TreeNode
-  function buildTreeNodes(directories: any[], files: any[], parentPath: string): TreeNode[] {
+  function buildTreeNodes(
+    directories: any[],
+    files: any[],
+    parentPath: string,
+    expandedPathSet: Set<string> = new Set()
+  ): TreeNode[] {
     const nodes: TreeNode[] = []
-    
+
     for (const dir of directories) {
       nodes.push({
         key: dir.path,
@@ -24,10 +29,10 @@ export function useWorkspaceTreeState() {
         isLeaf: false,
         children: [],
         childrenLoaded: false,
-        isExpanded: false
+        isExpanded: expandedPathSet.has(dir.path)
       })
     }
-    
+
     for (const file of files) {
       nodes.push({
         key: file.path,
@@ -42,17 +47,17 @@ export function useWorkspaceTreeState() {
         isLeaf: true
       })
     }
-    
+
     return nodes
   }
 
   // 加载根目录
-  async function loadTree(path = '.') {
+  async function loadTree(path = '.', expandedPathSet: Set<string> = new Set()) {
     loading.value = true
     try {
       const res = await listFiles(path)
       if (res.code === 0 && res.data) {
-        treeData.value = buildTreeNodes(res.data.directories, res.data.files, path)
+        treeData.value = buildTreeNodes(res.data.directories, res.data.files, path, expandedPathSet)
         currentPath.value = path
       }
     } catch (e: any) {
@@ -77,9 +82,9 @@ export function useWorkspaceTreeState() {
   // 展开并加载子节点
   async function toggleNodeExpand(node: TreeNode) {
     if (node.type !== 'directory') return
-    
+
     node.isExpanded = !node.isExpanded
-    
+
     if (node.isExpanded) {
       expandedPaths.value.add(node.path)
       // 处理懒加载
@@ -102,23 +107,71 @@ export function useWorkspaceTreeState() {
     }
   }
 
-  // 局部刷新特定目录
-  async function refreshNode(path: string) {
-    if (path === '.' || path === currentPath.value) {
-      await loadTree(path)
+  function touchTreeData() {
+    treeData.value = [...treeData.value]
+  }
+
+  function collectExpandedDirectoryPaths(nodes: TreeNode[]): string[] {
+    const paths: string[] = []
+    const walk = (items: TreeNode[]) => {
+      for (const node of items) {
+        if (node.type === 'directory' && node.isExpanded) {
+          paths.push(node.path)
+        }
+        if (Array.isArray(node.children) && node.children.length > 0) {
+          walk(node.children)
+        }
+      }
+    }
+
+    walk(nodes)
+    return paths
+  }
+
+  function getExpandedDirectoryPathsSorted(): string[] {
+    return collectExpandedDirectoryPaths(treeData.value).sort(
+      (a, b) => a.split('/').length - b.split('/').length
+    )
+  }
+
+  async function refreshExpandedDirectories() {
+    const paths = getExpandedDirectoryPathsSorted()
+    const expandedPathSet = new Set(paths)
+    if (paths.length === 0) {
+      await refreshNode('.', expandedPathSet)
       return
     }
-    
+
+    for (const path of paths) {
+      await refreshNode(path, expandedPathSet)
+    }
+  }
+
+  // 局部刷新特定目录
+  async function refreshNode(path: string, expandedPathSet: Set<string> = new Set()) {
+    if (path === '.' || path === currentPath.value) {
+      await loadTree(path, expandedPathSet)
+      touchTreeData()
+      return
+    }
+
     const node = findNodeByPath(treeData.value, path)
+
     if (node && node.type === 'directory') {
       node.isLoading = true
       try {
         const res = await listFiles(node.path)
         if (res.code === 0 && res.data) {
-          node.children = buildTreeNodes(res.data.directories, res.data.files, node.path)
+          node.children = buildTreeNodes(
+            res.data.directories,
+            res.data.files,
+            node.path,
+            expandedPathSet
+          )
           node.childrenLoaded = true
+          touchTreeData()
         }
-      } catch (e) {
+      } catch (_e) {
         // error handled
       } finally {
         node.isLoading = false
@@ -153,6 +206,8 @@ export function useWorkspaceTreeState() {
     loadTree,
     toggleNodeExpand,
     refreshNode,
+    refreshExpandedDirectories,
+    touchTreeData,
     findNodeByPath,
     startRename,
     completeRename

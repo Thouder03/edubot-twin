@@ -26,7 +26,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   'select-file': [path: string]
   delete: [path: string, name: string]
-  mkdir: [path: string]
   upload: [file: File, targetPath: string]
 }>()
 
@@ -66,6 +65,10 @@ function onDropExternal(files: FileList, targetPath: string) {
 function onMoveInternal(sourcePaths: string[], targetDir: string) {
   props.workspace.moveCommand(sourcePaths, targetDir)
 }
+
+async function onManualRefresh() {
+  await props.workspace.refreshExpandedDirectories()
+}
 </script>
 
 <template>
@@ -73,9 +76,11 @@ function onMoveInternal(sourcePaths: string[], targetDir: string) {
     <!-- 工具栏 -->
     <div :class="`${prefixCls}__toolbar`">
       <span :class="`${prefixCls}__title`">WORKSPACE</span>
-      <el-icon :class="`${prefixCls}__action`" @click.stop="emit('mkdir', '.')">
-        <Icon icon="vi-ep:folder-add" />
-      </el-icon>
+      <div :class="`${prefixCls}__toolbar-actions`">
+        <el-icon :class="`${prefixCls}__action`" title="刷新文件树" @click.stop="onManualRefresh">
+          <Icon icon="vi-ep:refresh" />
+        </el-icon>
+      </div>
     </div>
 
     <!-- 树主体容器 -->
@@ -121,6 +126,12 @@ function onMoveInternal(sourcePaths: string[], targetDir: string) {
     font-weight: 600;
     letter-spacing: 0.08em;
     color: var(--el-text-color-secondary);
+  }
+
+  &__toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   &__action {

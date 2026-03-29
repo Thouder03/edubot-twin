@@ -286,7 +286,6 @@ onUnmounted(() => {
           :workspace="workspace"
           @select-file="openFile"
           @delete="(path) => deleteCommand([path])"
-          @mkdir="() => {}"
           @upload="uploadExternalCommand"
         />
       </div>

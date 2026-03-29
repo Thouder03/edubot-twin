@@ -20,6 +20,33 @@ async function refreshMovedDirectories(treeState: any, sourcePaths: string[], ta
   }
 }
 
+async function refreshDirectoryIfNotRoot(treeState: any, path: string) {
+  if (path === '.') return
+  await treeState.refreshNode(path)
+}
+
+function removeNodeByPath(nodes: any[], path: string): boolean {
+  for (let i = 0; i < nodes.length; i += 1) {
+    const node = nodes[i]
+    if (node.path === path) {
+      nodes.splice(i, 1)
+      return true
+    }
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      const removed = removeNodeByPath(node.children, path)
+      if (removed) return true
+    }
+  }
+  return false
+}
+
+function removeNodesByPaths(treeState: any, paths: string[]) {
+  for (const path of paths) {
+    removeNodeByPath(treeState.treeData.value, path)
+  }
+  treeState.touchTreeData?.()
+}
+
 function getBaseName(path: string): string {
   const normalizedPath = path.replace(/\/+$/, '')
   const slashIndex = normalizedPath.lastIndexOf('/')
@@ -45,7 +72,10 @@ function updateNodePathAndChildren(node: any, oldPrefix: string, newPrefix: stri
   }
 }
 
-function applyMovedPathUpdates(treeState: any, movedPairs: Array<{ sourcePath: string; nextPath: string }>) {
+function applyMovedPathUpdates(
+  treeState: any,
+  movedPairs: Array<{ sourcePath: string; nextPath: string }>
+) {
   for (const { sourcePath, nextPath } of movedPairs) {
     const node = treeState.findNodeByPath(treeState.treeData.value, sourcePath)
     if (!node) continue
@@ -54,15 +84,14 @@ function applyMovedPathUpdates(treeState: any, movedPairs: Array<{ sourcePath: s
 }
 
 export function useWorkspaceCommands(
-  treeState: any, 
-  selectionState: any, 
-  previewState: any, 
+  treeState: any,
+  selectionState: any,
+  previewState: any,
   clipboardState: any
 ) {
-  
   async function deleteCommand(paths: string[]) {
     if (!paths.length) return
-    
+
     try {
       await ElMessageBox.confirm(`确认删除选中的 ${paths.length} 个文件/目录？`, '删除确认', {
         type: 'error',
@@ -76,6 +105,18 @@ export function useWorkspaceCommands(
     try {
       const res = await batchDeleteFiles({ paths })
       if (res.code === 0) {
+        const failedSet = new Set<string>((res.data?.failed ?? []).map((item: any) => item.path))
+        const deletedPaths: string[] = Array.isArray(res.data?.deleted)
+          ? res.data.deleted
+          : paths.filter((path) => !failedSet.has(path))
+
+        removeNodesByPaths(treeState, deletedPaths)
+
+        const refreshParents = new Set<string>(deletedPaths.map((path) => getParentDir(path)))
+        for (const path of refreshParents) {
+          await refreshDirectoryIfNotRoot(treeState, path)
+        }
+
         if (res.data?.failed?.length) {
           ElMessage.warning(`部分删除失败: ${res.data.failed.length} 个项目`)
         } else {
@@ -85,9 +126,7 @@ export function useWorkspaceCommands(
     } catch (e: any) {
       ElMessage.error(`删除失败: ${e.message ?? e}`)
     }
-    
-    // 强制刷新根目录（或者优化为局部刷新）
-    await treeState.refreshNode('.')
+
     selectionState.clearSelection()
   }
 
@@ -100,6 +139,18 @@ export function useWorkspaceCommands(
       }
     } catch (e: any) {
       ElMessage.error(`上传失败: ${e.message ?? e}`)
+    }
+  }
+
+  async function mkdirCommand(path: string) {
+    try {
+      const res = await mkdir({ path })
+      if (res.code === 0) {
+        ElMessage.success('新建目录成功')
+        await treeState.refreshExpandedDirectories()
+      }
+    } catch (e: any) {
+      ElMessage.error(`新建目录失败: ${e.response?.data?.detail ?? e.message ?? e}`)
     }
   }
 
@@ -149,12 +200,33 @@ export function useWorkspaceCommands(
     const cb = clipboardState.clipboard.value
     if (!cb || !cb.paths.length) return
 
+    const sourcePaths: string[] = [...cb.paths]
     const isCopy = cb.mode === 'copy'
     const apiCall = isCopy ? copyFiles : moveFiles
 
     try {
-      const res = await apiCall({ source_paths: cb.paths, target_dir: targetDir })
+      const res = await apiCall({ source_paths: sourcePaths, target_dir: targetDir })
       if (res.code === 0) {
+        if (!isCopy) {
+          const successPaths: string[] = Array.isArray(res.data?.success) ? res.data.success : []
+          const failedPaths = new Set<string>(
+            (res.data?.failed ?? []).map((item: any) => item.path)
+          )
+
+          const movedPairs: Array<{ sourcePath: string; nextPath: string }> = []
+          let successIndex = 0
+
+          for (const sourcePath of sourcePaths) {
+            if (failedPaths.has(sourcePath)) continue
+            const nextPath =
+              successPaths[successIndex] || joinPath(targetDir, getBaseName(sourcePath))
+            successIndex += 1
+            movedPairs.push({ sourcePath, nextPath })
+          }
+
+          applyMovedPathUpdates(treeState, movedPairs)
+        }
+
         if (res.data?.failed?.length) {
           ElMessage.warning(`部分操作失败: ${res.data.failed.length} 个项目`)
         } else {
@@ -164,7 +236,12 @@ export function useWorkspaceCommands(
             clipboardState.clearClipboard()
           }
         }
-        await treeState.refreshNode('.') // 刷新目录
+        if (isCopy) {
+          await refreshDirectoryIfNotRoot(treeState, targetDir)
+          treeState.touchTreeData?.()
+        } else {
+          await refreshMovedDirectories(treeState, sourcePaths, targetDir)
+        }
       }
     } catch (e: any) {
       ElMessage.error(`粘贴失败: ${e.response?.data?.detail ?? e.message ?? e}`)
@@ -185,7 +262,8 @@ export function useWorkspaceCommands(
 
         for (const sourcePath of sourcePaths) {
           if (failedPaths.has(sourcePath)) continue
-          const nextPath = successPaths[successIndex] || joinPath(targetDir, getBaseName(sourcePath))
+          const nextPath =
+            successPaths[successIndex] || joinPath(targetDir, getBaseName(sourcePath))
           successIndex += 1
           movedPairs.push({ sourcePath, nextPath })
         }
@@ -210,6 +288,7 @@ export function useWorkspaceCommands(
   return {
     deleteCommand,
     uploadExternalCommand,
+    mkdirCommand,
     startRenameCommand,
     cancelRenameCommand,
     renameCommand,
