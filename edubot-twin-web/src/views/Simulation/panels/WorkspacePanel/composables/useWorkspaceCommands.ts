@@ -20,6 +20,39 @@ async function refreshMovedDirectories(treeState: any, sourcePaths: string[], ta
   }
 }
 
+function getBaseName(path: string): string {
+  const normalizedPath = path.replace(/\/+$/, '')
+  const slashIndex = normalizedPath.lastIndexOf('/')
+  if (slashIndex === -1) return normalizedPath
+  return normalizedPath.slice(slashIndex + 1)
+}
+
+function joinPath(dir: string, name: string): string {
+  return dir === '.' ? name : `${dir}/${name}`
+}
+
+function updateNodePathAndChildren(node: any, oldPrefix: string, newPrefix: string) {
+  if (!node?.path || !String(node.path).startsWith(oldPrefix)) return
+
+  const suffix = String(node.path).slice(oldPrefix.length)
+  const nextPath = `${newPrefix}${suffix}`
+  node.path = nextPath
+  node.key = nextPath
+  node.parentPath = getParentDir(nextPath)
+
+  if (Array.isArray(node.children)) {
+    node.children.forEach((child) => updateNodePathAndChildren(child, oldPrefix, newPrefix))
+  }
+}
+
+function applyMovedPathUpdates(treeState: any, movedPairs: Array<{ sourcePath: string; nextPath: string }>) {
+  for (const { sourcePath, nextPath } of movedPairs) {
+    const node = treeState.findNodeByPath(treeState.treeData.value, sourcePath)
+    if (!node) continue
+    updateNodePathAndChildren(node, sourcePath, nextPath)
+  }
+}
+
 export function useWorkspaceCommands(
   treeState: any, 
   selectionState: any, 
@@ -144,6 +177,21 @@ export function useWorkspaceCommands(
     try {
       const res = await moveFiles({ source_paths: sourcePaths, target_dir: targetDir })
       if (res.code === 0) {
+        const successPaths: string[] = Array.isArray(res.data?.success) ? res.data.success : []
+        const failedPaths = new Set<string>((res.data?.failed ?? []).map((item: any) => item.path))
+
+        const movedPairs: Array<{ sourcePath: string; nextPath: string }> = []
+        let successIndex = 0
+
+        for (const sourcePath of sourcePaths) {
+          if (failedPaths.has(sourcePath)) continue
+          const nextPath = successPaths[successIndex] || joinPath(targetDir, getBaseName(sourcePath))
+          successIndex += 1
+          movedPairs.push({ sourcePath, nextPath })
+        }
+
+        applyMovedPathUpdates(treeState, movedPairs)
+
         if (res.data?.failed?.length) {
           ElMessage.warning(`部分拖拽移动失败: ${res.data.failed.length} 个项目`)
         } else {

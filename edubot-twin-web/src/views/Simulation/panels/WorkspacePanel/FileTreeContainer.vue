@@ -59,7 +59,9 @@ function onTreeAfterDrop() {
   const sourceParentDir: string = dragData.parentPath || getParentDir(sourcePath)
 
   // 同目录内的排序不发起后端请求
-  if (sourceParentDir === targetDir) return
+  if (sourceParentDir === targetDir) {
+    return
+  }
 
   emit('move-internal', [sourcePath], targetDir)
 }
