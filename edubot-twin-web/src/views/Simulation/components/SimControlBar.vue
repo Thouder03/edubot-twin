@@ -76,6 +76,19 @@ const {
 </template>
 
 <style lang="less" scoped>
+
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
 .sim-control-bar {
   display: flex;
   align-items: center;
@@ -85,11 +98,11 @@ const {
 
 // ── 连接状态灯 ──
 .status-light {
+  display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  display: inline-block;
   margin: 0 4px;
+  border-radius: 50%;
   transition: background-color 0.3s ease;
 
   &.disconnected {
@@ -103,34 +116,24 @@ const {
 
   &.connected {
     background: #a6e3a1;
-    box-shadow: 0 0 6px rgba(166, 227, 161, 0.5);
+    box-shadow: 0 0 6px rgb(166 227 161 / 50%);
   }
 
   &.error {
     background: #f38ba8;
-    box-shadow: 0 0 6px rgba(243, 139, 168, 0.5);
-  }
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
+    box-shadow: 0 0 6px rgb(243 139 168 / 50%);
   }
 }
 
 // ── 控制按钮 ──
 .ctrl-btn {
-  color: #bac2de;
-  padding: 4px 6px;
   min-height: unset;
+  padding: 4px 6px;
+  color: #bac2de;
 
   &:hover:not(:disabled) {
     color: #cdd6f4;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgb(255 255 255 / 6%);
   }
 
   &:disabled {
@@ -150,24 +153,24 @@ const {
   gap: 4px;
 
   .time-label {
-    color: #6c7086;
     font-size: 11px;
     font-weight: 500;
+    color: #6c7086;
     text-transform: uppercase;
   }
 
   .time-value {
-    color: #a6adc8;
-    font-size: 12px;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
     min-width: 90px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: #a6adc8;
   }
 }
 
 // ── 分割线 ──
 :deep(.el-divider--vertical) {
-  border-color: #45475a;
-  margin: 0 6px;
   height: 16px;
+  margin: 0 6px;
+  border-color: #45475a;
 }
 </style>

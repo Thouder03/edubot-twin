@@ -436,17 +436,17 @@ export default {
 
 .nested-header {
   display: flex;
-  align-items: center;
-  cursor: pointer;
-  padding: 4px 8px 4px 22px;
-  color: #cdd6f4;
-  user-select: none;
-  font-size: 12px;
   min-width: 0;
+  padding: 4px 8px 4px 22px;
+  font-size: 12px;
+  color: #cdd6f4;
+  cursor: pointer;
   border-radius: 4px;
+  user-select: none;
+  align-items: center;
 
   &:hover {
-    background: rgba(49, 50, 68, 0.6); /* Lichtblick: 更柔和的 hover */
+    background: rgb(49 50 68 / 60%); /* Lichtblick: 更柔和的 hover */
 
     .expand-icon {
       color: #89b4fa;
@@ -459,10 +459,10 @@ export default {
   }
 
   .expand-icon {
-    transition: transform 0.2s;
     margin-right: 4px;
     font-size: 12px;
     color: #a6adc8;
+    transition: transform 0.2s;
     flex-shrink: 0;
 
     &.is-rotated {
@@ -471,11 +471,11 @@ export default {
   }
 
   .nested-label {
-    font-weight: 600;
+    min-width: 0;
     overflow: hidden;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
-    min-width: 0;
   }
 
   .nested-actions {
@@ -490,24 +490,24 @@ export default {
 // 眼睛图标按钮
 .visibility-btn {
   display: flex;
-  align-items: center;
-  justify-content: center;
   width: 20px;
   height: 20px;
   padding: 0;
+  color: #6c7086;
+  cursor: pointer;
   background: transparent;
   border: none;
   border-radius: 3px;
-  cursor: pointer;
-  color: #6c7086;
-  flex-shrink: 0;
   transition:
     color 0.15s,
     background 0.15s;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 
   &:hover {
     color: #cdd6f4;
-    background: rgba(137, 180, 250, 0.15);
+    background: rgb(137 180 250 / 15%);
   }
 
   .visibility-icon {
@@ -521,24 +521,24 @@ export default {
 // 菜单按钮
 .menu-btn {
   display: flex;
-  align-items: center;
-  justify-content: center;
   width: 20px;
   height: 20px;
   padding: 0;
+  color: #6c7086;
+  cursor: pointer;
   background: transparent;
   border: none;
   border-radius: 3px;
-  cursor: pointer;
-  color: #6c7086;
-  flex-shrink: 0;
   transition:
     color 0.15s,
     background 0.15s;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 
   &:hover {
     color: #cdd6f4;
-    background: rgba(137, 180, 250, 0.15);
+    background: rgb(137 180 250 / 15%);
   }
 }
 
@@ -546,10 +546,10 @@ export default {
   margin-top: 4px; // Lichtblick 样式：标题与内容间距 4px
 
   &.is-root {
-    margin-left: 0;
-    margin-top: 4px; // Lichtblick 样式：标题与内容间距 4px
-    border-left: none;
     padding-left: 0;
+    margin-top: 4px; // Lichtblick 样式：标题与内容间距 4px
+    margin-left: 0;
+    border-left: none;
   }
 }
 
@@ -568,12 +568,12 @@ export default {
   min-width: 0;
 
   .label-text {
-    flex: 1;
-    text-align: right;
+    min-width: 0;
     overflow: hidden;
+    text-align: right;
     text-overflow: ellipsis;
     white-space: nowrap;
-    min-width: 0;
+    flex: 1;
   }
 
   .error-icon {
@@ -622,10 +622,11 @@ export default {
 
     :deep(.el-input-number) {
       width: 100%;
+
       .el-input__wrapper {
-        padding-left: 0;
-        padding-right: 0;
         min-height: 28px; /* 恢复合适的最小高度 */
+        padding-right: 0;
+        padding-left: 0;
         padding-block: 4px; /* 调整内边距 */
       }
     }
@@ -637,11 +638,11 @@ export default {
   width: 100%;
 
   :deep(.el-input__wrapper) {
-    background-color: #313244;
-    border: 1px solid rgba(69, 71, 90, 0.5);
     min-height: 28px; /* 恢复合适的最小高度 */
-    padding-block: 4px; /* 调整内边距 */
+    background-color: #313244;
+    border: 1px solid rgb(69 71 90 / 50%);
     transition: border-color 0.2s;
+    padding-block: 4px; /* 调整内边距 */
 
     &:hover {
       border-color: #45475a;
@@ -649,38 +650,40 @@ export default {
   }
 
   :deep(.el-input__inner) {
-    color: #cdd6f4;
-    text-align: center;
     height: auto;
     line-height: 1.5;
+    color: #cdd6f4;
+    text-align: center;
   }
 }
 
 .custom-boolean-toggle {
-  width: 100%;
   display: flex;
-  background-color: #313244; /* Lichtblick: action.hover */
-  gap: 2px; /* Lichtblick: theme.spacing(0.25) */
-  border-radius: 4px;
-  padding: 3px; /* 调整内边距 */
+  width: 100%;
   min-height: 28px; /* 确保最小高度 */
+  padding: 3px; /* 调整内边距 */
+  background-color: #313244; /* Lichtblick: action.hover */
+  border-radius: 4px;
+  gap: 2px; /* Lichtblick: theme.spacing(0.25) */
 
   :deep(.el-radio-button) {
     flex: 1;
+
     .el-radio-button__inner {
       width: 100%;
       padding: 4px 12px; /* 调整垂直内边距 */
       line-height: 1.5; /* 调整行高 */
+      color: #cdd6f4;
       background-color: transparent;
       border: none;
-      color: #cdd6f4;
-      box-shadow: none;
       border-radius: 4px;
+      box-shadow: none;
       transition: background 0.2s;
     }
+
     &.is-active .el-radio-button__inner {
-      background-color: #1e1e2e; /* Lichtblick: background.paper */
       color: #cdd6f4;
+      background-color: #1e1e2e; /* Lichtblick: background.paper */
       box-shadow: none;
     }
   }
@@ -690,8 +693,8 @@ export default {
   width: 100%;
 
   :deep(.el-input__prefix) {
-    padding-left: 5px;
     display: flex;
+    padding-left: 5px;
     align-items: center;
   }
 
@@ -699,20 +702,20 @@ export default {
     position: relative;
     width: 18px;
     height: 18px;
-    border-radius: 2px;
     overflow: hidden;
-    border: 1px solid rgba(69, 71, 90, 0.5);
     cursor: pointer;
+    border: 1px solid rgb(69 71 90 / 50%);
+    border-radius: 2px;
 
     .embedded-picker {
       position: absolute;
       top: 0;
       left: 0;
+      z-index: 10;
       width: 100%;
       height: 100%;
-      opacity: 0;
-      z-index: 10;
       padding: 0;
+      opacity: 0;
 
       :deep(.el-color-picker__trigger) {
         width: 100%;
@@ -733,11 +736,11 @@ export default {
   }
 
   :deep(.el-input__wrapper) {
-    padding-left: 0;
     min-height: 28px; /* 恢复合适的最小高度 */
-    padding-block: 4px; /* 调整内边距 */
-    border: 1px solid rgba(69, 71, 90, 0.5);
+    padding-left: 0;
+    border: 1px solid rgb(69 71 90 / 50%);
     transition: border-color 0.2s;
+    padding-block: 4px; /* 调整内边距 */
 
     &:hover {
       border-color: #45475a;
@@ -751,8 +754,8 @@ export default {
 }
 
 .field-help {
-  color: #6c7086;
   font-size: 12px;
+  color: #6c7086;
 }
 
 .custom-input-number {
@@ -762,9 +765,9 @@ export default {
   :deep(.el-input-number__decrease),
   :deep(.el-input-number__increase) {
     display: none;
+    color: #a6adc8;
     background: transparent;
     border: none;
-    color: #a6adc8;
     transition: color 0.2s;
 
     &:hover {
@@ -781,12 +784,12 @@ export default {
   }
 
   :deep(.el-input__wrapper) {
-    padding-left: 30px !important;
-    padding-right: 30px !important;
     min-height: 28px; /* 恢复合适的最小高度 */
-    padding-block: 4px; /* 调整内边距 */
-    border: 1px solid rgba(69, 71, 90, 0.5);
+    padding-right: 30px !important;
+    padding-left: 30px !important;
+    border: 1px solid rgb(69 71 90 / 50%);
     transition: border-color 0.2s;
+    padding-block: 4px; /* 调整内边距 */
 
     &:hover {
       border-color: #45475a;
@@ -794,9 +797,9 @@ export default {
   }
 
   :deep(.el-input__inner) {
-    text-align: center;
     height: auto;
     line-height: 1.5;
+    text-align: center;
   }
 }
 
@@ -808,8 +811,8 @@ export default {
   justify-content: center;
 
   .gradient-arrow {
-    color: #6c7086;
     font-size: 14px;
+    color: #6c7086;
     user-select: none;
   }
 
@@ -817,7 +820,7 @@ export default {
     width: 50px;
     min-height: 28px; /* 恢复合适的最小高度 */
     padding: 4px; /* 调整内边距 */
-    border: 1px solid rgba(69, 71, 90, 0.5);
+    border: 1px solid rgb(69 71 90 / 50%);
     transition: border-color 0.2s;
 
     &:hover {

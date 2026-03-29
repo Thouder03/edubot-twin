@@ -408,22 +408,22 @@ async function handleBack() {
 <style lang="less">
 /* 不能 scoped，因为子组件的 GL 样式需要继承 */
 .simulation-page {
+  display: flex;
   width: 100vw;
   height: 100vh;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
   background: #11111b;
+  flex-direction: column;
 }
 
 .simulation-content {
-  flex: 1;
-  overflow: hidden;
   display: flex;
+  overflow: hidden;
+  flex: 1;
 }
 
 .lm_header .lm_tab.lm_active.lm_focused {
-  background-color: #222222 !important;
+  background-color: #222 !important;
 }
 </style>
 

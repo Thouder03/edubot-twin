@@ -122,15 +122,15 @@ function handleAddPanel(type: string, label: string) {
 
 <style lang="less" scoped>
 .simulation-header {
-  height: 40px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  height: 40px;
   padding: 0 12px;
   background: #181825;
   border-bottom: 1px solid #313244;
-  flex-shrink: 0;
   user-select: none;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -139,8 +139,8 @@ function handleAddPanel(type: string, label: string) {
   gap: 4px;
 
   .back-btn {
-    color: #bac2de;
     font-size: 13px;
+    color: #bac2de;
 
     &:hover {
       color: #cdd6f4;
@@ -149,10 +149,10 @@ function handleAddPanel(type: string, label: string) {
 
   .header-title {
     display: flex;
-    align-items: center;
-    color: #cdd6f4;
     font-size: 14px;
     font-weight: 500;
+    color: #cdd6f4;
+    align-items: center;
   }
 }
 
@@ -162,8 +162,8 @@ function handleAddPanel(type: string, label: string) {
   gap: 4px;
 
   .header-action-btn {
-    color: #bac2de;
     font-size: 13px;
+    color: #bac2de;
 
     &:hover {
       color: #cdd6f4;
@@ -172,8 +172,8 @@ function handleAddPanel(type: string, label: string) {
 }
 
 :deep(.el-divider--vertical) {
-  border-color: #45475a;
-  margin: 0 8px;
   height: 16px;
+  margin: 0 8px;
+  border-color: #45475a;
 }
 </style>

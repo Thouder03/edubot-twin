@@ -137,10 +137,23 @@ watch(config, refreshSettingsTree, { deep: true })
 </template>
 
 <style lang="less" scoped>
+
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
 .gzweb-viewer {
+  position: relative;
   width: 100%;
   height: 100%;
-  position: relative;
   background: #1e1e2e;
 }
 
@@ -152,12 +165,12 @@ watch(config, refreshSettingsTree, { deep: true })
 // ── 连接中遮罩 ──
 .gzweb-overlay {
   position: absolute;
-  inset: 0;
+  z-index: 10;
   display: flex;
+  background: rgb(30 30 46 / 85%);
+  inset: 0;
   align-items: center;
   justify-content: center;
-  background: rgba(30, 30, 46, 0.85);
-  z-index: 10;
 }
 
 .overlay-content {
@@ -186,17 +199,7 @@ watch(config, refreshSettingsTree, { deep: true })
 }
 
 .overlay-text {
-  color: #cdd6f4;
   font-size: 14px;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
+  color: #cdd6f4;
 }
 </style>

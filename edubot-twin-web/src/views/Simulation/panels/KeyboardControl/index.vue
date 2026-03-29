@@ -327,28 +327,28 @@ onBeforeUnmount(() => {
 
 <style lang="less" scoped>
 .keyboard-panel {
+  position: relative;
+  display: flex;
   width: 100%;
   height: 100%;
   background: #1e1e2e;
-  display: flex;
+  outline: none;
+  user-select: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 16px;
-  outline: none;
-  position: relative;
-  user-select: none;
 
   &__overlay {
     position: absolute;
-    inset: 0;
+    z-index: 10;
     display: flex;
+    background: rgb(30 30 46 / 92%);
+    inset: 0;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: rgba(30, 30, 46, 0.92);
     gap: 12px;
-    z-index: 10;
   }
 
   &__overlay-icon {
@@ -357,10 +357,10 @@ onBeforeUnmount(() => {
   }
 
   &__overlay-text {
-    color: #a6adc8;
-    font-size: 14px;
-    text-align: center;
     padding: 0 24px;
+    font-size: 14px;
+    color: #a6adc8;
+    text-align: center;
   }
 
   &__status-bar {
@@ -391,11 +391,11 @@ onBeforeUnmount(() => {
   }
 
   &__hint {
-    margin-left: 8px;
-    color: #f9e2af;
-    font-size: 11px;
-    background: rgba(249, 226, 175, 0.1);
     padding: 2px 8px;
+    margin-left: 8px;
+    font-size: 11px;
+    color: #f9e2af;
+    background: rgb(249 226 175 / 10%);
     border-radius: 4px;
   }
 
@@ -416,19 +416,19 @@ onBeforeUnmount(() => {
   }
 
   &__dpad-btn {
+    display: flex;
     width: 72px;
     height: 72px;
-    border-radius: 12px;
-    border: 1px solid #313244;
-    background: #27273a;
     color: #cdd6f4;
     cursor: pointer;
-    display: flex;
+    background: #27273a;
+    border: 1px solid #313244;
+    border-radius: 12px;
+    transition: all 0.1s ease;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 2px;
-    transition: all 0.1s ease;
     -webkit-tap-highlight-color: transparent;
 
     &:hover {
@@ -442,11 +442,11 @@ onBeforeUnmount(() => {
     }
 
     &--active {
+      color: #1e1e2e !important;
       background: #89b4fa !important;
       border-color: #89b4fa !important;
-      color: #1e1e2e !important;
       transform: scale(0.95);
-      box-shadow: 0 0 16px rgba(137, 180, 250, 0.5);
+      box-shadow: 0 0 16px rgb(137 180 250 / 50%);
     }
   }
 
@@ -471,19 +471,19 @@ onBeforeUnmount(() => {
   &__stop-btn {
     width: 100%;
     height: 44px;
-    border-radius: 10px;
-    border: 2px solid #f38ba8;
-    background: rgba(243, 139, 168, 0.12);
-    color: #f38ba8;
     font-size: 15px;
     font-weight: 600;
-    cursor: pointer;
     letter-spacing: 1px;
+    color: #f38ba8;
+    cursor: pointer;
+    background: rgb(243 139 168 / 12%);
+    border: 2px solid #f38ba8;
+    border-radius: 10px;
     transition: all 0.15s ease;
 
     &:hover {
-      background: rgba(243, 139, 168, 0.25);
-      box-shadow: 0 0 12px rgba(243, 139, 168, 0.3);
+      background: rgb(243 139 168 / 25%);
+      box-shadow: 0 0 12px rgb(243 139 168 / 30%);
     }
 
     &:active {

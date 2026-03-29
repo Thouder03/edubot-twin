@@ -44,14 +44,50 @@ export interface MkdirRequest {
   path: string
 }
 
-// Tree Node（用于 el-tree 展示）
+export interface FileRenameRequest {
+  path: string
+  new_name: string
+}
+
+export interface FileMoveRequest {
+  source_paths: string[]
+  target_dir: string
+}
+
+export interface FileCopyRequest {
+  source_paths: string[]
+  target_dir: string
+}
+
+export interface BatchDeleteRequest {
+  paths: string[]
+}
+
+// Tree Node（用于前端展示与组件交互）
 export interface TreeNode {
   key: string
   label: string
+  name: string // 文件/目录名
   type: 'file' | 'directory'
   path: string
+  parentPath: string // 父目录路径
   extension?: string
   size?: number
+  mtime?: number // 修改时间
+  
+  // 树的状态
   children?: TreeNode[]
   isLeaf?: boolean
+  
+  // 领域状态扩展 (UI State)
+  isSelected?: boolean
+  isExpanded?: boolean
+  isLoading?: boolean
+  isRenaming?: boolean
+  isCreatingTemp?: boolean
+  childrenLoaded?: boolean
+  
+  // 拖拽控制扩展 (he-tree 引擎)
+  canDrag?: boolean
+  canDrop?: boolean
 }

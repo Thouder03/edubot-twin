@@ -275,10 +275,10 @@ defineExpose({
 <style lang="less">
 /* GL 样式不能用 scoped, 因为 GL 动态注入 DOM */
 .gl-wrapper {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
   position: relative;
+  height: 100%;
+  min-width: 0;
+  flex: 1;
 }
 
 .gl-container {
@@ -287,32 +287,33 @@ defineExpose({
 }
 
 .unknown-component {
+  display: flex;
   width: 100%;
   height: 100%;
-  display: flex;
+  font-size: 14px;
+  color: #f38ba8;
+  background: #1e1e2e;
   align-items: center;
   justify-content: center;
-  background: #1e1e2e;
-  color: #f38ba8;
-  font-size: 14px;
 }
 
 /* 设置按钮样式 */
 .lm_controls .lm_settings {
-  cursor: pointer;
   position: relative;
+  display: flex;
   width: 18px;
   height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  color: #fff;
+  cursor: pointer;
   opacity: 0.4;
   transition: opacity 300ms ease;
-  color: #ffffff;
+  align-items: center;
+  justify-content: center;
 
   &:hover {
     opacity: 1;
   }
+
   svg {
     pointer-events: none;
   }

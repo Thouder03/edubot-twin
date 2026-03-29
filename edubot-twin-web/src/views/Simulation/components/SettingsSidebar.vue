@@ -122,65 +122,64 @@ function onResizeStart(e: MouseEvent) {
 
 .sidebar-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 8px 0 12px;
   height: 32px;
+  padding: 0 8px 0 12px;
   background: #181825;
   border-bottom: 1px solid #313244;
+  align-items: center;
+  justify-content: space-between;
   flex-shrink: 0;
 }
 
 .sidebar-title {
   display: flex;
-  align-items: center;
-  color: #89b4fa;
+  overflow: hidden;
   font-size: 12px;
   font-weight: 500;
-  overflow: hidden;
-  white-space: nowrap;
+  color: #89b4fa;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  align-items: center;
 }
 
 .sidebar-close {
   display: flex;
-  align-items: center;
-  justify-content: center;
   width: 22px;
   height: 22px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
   color: #6c7086;
   cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
   transition: all 150ms ease;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 
   &:hover {
-    background: #313244;
     color: #cdd6f4;
+    background: #313244;
   }
 }
 
 .sidebar-body {
+  overflow: hidden auto;
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
 }
 
 .sidebar-resize-handle {
   position: absolute;
-  right: -3px;
   top: 0;
+  right: -3px;
   bottom: 0;
+  z-index: auto;
   width: 6px;
   cursor: col-resize;
-  z-index: auto;
-  background-color: #000000;
+  background-color: #000;
 
   &:hover,
   &:active {
-    background: rgba(137, 180, 250, 0.3);
+    background: rgb(137 180 250 / 30%);
   }
 }
 
@@ -188,9 +187,11 @@ function onResizeStart(e: MouseEvent) {
 .sidebar-slide-enter-active {
   transition: transform 200ms ease;
 }
+
 .sidebar-slide-leave-active {
   transition: transform 100ms ease;
 }
+
 .sidebar-slide-enter-from,
 .sidebar-slide-leave-to {
   transform: translateX(-100%);

@@ -7,10 +7,11 @@
  *
  * 可作为仿真页面 Golden Layout 面板，也可内嵌到独立页面。
  */
-import { onMounted, ref, onUnmounted, watch } from 'vue'
-import { ElMessage, ElButton, ElTooltip } from 'element-plus'
+import { onMounted, ref, computed, onUnmounted, watch } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
+import { ElButton, ElTooltip } from 'element-plus'
 import FileTree from './FileTree.vue'
-import MonacoEditor from '@/components/Monaco/MonacoEditor.vue'
+import EditorWorkbench from './EditorWorkbench.vue'
 import { useWorkspace } from './composables/useWorkspace'
 import { useWorkspaceSettings, type WorkspaceSettings } from '@/composables/useWorkspaceSettings'
 import { useDesign } from '@/hooks/web/useDesign'
@@ -28,21 +29,27 @@ interface Props {
 const props = defineProps<Props>()
 
 // ─── Composables
+const workspace = useWorkspace()
+// 为了保持局部名称简短，解构需要的字段
 const {
   treeData,
-  currentFile,
   loading,
-  saving,
-  currentFileExtension,
+  activePath,
+  fileCache,
   loadTree,
-  loadChildren,
   openFile,
-  saveCurrentFile,
-  onContentChange,
-  handleUpload,
-  handleDelete,
-  handleMkdir
-} = useWorkspace()
+  saveActiveFile,
+  deleteCommand,
+  uploadExternalCommand
+} = workspace
+
+// 兼容老逻辑的几个计算属性
+const currentFile = computed(() => {
+  if (!activePath.value) return null
+  const fileData = fileCache.value.get(activePath.value)
+  return fileData ? fileData : null
+})
+const saving = ref(false)
 
 const { settings, resetSettings } = useWorkspaceSettings()
 const { registerPanel, unregisterPanel, updateSettingsTree } = usePanelState()
@@ -91,11 +98,9 @@ function stopResize() {
 
 // ─── 文件操作
 async function onSave(content: string) {
-  await saveCurrentFile(content)
-}
-
-async function onUpload(file: File, targetPath: string) {
-  await handleUpload(file, targetPath)
+  saving.value = true
+  await saveActiveFile(content)
+  saving.value = false
 }
 
 // ─── 顶部上传按钮
@@ -109,7 +114,7 @@ async function onFileInputChange(e: Event) {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   for (const file of files) {
-    await handleUpload(file, '.')
+    await uploadExternalCommand(file, '.')
   }
   input.value = ''
 }
@@ -121,6 +126,75 @@ function formatCode() {
   monacoRef.value?.format()
 }
 
+// ─── 键盘快捷键监听
+function handleKeyDown(e: KeyboardEvent) {
+  // 如果焦点在输入框内部（如重命名 input，或者 Monaco Editor），不拦截快捷键
+  const target = e.target as HTMLElement
+  if (target.tagName.match(/INPUT|TEXTAREA/i) || target.closest('.monaco-editor')) {
+    return
+  }
+
+  const paths = Array.from(workspace.selectedPaths.value) as string[]
+  if (!paths.length) return
+
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    workspace.deleteCommand(paths)
+  } else if (e.key.toLowerCase() === 'c' && (e.ctrlKey || e.metaKey)) {
+    workspace.copyCommand(paths)
+  } else if (e.key.toLowerCase() === 'x' && (e.ctrlKey || e.metaKey)) {
+    workspace.cutCommand(paths)
+  } else if (e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey)) {
+    if (paths.length === 1) {
+      // 找到选中项的父路径或者如果在目录上就贴到目录里
+      const node =
+        workspace.treeData.value?.find((n) => n.path === paths[0]) ||
+        workspace.findNodeByPath(workspace.treeData.value, paths[0])
+      const targetDir = node?.type === 'directory' ? node.path : (node?.parentPath ?? '.')
+      workspace.pasteCommand(targetDir)
+    } else {
+      // 如果多选，默认贴到根目录
+      workspace.pasteCommand('.')
+    }
+  } else if (e.key === 'F2') {
+    if (paths.length === 1) workspace.startRenameCommand(paths[0])
+  }
+}
+
+// ─── 脏数据拦截 (Dirty Data Guard)
+function hasDirtyFiles() {
+  for (const dirty of workspace.dirtyMap.value.values()) {
+    if (dirty) return true
+  }
+  return false
+}
+
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  if (hasDirtyFiles()) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
+onBeforeRouteLeave((_to, _from, next) => {
+  if (hasDirtyFiles()) {
+    import('element-plus').then(({ ElMessageBox }) => {
+      ElMessageBox.confirm('你有未保存的修改，离开将丢失这些修改。确实要离开吗？', '提示', {
+        confirmButtonText: '离开',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+        .then(() => {
+          next()
+        })
+        .catch(() => {
+          next(false) // cancel
+        })
+    })
+  } else {
+    next()
+  }
+})
+
 // ─── 生命周期
 onMounted(() => {
   if (props.panelId) {
@@ -130,6 +204,7 @@ onMounted(() => {
   loadTree()
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mouseup', stopResize)
+  window.addEventListener('beforeunload', onBeforeUnload)
 })
 
 onUnmounted(() => {
@@ -138,11 +213,17 @@ onUnmounted(() => {
   }
   document.removeEventListener('mousemove', onMouseMove)
   document.removeEventListener('mouseup', stopResize)
+  window.removeEventListener('beforeunload', onBeforeUnload)
 })
 </script>
 
 <template>
-  <div ref="panelRef" :class="[prefixCls, isResizing && `${prefixCls}--resizing`]">
+  <div
+    ref="panelRef"
+    :class="[prefixCls, isResizing && `${prefixCls}--resizing`]"
+    tabindex="-1"
+    @keydown="handleKeyDown"
+  >
     <!-- 隐藏上传 input -->
     <input
       ref="uploaderRef"
@@ -157,9 +238,15 @@ onUnmounted(() => {
       <div :class="`${prefixCls}__header-left`">
         <Icon icon="vi-carbon:folder" />
         <span>{{ currentFile ? currentFile.name : '文件管理' }}</span>
-        <span v-if="currentFile?.isDirty" :class="`${prefixCls}__dirty`" title="有未保存修改"
-          >●</span
+        <span
+          v-if="
+            workspace.activePath.value && workspace.dirtyMap.value.get(workspace.activePath.value)
+          "
+          :class="`${prefixCls}__dirty`"
+          title="有未保存修改"
         >
+          ●
+        </span>
       </div>
 
       <div :class="`${prefixCls}__header-right`">
@@ -182,8 +269,8 @@ onUnmounted(() => {
           type="primary"
           size="small"
           :loading="saving"
-          :disabled="!currentFile || !currentFile.isDirty"
-          @click="saveCurrentFile()"
+          :disabled="!currentFile || !workspace.dirtyMap.value.get(workspace.activePath.value!)"
+          @click="onSave(currentFile?.content || '')"
         >
           <Icon icon="vi-ep:check" />
           保存
@@ -198,27 +285,37 @@ onUnmounted(() => {
         <FileTree
           :tree-data="treeData"
           :loading="loading"
-          :load-children="loadChildren"
+          :workspace="workspace"
           @select-file="openFile"
-          @delete="handleDelete"
-          @mkdir="handleMkdir"
-          @upload="onUpload"
+          @delete="(path) => deleteCommand([path])"
+          @mkdir="() => {}"
+          @upload="uploadExternalCommand"
         />
       </div>
 
       <!-- 分隔拖拽线 -->
       <div :class="`${prefixCls}__divider`" @mousedown="startResize"></div>
 
-      <!-- 右侧 Monaco 编辑器 -->
+      <!-- 右侧 新版 Editor 工作台 -->
       <div :class="`${prefixCls}__right`" :style="{ width: `${100 - splitRatio}%` }">
-        <MonacoEditor
-          ref="monacoRef"
-          :model-value="currentFile?.content ?? ''"
-          :language="currentFileExtension"
-          :settings="settings"
-          :placeholder="'← 从左侧文件树中选择文件开始编辑'"
-          @update:model-value="onContentChange"
+        <EditorWorkbench
+          :preview-path="workspace.previewPath.value"
+          :active-path="workspace.activePath.value"
+          :pinned-tabs="workspace.pinnedTabs.value"
+          :file-cache="workspace.fileCache.value"
+          :dirty-map="workspace.dirtyMap.value"
+          @content-change="
+            (content) => {
+              if (workspace.activePath.value) {
+                workspace.markDirty(workspace.activePath.value, true)
+                const fc = workspace.fileCache.value.get(workspace.activePath.value)
+                if (fc) fc.content = content
+              }
+            }
+          "
           @save="onSave"
+          @select-tab="(path, asPreview) => workspace.openFile(path, asPreview)"
+          @close-tab="workspace.closeTab"
         />
       </div>
     </div>
@@ -229,13 +326,13 @@ onUnmounted(() => {
 @prefix: v-workspace-panel;
 
 .@{prefix} {
+  display: flex;
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--el-bg-color);
   overflow: hidden;
+  background: var(--el-bg-color);
   user-select: none;
+  flex-direction: column;
 
   &--resizing {
     cursor: col-resize;
@@ -243,22 +340,22 @@ onUnmounted(() => {
 
   &__header {
     display: flex;
+    height: 40px;
+    padding: 6px 12px;
+    background: var(--el-bg-color-page);
+    border-bottom: 1px solid var(--el-border-color);
     align-items: center;
     justify-content: space-between;
-    padding: 6px 12px;
-    border-bottom: 1px solid var(--el-border-color);
-    background: var(--el-bg-color-page);
     flex-shrink: 0;
-    height: 40px;
 
     &-left {
       display: flex;
-      align-items: center;
-      gap: 6px;
+      overflow: hidden;
       font-size: 13px;
       font-weight: 500;
       color: var(--el-text-color-primary);
-      overflow: hidden;
+      align-items: center;
+      gap: 6px;
 
       .el-icon {
         flex-shrink: 0;
@@ -281,9 +378,9 @@ onUnmounted(() => {
   }
 
   &__dirty {
-    color: var(--el-color-warning) !important;
     font-size: 16px;
     line-height: 1;
+    color: var(--el-color-warning) !important;
   }
 
   &__body {
@@ -294,18 +391,18 @@ onUnmounted(() => {
 
   &__left {
     height: 100%;
+    min-width: 140px;
     overflow: hidden;
     flex-shrink: 0;
-    min-width: 140px;
   }
 
   &__divider {
     width: 4px;
     height: 100%;
-    background: var(--el-border-color-lighter);
     cursor: col-resize;
-    flex-shrink: 0;
+    background: var(--el-border-color-lighter);
     transition: background 0.2s;
+    flex-shrink: 0;
 
     &:hover,
     .@{prefix}--resizing & {
@@ -314,10 +411,10 @@ onUnmounted(() => {
   }
 
   &__right {
-    flex: 1;
     height: 100%;
-    overflow: hidden;
     min-width: 0;
+    overflow: hidden;
+    flex: 1;
   }
 }
 </style>

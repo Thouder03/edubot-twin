@@ -254,24 +254,24 @@ onBeforeUnmount(() => {
 
 <style lang="less" scoped>
 .container-terminal {
+  position: relative;
+  display: flex;
   width: 100%;
   height: 100%;
-  background: #1e1e2e;
-  display: flex;
-  flex-direction: column;
-  position: relative;
   overflow: hidden;
+  background: #1e1e2e;
+  flex-direction: column;
 
   &__overlay {
     position: absolute;
-    inset: 0;
+    z-index: 10;
     display: flex;
+    background: rgb(30 30 46 / 92%);
+    inset: 0;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: rgba(30, 30, 46, 0.92);
     gap: 12px;
-    z-index: 10;
   }
 
   &__overlay-icon {
@@ -280,10 +280,10 @@ onBeforeUnmount(() => {
   }
 
   &__overlay-text {
-    color: #a6adc8;
-    font-size: 14px;
-    text-align: center;
     padding: 0 24px;
+    font-size: 14px;
+    color: #a6adc8;
+    text-align: center;
   }
 
   &__topbar {
@@ -320,24 +320,24 @@ onBeforeUnmount(() => {
   }
 
   &__reconnect {
-    font-size: 11px;
     padding: 2px 10px;
-    border-radius: 4px;
-    border: 1px solid #89b4fa;
-    background: rgba(137, 180, 250, 0.1);
+    font-size: 11px;
     color: #89b4fa;
     cursor: pointer;
+    background: rgb(137 180 250 / 10%);
+    border: 1px solid #89b4fa;
+    border-radius: 4px;
     transition: all 0.15s ease;
 
     &:hover {
-      background: rgba(137, 180, 250, 0.2);
+      background: rgb(137 180 250 / 20%);
     }
   }
 
   &__xterm {
-    flex: 1;
-    overflow: hidden;
     padding: 4px;
+    overflow: hidden;
+    flex: 1;
 
     // xterm.js 内部样式覆盖
     :deep(.xterm) {
@@ -355,6 +355,7 @@ onBeforeUnmount(() => {
   100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.3;
   }

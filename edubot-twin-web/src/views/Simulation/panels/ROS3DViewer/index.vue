@@ -474,20 +474,44 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="less" scoped>
+
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes blink-border {
+  0%,
+  100% {
+    border-color: rgb(243 139 168 / 40%);
+  }
+
+  50% {
+    border-color: rgb(243 139 168 / 90%);
+  }
+}
+
 .ros3d-viewer {
+  position: relative;
   width: 100%;
   height: 100%;
-  position: relative;
   overflow: hidden;
   background: #1e1e2e;
 }
 
 .ros3d-canvas-container {
-  width: 100%;
-  height: 100%;
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 // ---------- HUD 覆盖层（左上） ----------
@@ -510,19 +534,20 @@ onBeforeUnmount(() => {
 
 .hud-status {
   display: flex;
-  align-items: center;
-  gap: 6px;
   padding: 4px 10px;
-  background: rgba(17, 17, 27, 0.85);
-  backdrop-filter: blur(8px);
-  border-radius: 6px;
-  border: 1px solid rgba(69, 71, 90, 0.5);
   cursor: pointer;
+  background: rgb(17 17 27 / 85%);
+  border: 1px solid rgb(69 71 90 / 50%);
+  border-radius: 6px;
   transition: all 200ms ease;
   user-select: none;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(8px);
+
   &:hover {
-    background: rgba(30, 30, 46, 0.95);
-    border-color: rgba(137, 180, 250, 0.3);
+    background: rgb(30 30 46 / 95%);
+    border-color: rgb(137 180 250 / 30%);
   }
 }
 
@@ -534,8 +559,8 @@ onBeforeUnmount(() => {
 }
 
 .status-text {
+  font-family: Consolas, Monaco, monospace;
   font-size: 11px;
-  font-family: 'Consolas', 'Monaco', monospace;
   white-space: nowrap;
 }
 
@@ -544,16 +569,17 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 0;
   left: 0;
+  z-index: 5;
+  display: flex;
   width: 100%;
   height: 100%;
-  display: flex;
+  color: #6c7086;
+  background: #1e1e2e;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #1e1e2e;
-  color: #6c7086;
   gap: 12px;
-  z-index: 5;
+
   .loading-icon {
     color: #89b4fa;
     animation: pulse 1.5s ease-in-out infinite;
@@ -561,26 +587,6 @@ onBeforeUnmount(() => {
 
   span {
     font-size: 13px;
-  }
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes blink-border {
-  0%,
-  100% {
-    border-color: rgba(243, 139, 168, 0.4);
-  }
-  50% {
-    border-color: rgba(243, 139, 168, 0.9);
   }
 }
 </style>

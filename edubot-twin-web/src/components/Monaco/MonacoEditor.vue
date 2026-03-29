@@ -233,8 +233,8 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   height: 100%;
-  background: #1e1e1e;
   overflow: hidden;
+  background: #1e1e1e;
 
   &__container {
     width: 100%;
@@ -245,14 +245,14 @@ onUnmounted(() => {
   &__error,
   &__placeholder {
     position: absolute;
-    inset: 0;
     display: flex;
+    font-size: 14px;
+    color: var(--el-text-color-secondary);
+    inset: 0;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 12px;
-    color: var(--el-text-color-secondary);
-    font-size: 14px;
   }
 
   &__placeholder {

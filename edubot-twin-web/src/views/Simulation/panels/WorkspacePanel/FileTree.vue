@@ -1,32 +1,27 @@
 <script setup lang="ts">
 /**
- * FileTree.vue — 文件树组件
+ * FileTree.vue — 文件树入口包装组件 (Phase 1 瘦身版)
  *
- * 使用 el-tree 展示工作区文件层级，支持：
- * - 懒加载子目录
- * - 右键菜单（删除、新建目录）
- * - 拖拽上传
- * - 文件图标按类型显示
+ * 现已降阶为展示与事件转发层：
+ * 内部将复杂拖拽、树形选区与右键交给子组件和 Composables 处理。
  */
 import { ref } from 'vue'
-import { ElTree, ElIcon, ElTooltip, ElDialog, ElInput, ElButton, ElMessage } from 'element-plus'
-import type { TreeNode } from '@/api/files/types'
-import { useDesign } from '@/hooks/web/useDesign'
+import { ElIcon } from 'element-plus'
+import FileTreeContainer from './FileTreeContainer.vue'
+import WorkspaceContextMenu from './WorkspaceContextMenu.vue'
 import { Icon } from '@/components/Icon'
+import { useDesign } from '@/hooks/web/useDesign'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('file-tree')
 
-interface Props {
-  treeData: TreeNode[]
+// 从顶层 useWorkspace 注入，也可以由 props 接收
+// 为保证向下兼容 index.vue 和其他页面的老写法，我们在这先保留 Props 发射形式，或者直接接管
+const props = defineProps<{
+  treeData: any[]
   loading?: boolean
-  // 使用 any 跳过 el-tree LoadFunction 类型约束（运行时实际传递 TreeNode）
-  loadChildren: (node: any, resolve: (children: TreeNode[]) => void) => void
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  loading: false
-})
+  workspace: any
+}>()
 
 const emit = defineEmits<{
   'select-file': [path: string]
@@ -35,268 +30,74 @@ const emit = defineEmits<{
   upload: [file: File, targetPath: string]
 }>()
 
-// ─── 右键菜单
-const contextMenu = ref({
-  visible: false,
-  x: 0,
-  y: 0,
-  node: null as TreeNode | null
-})
+// 取消本地的 useWorkspace()，统一使用 props.workspace
 
-function onNodeContextMenu(e: MouseEvent, data: TreeNode) {
-  e.preventDefault()
-  contextMenu.value = {
-    visible: true,
-    x: e.clientX,
-    y: e.clientY,
-    node: data
+// 右键菜单组件引用
+const contextMenuRef = ref<InstanceType<typeof WorkspaceContextMenu> | null>(null)
+
+// ─── 事件转发
+function onSelectFile(path: string, event: MouseEvent) {
+  props.workspace.toggleSelection(path, event.metaKey || event.ctrlKey || event.shiftKey)
+  const node = props.workspace.findNodeByPath(props.treeData, path)
+  if (node && node.type === 'directory') {
+    props.workspace.toggleNodeExpand(node)
+  } else {
+    emit('select-file', path)
   }
 }
 
-function closeContextMenu() {
-  contextMenu.value.visible = false
+function onOpenFilePinned(path: string) {
+  props.workspace.openFile(path, false)
 }
 
-// ─── 文件图标
-const FILE_ICON_MAP: Record<string, string> = {
-  '.py': 'vi-vscode-icons:file-type-python',
-  '.cpp': 'vi-vscode-icons:file-type-cpp',
-  '.c': 'vi-vscode-icons:file-type-c',
-  '.h': 'vi-vscode-icons:file-type-c',
-  '.hpp': 'vi-vscode-icons:file-type-cpp',
-  '.json': 'vi-vscode-icons:file-type-json',
-  '.yaml': 'vi-vscode-icons:file-type-yaml',
-  '.yml': 'vi-vscode-icons:file-type-yaml',
-  '.xml': 'vi-vscode-icons:file-type-xml',
-  '.launch': 'vi-vscode-icons:file-type-xml',
-  '.sh': 'vi-vscode-icons:file-type-shell',
-  '.md': 'vi-vscode-icons:file-type-markdown',
-  '.txt': 'vi-carbon:document',
-  '.urdf': 'vi-carbon:document',
-  default: 'vi-carbon:document'
+function onNodeContextMenu(node: any, event: MouseEvent) {
+  event.preventDefault()
+  props.workspace.determineContextMenuSelection(node.path)
+  contextMenuRef.value?.show(event, node)
 }
 
-function getFileIcon(ext?: string): string {
-  if (!ext) return FILE_ICON_MAP.default
-  return FILE_ICON_MAP[ext] ?? FILE_ICON_MAP.default
+function onToggleExpand(node: any) {
+  props.workspace.toggleNodeExpand(node)
 }
 
-// ─── 新建目录弹窗
-const showMkdirDialog = ref(false)
-const mkdirName = ref('')
-const mkdirParentPath = ref('.')
-
-function openMkdirDialog(parentPath: string) {
-  mkdirParentPath.value = parentPath
-  mkdirName.value = ''
-  showMkdirDialog.value = true
-  closeContextMenu()
-}
-
-function confirmMkdir() {
-  if (!mkdirName.value.trim()) {
-    ElMessage.warning('目录名不能为空')
-    return
-  }
-  const fullPath =
-    mkdirParentPath.value === '.' ? mkdirName.value : `${mkdirParentPath.value}/${mkdirName.value}`
-  emit('mkdir', fullPath)
-  showMkdirDialog.value = false
-}
-
-// ─── 拖拽上传
-const isDragOver = ref(false)
-let lastDragDebugAt = 0
-
-function debugDragLayer(e: DragEvent, phase: 'dragover' | 'drop') {
-  if (!import.meta.env.DEV) return
-
-  const now = Date.now()
-  // dragover 高频触发，做简单节流，避免控制台刷屏
-  if (phase === 'dragover' && now - lastDragDebugAt < 600) return
-  lastDragDebugAt = now
-
-  const root = e.currentTarget as HTMLElement | null
-  if (!root) return
-
-  const ancestry: Array<Record<string, string>> = []
-  let node: HTMLElement | null = root
-  for (let i = 0; i < 6 && node; i += 1) {
-    const style = window.getComputedStyle(node)
-    ancestry.push({
-      className: node.className || '(no-class)',
-      position: style.position,
-      zIndex: style.zIndex,
-      overflow: style.overflow,
-      transform: style.transform !== 'none' ? style.transform : 'none'
-    })
-    node = node.parentElement
-  }
-
-  const style = window.getComputedStyle(root)
-  console.groupCollapsed(`[FileTree][${phase}] drag-layer debug`)
-  console.log('isDragOver:', isDragOver.value)
-  console.log('outline:', style.outline)
-  console.log('outlineOffset:', style.outlineOffset)
-  console.log('rootRect:', root.getBoundingClientRect())
-  console.log('inStandalonePage:', Boolean(root.closest('.v-file-manager-page, .v-code-editor-page')))
-  console.table(ancestry)
-  console.groupEnd()
-}
-
-function onDragOver(e: DragEvent) {
-  e.preventDefault()
-  isDragOver.value = true
-  debugDragLayer(e, 'dragover')
-}
-
-function onDragLeave() {
-  isDragOver.value = false
-}
-
-function onDrop(e: DragEvent, targetNode?: TreeNode) {
-  e.preventDefault()
-  isDragOver.value = false
-  debugDragLayer(e, 'drop')
-  const files = Array.from(e.dataTransfer?.files ?? [])
-  if (!files.length) return
-
-  const targetPath = targetNode?.type === 'directory' ? targetNode.path : '.'
-
-  for (const file of files) {
+function onDropExternal(files: FileList, targetPath: string) {
+  Array.from(files).forEach((file) => {
     emit('upload', file, targetPath)
-  }
+  })
 }
 
-// ─── 节点点击
-function onNodeClick(data: TreeNode) {
-  if (data.type === 'file') {
-    emit('select-file', data.path)
-  }
-}
-
-// ─── 右键删除（封装为方法，避免模板内多语句编译错误）
-function onContextDeleteClick() {
-  if (!contextMenu.value.node) return
-  emit('delete', contextMenu.value.node.path, contextMenu.value.node.label)
-  closeContextMenu()
+function onMoveInternal(sourcePaths: string[], targetDir: string) {
+  props.workspace.moveCommand(sourcePaths, targetDir)
 }
 </script>
 
 <template>
-  <div
-    :class="[prefixCls, isDragOver && `${prefixCls}--dragover`]"
-    @dragover="onDragOver"
-    @dragleave="onDragLeave"
-    @drop="onDrop($event)"
-    @click="closeContextMenu"
-  >
+  <div :class="prefixCls">
     <!-- 工具栏 -->
     <div :class="`${prefixCls}__toolbar`">
       <span :class="`${prefixCls}__title`">WORKSPACE</span>
-      <el-tooltip content="新建根目录" placement="top">
-        <el-icon :class="`${prefixCls}__action`" @click.stop="openMkdirDialog('.')">
-          <Icon icon="vi-ep:folder-add" />
-        </el-icon>
-      </el-tooltip>
+      <el-icon :class="`${prefixCls}__action`" @click.stop="emit('mkdir', '.')">
+        <Icon icon="vi-ep:folder-add" />
+      </el-icon>
     </div>
 
-    <!-- 加载态 -->
-    <div v-if="loading" :class="`${prefixCls}__loading`">
-      <el-icon class="is-loading"><Icon icon="vi-ep:loading" /></el-icon>
-    </div>
-
-    <!-- 空态 -->
-    <div v-else-if="!treeData.length" :class="`${prefixCls}__empty`">
-      <el-icon :size="32"><Icon icon="vi-carbon:folder" /></el-icon>
-      <p>工作区为空</p>
-      <p class="hint">拖拽文件到此处上传</p>
-    </div>
-
-    <!-- 文件树 -->
-    <el-tree
-      v-else
-      :data="treeData"
-      :props="{ isLeaf: 'isLeaf', children: 'children', label: 'label' }"
-      :load="loadChildren"
-      lazy
-      node-key="key"
-      :expand-on-click-node="false"
-      :class="`${prefixCls}__tree`"
-      @node-click="onNodeClick"
+    <!-- 树主体容器 -->
+    <FileTreeContainer
+      :tree-data="treeData"
+      :loading="loading"
+      :selected-paths="props.workspace.selectedPaths.value"
+      @select-file="onSelectFile"
+      @open-file-pinned="onOpenFilePinned"
       @node-contextmenu="onNodeContextMenu"
-    >
-      <template #default="{ node: treeNode, data }">
-        <div :class="`${prefixCls}__node`" @drop.stop="onDrop($event, data)">
-          <!-- 图标 -->
-          <el-icon :class="`${prefixCls}__node-icon`">
-            <Icon
-              v-if="data.type === 'directory'"
-              :icon="treeNode.expanded ? 'vi-ep:folder-opened' : 'vi-ep:folder'"
-            />
-            <Icon v-else :icon="getFileIcon(data.extension)" />
-          </el-icon>
-
-          <!-- 文件名 -->
-          <span :class="`${prefixCls}__node-label`">{{ data.label }}</span>
-
-          <!-- 操作按钮（hover 显示）-->
-          <div :class="`${prefixCls}__node-actions`">
-            <el-tooltip v-if="data.type === 'directory'" content="新建子目录" placement="top">
-              <el-icon :size="13" @click.stop="openMkdirDialog(data.path)">
-                <Icon icon="vi-ep:folder-add" />
-              </el-icon>
-            </el-tooltip>
-            <el-tooltip content="删除" placement="top">
-              <el-icon
-                :size="13"
-                class="danger"
-                @click.stop="emit('delete', data.path, data.label)"
-              >
-                <Icon icon="vi-ep:delete" />
-              </el-icon>
-            </el-tooltip>
-          </div>
-        </div>
-      </template>
-    </el-tree>
+      @toggle-expand="onToggleExpand"
+      @drop-external="onDropExternal"
+      @move-internal="onMoveInternal"
+      @rename-submit="props.workspace.renameCommand"
+      @rename-cancel="props.workspace.cancelRenameCommand"
+    />
 
     <!-- 右键菜单 -->
-    <teleport to="body">
-      <transition name="el-zoom-in-top">
-        <div
-          v-if="contextMenu.visible"
-          :class="`${prefixCls}__context-menu`"
-          :style="{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }"
-          @click.stop
-        >
-          <div
-            v-if="contextMenu.node?.type === 'directory'"
-            :class="`${prefixCls}__context-item`"
-            @click="openMkdirDialog(contextMenu.node!.path)"
-          >
-            <el-icon><Icon icon="vi-ep:folder-add" /></el-icon>
-            新建子目录
-          </div>
-          <div
-            :class="`${prefixCls}__context-item ${prefixCls}__context-item--danger`"
-            @click="onContextDeleteClick"
-          >
-            <el-icon><Icon icon="vi-ep:delete" /></el-icon>
-            删除
-          </div>
-        </div>
-      </transition>
-    </teleport>
-
-    <!-- 新建目录弹窗 -->
-    <el-dialog v-model="showMkdirDialog" title="新建目录" width="320px" :append-to-body="true">
-      <el-input v-model="mkdirName" placeholder="目录名" autofocus @keyup.enter="confirmMkdir" />
-      <template #footer>
-        <el-button @click="showMkdirDialog = false">取消</el-button>
-        <el-button type="primary" @click="confirmMkdir">创建</el-button>
-      </template>
-    </el-dialog>
+    <WorkspaceContextMenu ref="contextMenuRef" :commands="props.workspace" />
   </div>
 </template>
 
@@ -304,27 +105,12 @@ function onContextDeleteClick() {
 @prefix: v-file-tree;
 
 .@{prefix} {
+  display: flex;
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: column;
   background: var(--el-bg-color-page);
   border-right: 1px solid var(--el-border-color);
-  position: relative;
-  isolation: isolate;
-  transition: box-shadow 0.2s;
-
-  &--dragover {
-    &::after {
-      content: '';
-      position: absolute;
-      inset: 4px;
-      border: 2px dashed var(--el-color-primary);
-      border-radius: 6px;
-      pointer-events: none;
-      z-index: 20;
-    }
-  }
+  flex-direction: column;
 
   &__toolbar {
     display: flex;
@@ -342,130 +128,12 @@ function onContextDeleteClick() {
   }
 
   &__action {
-    cursor: pointer;
     color: var(--el-text-color-secondary);
+    cursor: pointer;
     transition: color 0.2s;
 
     &:hover {
       color: var(--el-color-primary);
-    }
-  }
-
-  &__loading,
-  &__empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    height: 120px;
-    color: var(--el-text-color-secondary);
-    font-size: 13px;
-
-    p {
-      margin: 0;
-    }
-
-    .hint {
-      font-size: 11px;
-      color: var(--el-text-color-placeholder);
-    }
-  }
-
-  &__tree {
-    flex: 1;
-    overflow: auto;
-    padding: 4px 0;
-
-    :deep(.el-tree-node__content) {
-      height: 28px;
-      border-radius: 4px;
-      margin: 1px 4px;
-
-      &:hover {
-        background: var(--el-fill-color-light);
-      }
-    }
-  }
-
-  &__node {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    overflow: hidden;
-    min-width: 0;
-
-    &-icon {
-      flex-shrink: 0;
-      font-size: 14px;
-    }
-
-    &-label {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 13px;
-    }
-
-    &-actions {
-      display: none;
-      align-items: center;
-      gap: 4px;
-      flex-shrink: 0;
-
-      .el-icon {
-        cursor: pointer;
-        color: var(--el-text-color-secondary);
-        padding: 2px;
-        border-radius: 3px;
-
-        &:hover {
-          background: var(--el-fill-color);
-          color: var(--el-color-primary);
-        }
-
-        &.danger:hover {
-          color: var(--el-color-danger);
-        }
-      }
-    }
-  }
-
-  // hover 时显示操作按钮
-  :deep(.el-tree-node__content:hover) .v-file-tree__node-actions {
-    display: flex;
-  }
-
-  &__context-menu {
-    position: fixed;
-    z-index: 9999;
-    background: var(--el-bg-color-overlay);
-    border: 1px solid var(--el-border-color-light);
-    border-radius: 6px;
-    box-shadow: var(--el-box-shadow-light);
-    padding: 4px;
-    min-width: 150px;
-  }
-
-  &__context-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    color: var(--el-text-color-primary);
-    transition: background 0.15s;
-
-    &:hover {
-      background: var(--el-fill-color-light);
-    }
-
-    &--danger {
-      color: var(--el-color-danger);
     }
   }
 }

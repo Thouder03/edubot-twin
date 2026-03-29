@@ -129,6 +129,20 @@ class FileSaveRequest(BaseModel):
 class MkdirRequest(BaseModel):
     path: str
 
+class FileRenameRequest(BaseModel):
+    path: str
+    new_name: str
+
+class FileMoveRequest(BaseModel):
+    source_paths: list[str]
+    target_dir: str
+
+class FileCopyRequest(BaseModel):
+    source_paths: list[str]
+    target_dir: str
+
+class BatchDeleteRequest(BaseModel):
+    paths: list[str]
 
 # ─── API 端点 ───────────────────────────────────────────────────────────────
 
@@ -359,3 +373,186 @@ async def make_directory(
 
     rel_path = str(dir_path.relative_to(workspace))
     return ApiResponse(code=0, message="创建成功", data={"path": rel_path})
+
+
+@router.post("/rename")
+async def rename_file(
+    request: FileRenameRequest,
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    重命名文件或目录
+    """
+    workspace = get_workspace(student_id)
+    source = validate_path(workspace, request.path)
+
+    if not source.exists():
+        raise HTTPException(status_code=404, detail="源文件或目录不存在")
+    if source.resolve() == workspace.resolve():
+        raise HTTPException(status_code=400, detail="不允许重命名工作区根目录")
+
+    # 验证新名字没有包含反斜杠或斜杠
+    if "/" in request.new_name or "\\" in request.new_name:
+        raise HTTPException(status_code=400, detail="新名称不能包含路径分隔符")
+
+    target = source.with_name(request.new_name)
+    if target.exists():
+        raise HTTPException(status_code=400, detail="目标名称已存在")
+
+    try:
+        source.rename(target)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"重命名失败: {e}")
+
+    return ApiResponse(
+        code=0,
+        message="重命名成功",
+        data={"new_path": str(target.relative_to(workspace))}
+    )
+
+
+@router.post("/move")
+async def move_files(
+    request: FileMoveRequest,
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    移动多个文件/目录到目标目录
+    """
+    workspace = get_workspace(student_id)
+    target_dir = validate_path(workspace, request.target_dir)
+
+    if not target_dir.exists():
+        raise HTTPException(status_code=404, detail="目标目录不存在")
+    if not target_dir.is_dir():
+        raise HTTPException(status_code=400, detail="目标路径不是一个目录")
+
+    success_paths = []
+    failed_paths = []
+
+    for path in request.source_paths:
+        try:
+            source = validate_path(workspace, path)
+            if not source.exists():
+                failed_paths.append({"path": path, "reason": "不存在"})
+                continue
+            
+            # 防止移动到自身或子目录
+            if target_dir.resolve().is_relative_to(source.resolve()):
+                failed_paths.append({"path": path, "reason": "不能移动到自身的子目录中"})
+                continue
+
+            target = target_dir / source.name
+            if target.exists():
+                failed_paths.append({"path": path, "reason": "目标目录已存在同名文件"})
+                continue
+
+            shutil.move(str(source), str(target))
+            success_paths.append(str(target.relative_to(workspace)))
+        except Exception as e:
+            failed_paths.append({"path": path, "reason": str(e)})
+
+    if not success_paths and failed_paths:
+        raise HTTPException(status_code=500, detail=f"移动失败: {failed_paths[0]['reason']}")
+
+    return ApiResponse(
+        code=0,
+        message="移动完成",
+        data={"success": success_paths, "failed": failed_paths}
+    )
+
+
+@router.post("/copy")
+async def copy_files(
+    request: FileCopyRequest,
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    复制多个文件/目录到目标目录
+    """
+    workspace = get_workspace(student_id)
+    target_dir = validate_path(workspace, request.target_dir)
+
+    if not target_dir.exists():
+        raise HTTPException(status_code=404, detail="目标目录不存在")
+    if not target_dir.is_dir():
+        raise HTTPException(status_code=400, detail="目标路径不是目录")
+
+    success_paths = []
+    failed_paths = []
+
+    for path in request.source_paths:
+        try:
+            source = validate_path(workspace, path)
+            if not source.exists():
+                failed_paths.append({"path": path, "reason": "源不存在"})
+                continue
+                
+            target = target_dir / source.name
+            
+            # 自动重命名处理如果是同一目录复制
+            if target.exists():
+                counter = 1
+                stem = source.stem
+                suffix = source.suffix
+                while target.exists():
+                    target = target_dir / f"{stem}_copy{counter}{suffix}"
+                    counter += 1
+
+            if source.is_dir():
+                # 预估大小太复杂，简单处理，后置检查配额暂略，真实生产应先预估大小
+                shutil.copytree(str(source), str(target))
+            else:
+                shutil.copy2(str(source), str(target))
+
+            success_paths.append(str(target.relative_to(workspace)))
+        except Exception as e:
+            failed_paths.append({"path": path, "reason": str(e)})
+
+    # 在复制完成后做一次总配额检查，如果超标，抛错（虽已复制部分文件，但下次会被阻止）
+    check_disk_quota(student_id, 0)
+
+    return ApiResponse(
+        code=0,
+        message="复制完成",
+        data={"success": success_paths, "failed": failed_paths}
+    )
+
+
+@router.delete("/batch-delete")
+async def batch_delete_files(
+    request: BatchDeleteRequest,
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    批量删除文件或目录
+    """
+    workspace = get_workspace(student_id)
+    
+    deleted = []
+    failed = []
+
+    for path in request.paths:
+        try:
+            target = validate_path(workspace, path)
+            if not target.exists():
+                failed.append({"path": path, "reason": "不存在"})
+                continue
+            
+            if target.resolve() == workspace.resolve():
+                failed.append({"path": path, "reason": "不允许删除工作区根目录"})
+                continue
+
+            if target.is_file():
+                target.unlink()
+            else:
+                shutil.rmtree(target)
+            deleted.append(path)
+        except Exception as e:
+            failed.append({"path": path, "reason": str(e)})
+
+    return ApiResponse(
+        code=0,
+        message="批量删除完成",
+        data={"deleted": deleted, "failed": failed}
+    )

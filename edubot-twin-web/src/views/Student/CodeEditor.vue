@@ -120,11 +120,11 @@ const initialPath = route.query.path as string | undefined
 @prefix: v-code-editor-page;
 
 .@{prefix} {
+  display: flex;
   width: 100%;
   height: calc(100vh - var(--top-tool-height, 50px) - var(--tags-view-height, 34px));
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
+  flex-direction: column;
 
   &__topbar {
     display: flex;
@@ -144,17 +144,17 @@ const initialPath = route.query.path as string | undefined
       color: var(--el-text-color-primary);
 
       .el-icon {
-        color: var(--el-color-primary);
         font-size: 18px;
+        color: var(--el-color-primary);
       }
     }
 
     &-path {
-      font-size: 12px;
-      color: var(--el-text-color-secondary);
-      font-weight: 400;
-      background: var(--el-fill-color);
       padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--el-text-color-secondary);
+      background: var(--el-fill-color);
       border-radius: 4px;
     }
 

@@ -9,7 +9,11 @@ import type {
   FileReadData,
   FileUploadData,
   FileSaveRequest,
-  MkdirRequest
+  MkdirRequest,
+  FileRenameRequest,
+  FileMoveRequest,
+  FileCopyRequest,
+  BatchDeleteRequest
 } from './types'
 
 const BASE = '/api/v1/students/files'
@@ -66,4 +70,30 @@ export const deleteFile = (path: string): Promise<IResponse<{ path: string }>> =
 /** 创建目录 */
 export const mkdir = (data: MkdirRequest): Promise<IResponse<{ path: string }>> => {
   return service.post({ url: `${BASE}/mkdir`, data })
+}
+
+/** 重命名文件或目录 */
+export const renameFile = (data: FileRenameRequest): Promise<IResponse<{ new_path: string }>> => {
+  return service.post({ url: `${BASE}/rename`, data })
+}
+
+/** 移动文件或目录 */
+export const moveFiles = (
+  data: FileMoveRequest
+): Promise<IResponse<{ success: string[]; failed: any[] }>> => {
+  return service.post({ url: `${BASE}/move`, data })
+}
+
+/** 复制文件或目录 */
+export const copyFiles = (
+  data: FileCopyRequest
+): Promise<IResponse<{ success: string[]; failed: any[] }>> => {
+  return service.post({ url: `${BASE}/copy`, data })
+}
+
+/** 批量删除文件或目录 */
+export const batchDeleteFiles = (
+  data: BatchDeleteRequest
+): Promise<IResponse<{ deleted: string[]; failed: any[] }>> => {
+  return service.delete({ url: `${BASE}/batch-delete`, data })
 }

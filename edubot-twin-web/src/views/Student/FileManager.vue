@@ -120,11 +120,11 @@ const showSettings = ref(false)
 @prefix: v-file-manager-page;
 
 .@{prefix} {
+  display: flex;
   width: 100%;
   height: calc(100vh - var(--top-tool-height, 50px) - var(--tags-view-height, 34px));
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
+  flex-direction: column;
 
   &__topbar {
     display: flex;
@@ -144,8 +144,8 @@ const showSettings = ref(false)
       color: var(--el-text-color-primary);
 
       .el-icon {
-        color: var(--el-color-primary);
         font-size: 18px;
+        color: var(--el-color-primary);
       }
     }
 

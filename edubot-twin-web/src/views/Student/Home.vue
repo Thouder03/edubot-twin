@@ -418,8 +418,8 @@ onMounted(() => {
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
     display: flex;
+    transform: translate(-50%, -50%);
     justify-content: center;
     align-items: center;
     gap: 20px;

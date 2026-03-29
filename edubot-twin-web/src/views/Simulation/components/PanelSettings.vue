@@ -185,49 +185,52 @@ function handleGroupAction(groupKey: string, action: string) {
 .panel-settings {
   width: 100%;
   height: 100%;
-  background: #1e1e2e;
-  overflow-y: auto;
   padding: 0;
+  overflow-y: auto;
+  background: #1e1e2e;
 
   // Custom Scrollbar
   &::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
+
   &::-webkit-scrollbar-thumb {
     background: #45475a;
     border-radius: 3px;
   }
+
   &::-webkit-scrollbar-thumb:hover {
     background: #585b70;
   }
 
   // Element Plus Collapse 暗色适配
   .settings-collapse {
-    border: none;
     background: transparent;
+    border: none;
 
     :deep(.el-collapse-item) {
       border-bottom: 1px solid #313244;
     }
 
     :deep(.el-collapse-item__header) {
+      display: flex;
+      height: 35px;
+      padding: 4px 8px 4px 22px;
+      font-size: 12px;
+      line-height: 1;
+      color: #cdd6f4;
       background: transparent;
       border: none;
-      color: #cdd6f4;
-      padding: 4px 8px 4px 22px;
-      height: 35px;
-      line-height: 1;
-      font-size: 12px;
-      display: flex;
       justify-content: flex-start;
       align-items: center;
 
       &:hover {
-        background: rgba(49, 50, 68, 0.6); /* 更柔和的 hover */
+        background: rgb(49 50 68 / 60%); /* 更柔和的 hover */
       }
     }
 
@@ -238,7 +241,7 @@ function handleGroupAction(groupKey: string, action: string) {
     }
 
     :deep(.el-collapse-item__content) {
-      padding: 4px 8px 8px 8px; /* Lichtblick: 上间距 4px，左右 8px */
+      padding: 4px 8px 8px; /* Lichtblick: 上间距 4px，左右 8px */
       color: #cdd6f4;
     }
 
@@ -257,21 +260,21 @@ function handleGroupAction(groupKey: string, action: string) {
   }
 
   :deep(.el-form-item__label) {
-    color: #a6adc8 !important;
-    font-size: 12px;
-    padding-right: 0; /* Grid 已处理间距 */
-    line-height: 1.5;
-    text-align: right;
     min-width: 0; /* 允许压缩到 grid 的 minmax 最小值 */
+    padding-right: 0; /* Grid 已处理间距 */
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #a6adc8 !important;
+    text-align: right;
+    text-overflow: ellipsis;
 
     /* 省略号溢出处理 */
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    cursor: text;
 
     /* 允许文本选择 */
     user-select: text;
-    cursor: text;
   }
 
   :deep(.el-form-item__content) {
@@ -280,13 +283,13 @@ function handleGroupAction(groupKey: string, action: string) {
   }
 
   :deep(.el-input__wrapper) {
-    background-color: #313244;
-    box-shadow: none;
-    border: 1px solid rgba(69, 71, 90, 0.5); /* 更柔和的边框 */
     width: 100%;
     min-height: 28px; /* 恢复合适的最小高度 */
-    padding-block: 4px; /* 调整内边距 */
+    background-color: #313244;
+    border: 1px solid rgb(69 71 90 / 50%); /* 更柔和的边框 */
+    box-shadow: none;
     transition: border-color 0.2s;
+    padding-block: 4px; /* 调整内边距 */
 
     &:hover {
       border-color: #45475a;
@@ -297,38 +300,41 @@ function handleGroupAction(groupKey: string, action: string) {
     }
 
     .el-input__inner {
-      color: #cdd6f4;
-      text-align: right;
       height: auto;
       line-height: 1.5;
+      color: #cdd6f4;
+      text-align: right;
     }
   }
 
   :deep(.el-input-number) {
     width: 100%;
+
     .el-input__wrapper {
       max-width: 100%;
-      padding-left: 0;
-      padding-right: 0;
       min-height: 28px; /* 恢复合适的最小高度 */
+      padding-right: 0;
+      padding-left: 0;
       padding-block: 4px; /* 调整内边距 */
     }
+
     .el-input__inner {
-      text-align: center;
       height: auto;
       line-height: 1.5;
+      text-align: center;
     }
   }
 
   :deep(.el-select) {
     width: 100%;
+
     .el-select__wrapper {
-      background-color: #313244;
-      box-shadow: none;
-      border: 1px solid rgba(69, 71, 90, 0.5);
       min-height: 28px; /* 恢复合适的最小高度 */
-      padding-block: 4px; /* 调整内边距 */
+      background-color: #313244;
+      border: 1px solid rgb(69 71 90 / 50%);
+      box-shadow: none;
       transition: border-color 0.2s;
+      padding-block: 4px; /* 调整内边距 */
 
       &:hover {
         border-color: #45475a;
@@ -346,9 +352,9 @@ function handleGroupAction(groupKey: string, action: string) {
   user-select: none;
 
   .expand-icon {
-    transition: transform 0.2s;
     font-size: 12px;
     color: #a6adc8;
+    transition: transform 0.2s;
     flex-shrink: 0;
 
     &.is-rotated {
@@ -362,29 +368,29 @@ function handleGroupAction(groupKey: string, action: string) {
   }
 
   .group-label {
-    flex: 1;
-    font-weight: 600;
     overflow: hidden;
+    font-weight: 600;
+    text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
-    text-align: left;
+    flex: 1;
   }
 
   .group-actions {
-    margin-left: auto;
     display: flex;
+    margin-left: auto;
     align-items: center;
 
     .group-menu-icon {
+      padding: 2px;
       color: #6c7086;
       cursor: pointer;
-      padding: 2px;
       border-radius: 4px;
       transition: all 0.2s;
 
       &:hover {
         color: #cdd6f4;
-        background: rgba(137, 180, 250, 0.15);
+        background: rgb(137 180 250 / 15%);
       }
     }
   }
@@ -399,17 +405,18 @@ function handleGroupAction(groupKey: string, action: string) {
 }
 
 .settings-empty {
+  display: flex;
   width: 100%;
   height: 100%;
-  display: flex;
+  color: #585b70;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #585b70;
 
   .empty-icon {
     margin-bottom: 12px;
   }
+
   p {
     font-size: 12px;
   }

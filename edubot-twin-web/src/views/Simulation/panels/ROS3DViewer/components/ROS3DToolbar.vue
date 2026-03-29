@@ -68,36 +68,36 @@ const inactiveTitle = computed(() => `点击进入发布模式（${btnLabel.valu
 
 .toolbar-btn {
   display: flex;
-  align-items: center;
-  gap: 5px;
   padding: 5px 11px;
-  background: rgba(17, 17, 27, 0.85);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(69, 71, 90, 0.5);
-  border-radius: 6px;
-  color: #cdd6f4;
+  font-family: Consolas, Monaco, monospace;
   font-size: 11px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  color: #cdd6f4;
+  white-space: nowrap;
   cursor: pointer;
+  background: rgb(17 17 27 / 85%);
+  border: 1px solid rgb(69 71 90 / 50%);
+  border-radius: 6px;
   transition: all 200ms ease;
   user-select: none;
-  white-space: nowrap;
+  align-items: center;
+  gap: 5px;
+  backdrop-filter: blur(8px);
 
   &:hover {
-    background: rgba(30, 30, 46, 0.95);
-    border-color: rgba(137, 180, 250, 0.5);
     color: #89b4fa;
+    background: rgb(30 30 46 / 95%);
+    border-color: rgb(137 180 250 / 50%);
   }
 
   // 激活状态（发布中）
   &--active {
-    background: rgba(243, 139, 168, 0.2);
-    border-color: rgba(243, 139, 168, 0.6);
     color: #f38ba8;
+    background: rgb(243 139 168 / 20%);
+    border-color: rgb(243 139 168 / 60%);
     animation: blink-border 1.2s ease-in-out infinite;
 
     &:hover {
-      background: rgba(243, 139, 168, 0.3);
+      background: rgb(243 139 168 / 30%);
       border-color: #f38ba8;
     }
   }
@@ -106,10 +106,11 @@ const inactiveTitle = computed(() => `点击进入发布模式（${btnLabel.valu
 @keyframes blink-border {
   0%,
   100% {
-    border-color: rgba(243, 139, 168, 0.4);
+    border-color: rgb(243 139 168 / 40%);
   }
+
   50% {
-    border-color: rgba(243, 139, 168, 0.9);
+    border-color: rgb(243 139 168 / 90%);
   }
 }
 </style>

@@ -152,7 +152,7 @@ watch(
 
 <template>
   <Form :rules="rules" @register="formRegister" :schema="formSchema" />
-  <div style="text-align: right; margin-top: 20px">
+  <div style=" margin-top: 20px;text-align: right">
     <ElButton @click="$emit('close')"> 取消 </ElButton>
     <ElButton type="primary" :loading="loading" @click="submit"> 保存 </ElButton>
   </div>
