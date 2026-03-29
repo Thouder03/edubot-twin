@@ -173,7 +173,9 @@ async def get_user_routes(role: str):
     role_routes = {
         "student": [
             "/student",
-            "/student/home"
+            "/student/home",
+            "/student/files",
+            "/student/editor"
         ],
         "teacher": [
             "/teacher",

@@ -11,7 +11,7 @@
 """
 
 from fastapi import APIRouter
-from . import basic, container, terminal
+from . import basic, container, terminal, files
 
 # 创建学生路由聚合器
 router = APIRouter()
@@ -24,6 +24,9 @@ router.include_router(container.router, prefix="/container", tags=["学生-容�
 
 # 挂载终端 WebSocket 路由（第六期新增）
 router.include_router(terminal.router, prefix="/terminal", tags=["学生-终端"])
+
+# 挂载文件管理路由（第七期新增）
+router.include_router(files.router, prefix="/files", tags=["学生-文件管理"])
 
 # 后续添加其他模块路由:
 # from . import exams, learning, homework

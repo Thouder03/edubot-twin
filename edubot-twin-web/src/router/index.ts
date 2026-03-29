@@ -809,6 +809,24 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
           noCache: true,
           affix: true
         }
+      },
+      {
+        path: 'files',
+        component: () => import('@/views/Student/FileManager.vue'),
+        name: 'StudentFileManager',
+        meta: {
+          title: '文件管理',
+          icon: 'vi-carbon:folder'
+        }
+      },
+      {
+        path: 'editor',
+        component: () => import('@/views/Student/CodeEditor.vue'),
+        name: 'StudentCodeEditor',
+        meta: {
+          title: '代码编辑器',
+          icon: 'vi-carbon:code'
+        }
       }
     ]
   }

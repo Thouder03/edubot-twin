@@ -23,6 +23,9 @@ importers:
       '@mapbox/tiny-sdf':
         specifier: ^2.0.7
         version: 2.0.7
+      '@monaco-editor/loader':
+        specifier: ^1.7.0
+        version: 1.7.0
       '@vueuse/core':
         specifier: ^12.3.0
         version: 12.3.0(typescript@5.7.3)
@@ -1526,6 +1529,9 @@ packages:
 
   '@mapbox/tiny-sdf@2.0.7':
     resolution: {integrity: sha512-25gQLQMcpivjOSA40g3gO6qgiFPDpWRoMfd+G/GoppPIeP6JDaMMkMrEJnMZhKyyS6iKwVt5YKu02vCUyJM3Ug==}
+
+  '@monaco-editor/loader@1.7.0':
+    resolution: {integrity: sha512-gIwR1HrJrrx+vfyOhYmCZ0/JcWqG5kbfG7+d3f/C1LXk2EvzAbHSg3MQ5lO2sMlo9izoAZ04shohfKLVT6crVA==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha1-dhnC6yGyVIP20WdUi0z9WnSIw9U=}
@@ -5161,6 +5167,9 @@ packages:
   stable@0.1.8:
     resolution: {integrity: sha1-g26zyDgv4pNv6vVEYxAXzn1Ho88=}
 
+  state-local@1.0.7:
+    resolution: {integrity: sha512-HTEHMNieakEnoe33shBYcZ7NX83ACUjCu8c40iOGEZsngj9zRnkqS9j1pqQPXwobB0ZcVTk27REb7COQ0UR59w==}
+
   static-extend@0.1.2:
     resolution: {integrity: sha1-YICcOcv/VTNyJv1eC1IPNB8ftcY=}
     engines: {node: '>=0.10.0'}
@@ -7191,6 +7200,10 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.0
 
   '@mapbox/tiny-sdf@2.0.7': {}
+
+  '@monaco-editor/loader@1.7.0':
+    dependencies:
+      state-local: 1.0.7
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -11289,6 +11302,8 @@ snapshots:
   ssr-window@3.0.0: {}
 
   stable@0.1.8: {}
+
+  state-local@1.0.7: {}
 
   static-extend@0.1.2:
     dependencies:

@@ -4,6 +4,7 @@ import ROS3DViewer from './ROS3DViewer/index.vue'
 import GzWebViewer from './GzWebViewer/index.vue'
 import KeyboardControl from './KeyboardControl/index.vue'
 import ContainerTerminal from './ContainerTerminal/index.vue'
+import WorkspacePanel from './WorkspacePanel/index.vue'
 
 export interface PanelRegistryEntry {
   /** Vue 组件 */
@@ -29,6 +30,10 @@ export const panelRegistry: Record<string, PanelRegistryEntry> = {
   ContainerTerminal: {
     component: markRaw(ContainerTerminal),
     label: '容器终端'
+  },
+  WorkspacePanel: {
+    component: markRaw(WorkspacePanel),
+    label: '文件管理 / 代码编辑'
   }
 }
 

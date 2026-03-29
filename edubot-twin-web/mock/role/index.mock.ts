@@ -752,6 +752,24 @@ const studentList = [
           noCache: true,
           affix: true
         }
+      },
+      {
+        path: 'files',
+        component: 'views/Student/FileManager',
+        name: 'StudentFileManager',
+        meta: {
+          title: '文件管理',
+          icon: 'vi-carbon:folder'
+        }
+      },
+      {
+        path: 'editor',
+        component: 'views/Student/CodeEditor',
+        name: 'StudentCodeEditor',
+        meta: {
+          title: '代码编辑器',
+          icon: 'vi-carbon:code'
+        }
       }
     ]
   }

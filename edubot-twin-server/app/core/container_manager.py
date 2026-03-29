@@ -6,8 +6,10 @@
 """
 import asyncio
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from docker.errors import NotFound, APIError
@@ -15,6 +17,10 @@ from docker.errors import NotFound, APIError
 from app.core.docker_client import get_docker_client, DockerConnectionError  # noqa: F401
 
 logger = logging.getLogger(__name__)
+
+# 学生工作区根目录
+STUDENTS_DATA_DIR = Path("data/students").resolve()
+TEMPLATES_DIR = Path("data/templates/ros_packages").resolve()
 
 # 专用线程池：Docker 操作可能耗时较长，独立于默认线程池
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="docker")
@@ -24,6 +30,45 @@ async def _run_in_executor(func, *args):
     """将同步 Docker 调用包装为异步"""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(_executor, func, *args)
+
+
+# ─── 学生工作区初始化 ──────────────────────────────────────
+
+def create_student_workspace(student_id: int) -> Path:
+    """
+    初始化学生工作区目录结构。
+    
+    创建工作区及其子目录，可选复制模板文件。
+    如果工作区已存在则直接返回路径。
+
+    Args:
+        student_id: 学生 ID
+    
+    Returns:
+        工作区直径路径 (Path 对象)
+    """
+    workspace = STUDENTS_DATA_DIR / str(student_id) / "workspace"
+    
+    # 创建标准目录结构
+    for subdir in ["src", "launch", "config", "scripts"]:
+        (workspace / subdir).mkdir(parents=True, exist_ok=True)
+    
+    # 复制模板文件（可选）
+    if TEMPLATES_DIR.exists():
+        import shutil
+        for item in TEMPLATES_DIR.iterdir():
+            dest = workspace / "src" / item.name
+            if not dest.exists():
+                try:
+                    if item.is_file():
+                        shutil.copy2(item, dest)
+                    elif item.is_dir():
+                        shutil.copytree(item, dest)
+                except OSError as e:
+                    logger.warning(f"复制模板失败: {item} -> {dest}: {e}")
+    
+    logger.info(f"学生工作区已初始化: {workspace}")
+    return workspace
 
 
 # ─── 容器创建 ───────────────────────────────────────────────
@@ -53,6 +98,30 @@ async def create_container(
     def _sync():
         client = get_docker_client()
         container_name = f"edubot-sim-{student_id}"
+
+        # 初始化学生工作区目录（第七期新增）
+        try:
+            workspace_path = create_student_workspace(student_id)
+        except Exception as e:
+            logger.error(f"学生工作区初始化失败: {e}")
+            workspace_path = None
+
+        # 构建 Volume 挂载配置（第七期新增）
+        volumes = {}
+        if workspace_path and workspace_path.exists():
+            volumes[str(workspace_path)] = {
+                "bind": "/home/student/workspace",
+                "mode": "rw",
+            }
+            logger.info(f"工作区 Volume 挂载: {workspace_path} -> /home/student/workspace")
+        
+        # ROS 模板目录（只读挂载）
+        templates_host = str(TEMPLATES_DIR)
+        if TEMPLATES_DIR.exists():
+            volumes[templates_host] = {
+                "bind": "/opt/templates",
+                "mode": "ro",
+            }
 
         # 清理同名残留容器（防止 name conflict）
         try:
@@ -84,6 +153,7 @@ async def create_container(
                 "8080/tcp": gz_port,
                 "9090/tcp": ros_port,
             },
+            volumes=volumes,          # 第七期新增：Volume 挂载
             mem_limit="2g",
             nano_cpus=2_000_000_000,  # 2 CPU cores
             labels={
