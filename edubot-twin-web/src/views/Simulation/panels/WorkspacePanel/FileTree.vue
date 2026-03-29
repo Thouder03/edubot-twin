@@ -177,6 +177,7 @@ function onContextDeleteClick() {
     <el-tree
       v-else
       :data="treeData"
+      :props="{ isLeaf: 'isLeaf', children: 'children', label: 'label' }"
       :load="loadChildren"
       lazy
       node-key="key"

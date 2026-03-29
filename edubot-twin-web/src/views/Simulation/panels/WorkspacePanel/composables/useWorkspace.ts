@@ -1,14 +1,7 @@
 // useWorkspace.ts — WorkspacePanel 文件 CRUD 状态管理
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  listFiles,
-  readFile,
-  saveFile,
-  uploadFile,
-  deleteFile,
-  mkdir
-} from '@/api/files'
+import { listFiles, readFile, saveFile, uploadFile, deleteFile, mkdir } from '@/api/files'
 import type { FileItem, DirectoryItem, TreeNode, FileReadData } from '@/api/files/types'
 
 export function useWorkspace() {
@@ -17,13 +10,10 @@ export function useWorkspace() {
   const currentFile = ref<(FileReadData & { path: string; isDirty: boolean }) | null>(null)
   const loading = ref(false)
   const saving = ref(false)
-  const currentPath = ref('.')  // 当前浏览的目录路径
+  const currentPath = ref('.') // 当前浏览的目录路径
 
   // ─── 构建树形节点
-  function buildTreeNodes(
-    directories: DirectoryItem[],
-    files: FileItem[]
-  ): TreeNode[] {
+  function buildTreeNodes(directories: DirectoryItem[], files: FileItem[]): TreeNode[] {
     const nodes: TreeNode[] = []
 
     // 目录节点（先显示）
@@ -34,7 +24,7 @@ export function useWorkspace() {
         type: 'directory',
         path: dir.path,
         isLeaf: false,
-        children: []  // 懒加载
+        children: [] // 懒加载
       })
     }
 
@@ -60,10 +50,7 @@ export function useWorkspace() {
     try {
       const res = await listFiles(path)
       if (res.code === 0 && res.data) {
-        treeData.value = buildTreeNodes(
-          res.data.directories,
-          res.data.files
-        )
+        treeData.value = buildTreeNodes(res.data.directories, res.data.files)
         currentPath.value = path
       }
     } catch (e: any) {
@@ -74,12 +61,15 @@ export function useWorkspace() {
   }
 
   // ─── 懒加载子目录（供 el-tree load 回调）
-  async function loadChildren(
-    node: TreeNode,
-    resolve: (children: TreeNode[]) => void
-  ) {
+  async function loadChildren(node: any, resolve: (children: TreeNode[]) => void) {
+    if (node.level === 0) {
+      resolve(treeData.value)
+      return
+    }
+
     try {
-      const res = await listFiles(node.path)
+      const path = node.data?.path || '.'
+      const res = await listFiles(path)
       if (res.code === 0 && res.data) {
         resolve(buildTreeNodes(res.data.directories, res.data.files))
       } else {
@@ -95,11 +85,11 @@ export function useWorkspace() {
     // 如有未保存提示
     if (currentFile.value?.isDirty) {
       try {
-        await ElMessageBox.confirm(
-          '当前文件未保存，确认切换？',
-          '提示',
-          { type: 'warning', confirmButtonText: '不保存', cancelButtonText: '取消' }
-        )
+        await ElMessageBox.confirm('当前文件未保存，确认切换？', '提示', {
+          type: 'warning',
+          confirmButtonText: '不保存',
+          cancelButtonText: '取消'
+        })
       } catch {
         return
       }
@@ -167,11 +157,11 @@ export function useWorkspace() {
   // ─── 删除文件/目录
   async function handleDelete(path: string, name: string) {
     try {
-      await ElMessageBox.confirm(
-        `确认删除「${name}」？此操作不可恢复。`,
-        '删除确认',
-        { type: 'error', confirmButtonText: '删除', cancelButtonText: '取消' }
-      )
+      await ElMessageBox.confirm(`确认删除「${name}」？此操作不可恢复。`, '删除确认', {
+        type: 'error',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消'
+      })
     } catch {
       return
     }
