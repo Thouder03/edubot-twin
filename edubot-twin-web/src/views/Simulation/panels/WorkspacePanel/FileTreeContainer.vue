@@ -37,6 +37,13 @@ function checkDroppable(stat: any) {
 }
 
 // ─── he-tree: after-drop 无参数，从 dragContext 读取拖拽信息
+function getParentDir(path: string): string {
+  const normalizedPath = path.replace(/\/+$/, '')
+  const slashIndex = normalizedPath.lastIndexOf('/')
+  if (slashIndex === -1) return '.'
+  return normalizedPath.slice(0, slashIndex) || '.'
+}
+
 function onTreeAfterDrop() {
   const dragNode = dragContext.dragNode
   const targetInfo = dragContext.targetInfo
@@ -44,13 +51,17 @@ function onTreeAfterDrop() {
   if (!dragNode?.data) return
 
   const dragData = dragNode.data
+  const sourcePath: string | undefined = dragData.path
+  if (!sourcePath) return
+
   const parentStat = targetInfo?.parent ?? null
   const targetDir = parentStat?.data?.path ?? '.'
+  const sourceParentDir: string = dragData.parentPath || getParentDir(sourcePath)
 
   // 同目录内的排序不发起后端请求
-  if (dragData.path && dragData.path !== targetDir) {
-    emit('move-internal', [dragData.path], targetDir)
-  }
+  if (sourceParentDir === targetDir) return
+
+  emit('move-internal', [sourcePath], targetDir)
 }
 
 // ─── 构建节点数据（与 useWorkspaceTreeState.buildTreeNodes 保持一致）

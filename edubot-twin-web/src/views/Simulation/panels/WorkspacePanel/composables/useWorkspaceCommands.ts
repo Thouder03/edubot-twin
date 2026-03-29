@@ -2,6 +2,24 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { batchDeleteFiles, mkdir, uploadFile, renameFile, moveFiles, copyFiles } from '@/api/files'
 // 导入其他组合式函数状态（由调用方注入或者这里直接构建命令工厂）
 
+function getParentDir(path: string): string {
+  const normalizedPath = path.replace(/\/+$/, '')
+  const slashIndex = normalizedPath.lastIndexOf('/')
+  if (slashIndex === -1) return '.'
+  return normalizedPath.slice(0, slashIndex) || '.'
+}
+
+async function refreshMovedDirectories(treeState: any, sourcePaths: string[], targetDir: string) {
+  const refreshTargets = new Set<string>([targetDir])
+  sourcePaths.forEach((path) => {
+    refreshTargets.add(getParentDir(path))
+  })
+
+  for (const path of refreshTargets) {
+    await treeState.refreshNode(path)
+  }
+}
+
 export function useWorkspaceCommands(
   treeState: any, 
   selectionState: any, 
@@ -131,11 +149,11 @@ export function useWorkspaceCommands(
         } else {
           ElMessage.success('移动成功')
         }
-        await treeState.refreshNode('.')
+        await refreshMovedDirectories(treeState, sourcePaths, targetDir)
       }
     } catch (e: any) {
       ElMessage.error(`移动失败: ${e.response?.data?.detail ?? e.message ?? e}`)
-      await treeState.refreshNode('.') // 还原前端由于 `@he-tree` 自动引发的乐观更新
+      await refreshMovedDirectories(treeState, sourcePaths, targetDir)
     }
   }
 

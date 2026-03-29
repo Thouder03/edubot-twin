@@ -3,6 +3,15 @@ import type { FileReadData } from '@/api/files/types'
 import { readFile, saveFile } from '@/api/files'
 import { ElMessage } from 'element-plus'
 
+type WorkspaceFileData = FileReadData & { extension?: string }
+
+function extractExtension(path: string): string {
+  const fileName = path.split('/').pop() ?? ''
+  const dotIndex = fileName.lastIndexOf('.')
+  if (dotIndex <= 0) return ''
+  return fileName.slice(dotIndex)
+}
+
 export function useWorkspacePreview() {
   const previewPath = ref<string | null>(null)
   const activePath = ref<string | null>(null)
@@ -12,7 +21,7 @@ export function useWorkspacePreview() {
   // 原因：Vue 3 无法追踪 Map.set()/get()/has() 的变化，
   //       但可以追踪 reactive 对象的属性增删（Object.keys 变化）
   const dirtyMap = reactive<Record<string, boolean>>({})
-  const fileCache = reactive<Record<string, FileReadData>>({})
+  const fileCache = reactive<Record<string, WorkspaceFileData>>({})
 
   const loading = ref(false)
 
@@ -26,7 +35,11 @@ export function useWorkspacePreview() {
       try {
         const res = await readFile(path)
         if (res.code === 0 && res.data) {
-          fileData = { ...res.data, path }
+          fileData = {
+            ...res.data,
+            path,
+            extension: extractExtension(res.data.path || path)
+          }
           fileCache[path] = fileData // reactive 对象赋值，Vue 可追踪
         } else {
           throw new Error('Load failed')

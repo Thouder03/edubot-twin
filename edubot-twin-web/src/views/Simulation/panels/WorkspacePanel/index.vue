@@ -308,12 +308,6 @@ onUnmounted(() => {
                 const active = workspace.activePath.value
                 const fc = workspace.fileCache[active]
                 const changed = (fc?.content ?? '') !== content
-                console.log('[Workspace/DirtyCheck]', {
-                  path: active,
-                  changed,
-                  oldLength: (fc?.content ?? '').length,
-                  newLength: content.length
-                })
                 workspace.markDirty(active, changed)
                 if (fc) fc.content = content
               }
