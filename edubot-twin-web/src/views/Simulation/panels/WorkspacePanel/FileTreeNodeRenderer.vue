@@ -49,6 +49,13 @@ watch(
   }
 )
 
+function allowExternalFileDrop(e: DragEvent) {
+  if (props.node.type !== 'directory') return
+  if (!e.dataTransfer?.types?.includes('Files')) return
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'copy'
+}
+
 function submitRename() {
   if (!props.node.isRenaming) return
   const trimName = localName.value.trim()
@@ -69,6 +76,11 @@ function cancelRename() {
   <div
     :class="[prefixCls, isSelected && 'is-selected']"
     :style="{ paddingLeft: `${stat.level * 16}px` }"
+    :data-node-path="node.path"
+    :data-node-type="node.type"
+    :data-node-expanded="node.isExpanded ? 'true' : 'false'"
+    @dragenter="allowExternalFileDrop"
+    @dragover="allowExternalFileDrop"
   >
     <!-- 展开/折叠箭头 -->
     <span v-if="node.type === 'directory'" class="expand-icon" @click.stop="emit('toggle-expand')">

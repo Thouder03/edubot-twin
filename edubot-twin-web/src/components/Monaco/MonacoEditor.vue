@@ -103,6 +103,11 @@ const editorOptions = computed(() => ({
   tabSize: props.settings?.tabSize ?? 4,
   insertSpaces: true,
   readOnly: props.readonly,
+  // ─── 自动补全相关基础配置 ───
+  quickSuggestions: true, // 键入时自动显示建议
+  suggestOnTriggerCharacters: true, // 允许触发字符（如 '.' 或 '/'）触发补全
+  wordBasedSuggestions: 'currentDocument', // 基于当前文档中的单词提供补全 ('off'|'currentDocument'|'allDocuments')
+  snippetSuggestions: 'bottom', // 代码片段建议的排序位置 ('top'|'bottom'|'inline'|'none')
   scrollbar: {
     useShadows: false,
     verticalScrollbarSize: 8,
@@ -165,8 +170,8 @@ watch(
   () => props.settings,
   (s) => {
     if (!editorInstance || !s) return
+    monacoInstance?.editor?.setTheme(s.theme ?? 'vs-dark')
     editorInstance.updateOptions({
-      theme: s.theme ?? 'vs-dark',
       fontSize: s.fontSize ?? 14,
       wordWrap: s.wordWrap ?? 'on',
       minimap: { enabled: s.minimap ?? true },

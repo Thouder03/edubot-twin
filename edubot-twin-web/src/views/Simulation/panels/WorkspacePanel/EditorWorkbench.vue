@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import MonacoEditor from '@/components/Monaco/MonacoEditor.vue'
 import { Icon } from '@/components/Icon'
 import { ElMessageBox } from 'element-plus'
+import type { WorkspaceSettings } from '@/composables/useWorkspaceSettings'
 
 const props = defineProps<{
   previewPath: string | null
@@ -10,6 +11,7 @@ const props = defineProps<{
   pinnedTabs: string[]
   fileCache: Record<string, any>
   dirtyMap: Record<string, boolean>
+  settings: WorkspaceSettings
 }>()
 
 const emit = defineEmits<{
@@ -80,6 +82,7 @@ const currentTabs = computed(() => {
         v-if="activePath && activePath in fileCache"
         :model-value="fileCache[activePath]?.content || ''"
         :language="fileCache[activePath]?.extension || 'plaintext'"
+        :settings="settings"
         @update:model-value="emit('content-change', $event)"
         @save="emit('save', $event)"
       />

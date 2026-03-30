@@ -74,11 +74,11 @@ export interface TreeNode {
   extension?: string
   size?: number
   mtime?: number // 修改时间
-  
+
   // 树的状态
   children?: TreeNode[]
   isLeaf?: boolean
-  
+
   // 领域状态扩展 (UI State)
   isSelected?: boolean
   isExpanded?: boolean
@@ -86,7 +86,7 @@ export interface TreeNode {
   isRenaming?: boolean
   isCreatingTemp?: boolean
   childrenLoaded?: boolean
-  
+
   // 拖拽控制扩展 (he-tree 引擎)
   canDrag?: boolean
   canDrop?: boolean

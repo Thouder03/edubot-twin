@@ -301,6 +301,7 @@ onUnmounted(() => {
           :pinned-tabs="workspace.pinnedTabs.value"
           :file-cache="workspace.fileCache"
           :dirty-map="workspace.dirtyMap"
+          :settings="settings"
           @content-change="
             (content) => {
               if (workspace.activePath.value) {

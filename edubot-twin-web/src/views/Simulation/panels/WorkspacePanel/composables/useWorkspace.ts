@@ -11,13 +11,8 @@ export function useWorkspace() {
   const selectionState = useWorkspaceSelection()
   const clipboardState = useWorkspaceClipboard()
   const previewState = useWorkspacePreview()
-  
-  const commands = useWorkspaceCommands(
-    treeState,
-    selectionState,
-    previewState,
-    clipboardState
-  )
+
+  const commands = useWorkspaceCommands(treeState, selectionState, previewState, clipboardState)
 
   return {
     ...treeState,

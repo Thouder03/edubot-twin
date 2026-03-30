@@ -52,7 +52,7 @@ export function useWorkspaceTreeState() {
   }
 
   // 加载根目录
-  async function loadTree(path = '.', expandedPathSet: Set<string> = new Set()) {
+  async function loadTree(path = '.', expandedPathSet: Set<string> = getExpandedPathSet()) {
     loading.value = true
     try {
       const res = await listFiles(path)
@@ -93,7 +93,12 @@ export function useWorkspaceTreeState() {
         try {
           const res = await listFiles(node.path)
           if (res.code === 0 && res.data) {
-            node.children = buildTreeNodes(res.data.directories, res.data.files, node.path)
+            node.children = buildTreeNodes(
+              res.data.directories,
+              res.data.files,
+              node.path,
+              getExpandedPathSet()
+            )
             node.childrenLoaded = true
           }
         } catch (e) {
@@ -128,27 +133,47 @@ export function useWorkspaceTreeState() {
     return paths
   }
 
-  function getExpandedDirectoryPathsSorted(): string[] {
-    return collectExpandedDirectoryPaths(treeData.value).sort(
-      (a, b) => a.split('/').length - b.split('/').length
-    )
+  function getExpandedPathSet(): Set<string> {
+    const paths = collectExpandedDirectoryPaths(treeData.value)
+    expandedPaths.value.forEach((path) => paths.push(path))
+    return new Set(paths)
+  }
+
+  function getExpandedDirectoryPathsSorted(
+    paths: Iterable<string> = getExpandedPathSet()
+  ): string[] {
+    return [...paths].sort((a, b) => a.split('/').length - b.split('/').length)
+  }
+
+  function remapExpandedPaths(oldPrefix: string, newPrefix: string) {
+    if (!oldPrefix || oldPrefix === newPrefix) return
+
+    const nextExpandedPaths = new Set<string>()
+
+    getExpandedPathSet().forEach((path) => {
+      if (path === oldPrefix || path.startsWith(`${oldPrefix}/`)) {
+        nextExpandedPaths.add(`${newPrefix}${path.slice(oldPrefix.length)}`)
+        return
+      }
+
+      nextExpandedPaths.add(path)
+    })
+
+    expandedPaths.value = nextExpandedPaths
   }
 
   async function refreshExpandedDirectories() {
-    const paths = getExpandedDirectoryPathsSorted()
-    const expandedPathSet = new Set(paths)
-    if (paths.length === 0) {
-      await refreshNode('.', expandedPathSet)
-      return
-    }
+    const expandedPathSet = getExpandedPathSet()
+    await refreshNode('.', expandedPathSet)
 
+    const paths = getExpandedDirectoryPathsSorted(expandedPathSet).filter((path) => path !== '.')
     for (const path of paths) {
       await refreshNode(path, expandedPathSet)
     }
   }
 
   // 局部刷新特定目录
-  async function refreshNode(path: string, expandedPathSet: Set<string> = new Set()) {
+  async function refreshNode(path: string, expandedPathSet: Set<string> = getExpandedPathSet()) {
     if (path === '.' || path === currentPath.value) {
       await loadTree(path, expandedPathSet)
       touchTreeData()
@@ -207,6 +232,7 @@ export function useWorkspaceTreeState() {
     toggleNodeExpand,
     refreshNode,
     refreshExpandedDirectories,
+    remapExpandedPaths,
     touchTreeData,
     findNodeByPath,
     startRename,

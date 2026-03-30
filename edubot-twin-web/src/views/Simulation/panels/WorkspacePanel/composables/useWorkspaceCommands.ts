@@ -9,15 +9,8 @@ function getParentDir(path: string): string {
   return normalizedPath.slice(0, slashIndex) || '.'
 }
 
-async function refreshMovedDirectories(treeState: any, sourcePaths: string[], targetDir: string) {
-  const refreshTargets = new Set<string>([targetDir])
-  sourcePaths.forEach((path) => {
-    refreshTargets.add(getParentDir(path))
-  })
-
-  for (const path of refreshTargets) {
-    await treeState.refreshNode(path)
-  }
+async function refreshMovedDirectories(treeState: any) {
+  await treeState.refreshExpandedDirectories()
 }
 
 async function refreshDirectoryIfNotRoot(treeState: any, path: string) {
@@ -170,9 +163,10 @@ export function useWorkspaceCommands(
     try {
       const res = await renameFile({ path, new_name: newName })
       if (res.code === 0) {
+        const nextPath = res.data?.new_path || joinPath(getParentDir(path), newName)
+        treeState.remapExpandedPaths?.(path, nextPath)
         ElMessage.success(`重命名成功`)
-        // 直接刷新父目录或重新拉根目录
-        await treeState.refreshNode('.')
+        await treeState.refreshExpandedDirectories()
       }
     } catch (e: any) {
       ElMessage.error(`重命名失败: ${e.response?.data?.detail ?? e.message ?? e}`)
@@ -203,6 +197,7 @@ export function useWorkspaceCommands(
     const sourcePaths: string[] = [...cb.paths]
     const isCopy = cb.mode === 'copy'
     const apiCall = isCopy ? copyFiles : moveFiles
+    const movedPairs: Array<{ sourcePath: string; nextPath: string }> = []
 
     try {
       const res = await apiCall({ source_paths: sourcePaths, target_dir: targetDir })
@@ -213,7 +208,6 @@ export function useWorkspaceCommands(
             (res.data?.failed ?? []).map((item: any) => item.path)
           )
 
-          const movedPairs: Array<{ sourcePath: string; nextPath: string }> = []
           let successIndex = 0
 
           for (const sourcePath of sourcePaths) {
@@ -240,7 +234,10 @@ export function useWorkspaceCommands(
           await refreshDirectoryIfNotRoot(treeState, targetDir)
           treeState.touchTreeData?.()
         } else {
-          await refreshMovedDirectories(treeState, sourcePaths, targetDir)
+          movedPairs.forEach(({ sourcePath, nextPath }) => {
+            treeState.remapExpandedPaths?.(sourcePath, nextPath)
+          })
+          await refreshMovedDirectories(treeState)
         }
       }
     } catch (e: any) {
@@ -275,11 +272,14 @@ export function useWorkspaceCommands(
         } else {
           ElMessage.success('移动成功')
         }
-        await refreshMovedDirectories(treeState, sourcePaths, targetDir)
+        movedPairs.forEach(({ sourcePath, nextPath }) => {
+          treeState.remapExpandedPaths?.(sourcePath, nextPath)
+        })
+        await refreshMovedDirectories(treeState)
       }
     } catch (e: any) {
       ElMessage.error(`移动失败: ${e.response?.data?.detail ?? e.message ?? e}`)
-      await refreshMovedDirectories(treeState, sourcePaths, targetDir)
+      await refreshMovedDirectories(treeState)
     }
   }
 

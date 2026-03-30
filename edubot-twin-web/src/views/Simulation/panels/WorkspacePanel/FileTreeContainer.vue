@@ -44,6 +44,23 @@ function getParentDir(path: string): string {
   return normalizedPath.slice(0, slashIndex) || '.'
 }
 
+function getHoveredUploadTarget(eventTarget: EventTarget | null) {
+  const element = eventTarget instanceof HTMLElement ? eventTarget : null
+  const nodeElement = element?.closest?.('[data-node-path]') as HTMLElement | null
+  const hoveredPath = nodeElement?.dataset.nodePath ?? null
+  const hoveredType = nodeElement?.dataset.nodeType ?? null
+  const hoveredExpanded = nodeElement?.dataset.nodeExpanded === 'true'
+  const resolvedTargetPath = hoveredType === 'directory' && hoveredPath ? hoveredPath : '.'
+
+  return {
+    nodeElement,
+    hoveredPath,
+    hoveredType,
+    hoveredExpanded,
+    resolvedTargetPath
+  }
+}
+
 function onTreeAfterDrop() {
   const dragNode = dragContext.dragNode
   const targetInfo = dragContext.targetInfo
@@ -151,9 +168,30 @@ function onToggleExpandFromArrow(node: any, stat: any) {
 // ─── 外部文件拖入（OS 文件系统）
 const isDragOver = ref(false)
 
-function onDragOver(e: DragEvent) {
-  if (!e.dataTransfer?.types?.includes('Files')) return
+function isExternalFileDrag(e: DragEvent) {
+  return !!e.dataTransfer?.types?.includes('Files')
+}
+
+function setCopyDropEffect(e: DragEvent) {
   e.preventDefault()
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+function onDragEnterCapture(e: DragEvent) {
+  if (!isExternalFileDrag(e)) return
+  setCopyDropEffect(e)
+}
+
+function onDragOverCapture(e: DragEvent) {
+  if (!isExternalFileDrag(e)) return
+  setCopyDropEffect(e)
+}
+
+function onDragOver(e: DragEvent) {
+  if (!isExternalFileDrag(e)) return
+  setCopyDropEffect(e)
   isDragOver.value = true
 }
 
@@ -161,12 +199,22 @@ function onDragLeave() {
   isDragOver.value = false
 }
 
+function ensureDirectoryVisibleAfterUpload(
+  hoveredTarget: ReturnType<typeof getHoveredUploadTarget>
+) {
+  if (hoveredTarget.hoveredType !== 'directory') return
+  if (hoveredTarget.hoveredExpanded) return
+  hoveredTarget.nodeElement?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+}
+
 function onDrop(e: DragEvent) {
   isDragOver.value = false
   const files = e.dataTransfer?.files
   if (files && files.length > 0) {
-    e.preventDefault()
-    emit('drop-external', files, '.')
+    setCopyDropEffect(e)
+    const hoveredTarget = getHoveredUploadTarget(e.target)
+    ensureDirectoryVisibleAfterUpload(hoveredTarget)
+    emit('drop-external', files, hoveredTarget.resolvedTargetPath)
   }
 }
 </script>
@@ -174,6 +222,8 @@ function onDrop(e: DragEvent) {
 <template>
   <div
     :class="[prefixCls, isDragOver && `${prefixCls}--dragover`]"
+    @dragenter.capture="onDragEnterCapture"
+    @dragover.capture="onDragOverCapture"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
