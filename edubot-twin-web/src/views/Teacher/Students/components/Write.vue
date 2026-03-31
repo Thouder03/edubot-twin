@@ -21,6 +21,17 @@ const props = defineProps({
 
 const emit = defineEmits(['submit', 'close'])
 
+const ROLE_OPTIONS = [
+  { label: '学生', value: 'student', roleId: '10' },
+  { label: '教师', value: 'teacher', roleId: '20' },
+  { label: '管理员', value: 'admin', roleId: '30' }
+]
+
+const roleIdMap = ROLE_OPTIONS.reduce<Record<string, string>>((acc, item) => {
+  acc[item.value] = item.roleId
+  return acc
+}, {})
+
 const formSchema = reactive<FormSchema[]>([
   {
     field: 'username',
@@ -46,6 +57,35 @@ const formSchema = reactive<FormSchema[]>([
     component: 'Input'
   },
   {
+    field: 'role_code',
+    label: '角色',
+    component: 'Select',
+    value: 'student',
+    componentProps: {
+      options: ROLE_OPTIONS.map((item) => ({
+        label: item.label,
+        value: item.value
+      })),
+      on: {
+        change: (value: string) => {
+          setValues({
+            role_code: value,
+            role_id: roleIdMap[value] || '10'
+          })
+        }
+      }
+    }
+  },
+  {
+    field: 'role_id',
+    label: '角色ID',
+    component: 'Input',
+    value: '10',
+    componentProps: {
+      disabled: true
+    }
+  },
+  {
     field: 'is_active',
     label: '状态',
     component: 'Switch',
@@ -56,6 +96,7 @@ const formSchema = reactive<FormSchema[]>([
 
 const rules = reactive({
   username: [required()],
+  role_code: [required()],
   real_name: [],
   password: [
     {
@@ -104,6 +145,7 @@ const submit = async () => {
     loading.value = true
     try {
       const formData = await getFormData()
+      formData.role_id = roleIdMap[formData.role_code] || formData.role_id
 
       // email如果是空字符串，Pydantic EmailStr验证会报错422，需要删除
       if (formData.email === '') {
@@ -140,11 +182,38 @@ const submit = async () => {
 watch(
   () => props.currentRow,
   (currentRow) => {
-    if (!currentRow) return
-    setValues(currentRow)
+    if (!currentRow) {
+      setValues({
+        role_code: 'student',
+        role_id: '10',
+        is_active: true
+      })
+      return
+    }
+    setValues({
+      ...currentRow,
+      role_code: currentRow.role_code || 'student',
+      role_id: currentRow.role_id || roleIdMap[currentRow.role_code] || '10'
+    })
   },
   {
     deep: true,
+    immediate: true
+  }
+)
+
+watch(
+  () => props.actionType,
+  (actionType) => {
+    if (actionType === 'add') {
+      setValues({
+        role_code: 'student',
+        role_id: '10',
+        is_active: true
+      })
+    }
+  },
+  {
     immediate: true
   }
 )

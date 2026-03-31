@@ -192,7 +192,7 @@ export default {
     simulation: '机器人仿真',
     teacher: '教师版',
     teacherHome: '首页',
-    studentManagement: '学生管理',
+    studentManagement: '用户管理',
     containerManagement: '容器管理',
     containerMonitor: '容器监控'
   },

@@ -83,7 +83,7 @@ async def terminal_ws(
 
     # ── 2. 查找容器 ──────────────────────────────────────────────
     async with AsyncSessionLocal() as db:
-        container = await crud_container.get_container_by_student(db, student_id)
+        container = await crud_container.get_container_by_user(db, student_id)
 
     if not container or not container.container_id:
         logger.warning(f"[Terminal] 拒绝连接: 未找到学生容器, student={student_id}, client={client}")

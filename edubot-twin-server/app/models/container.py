@@ -28,8 +28,8 @@ class SimContainer(Base):
         String(64), unique=True, nullable=True,
         comment="Docker 容器 ID (sha256 前 12 位)"
     )
-    student_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("students.id"), nullable=False, index=True
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True
     )
     image_name: Mapped[str] = mapped_column(
         String(200), nullable=False, default="edubot/gazebo-ros:latest"
@@ -65,10 +65,15 @@ class SimContainer(Base):
     )
 
     # Relationships
-    student: Mapped["Student"] = relationship(lazy='selectin', back_populates="containers")
+    user: Mapped["User"] = relationship(lazy="selectin", back_populates="containers")
+
+    @property
+    def student_id(self) -> int:
+        """兼容旧接口中的 student_id 读取。"""
+        return self.user_id
 
     def __repr__(self) -> str:
         return (
-            f"<SimContainer(id={self.id}, student_id={self.student_id}, "
+            f"<SimContainer(id={self.id}, user_id={self.user_id}, "
             f"status='{self.status}', gzbridge_port={self.gzbridge_port})>"
         )

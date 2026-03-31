@@ -1,17 +1,24 @@
 import os
-from pydantic import BaseModel, computed_field, Field
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import AliasChoices, BaseModel, Field, computed_field
 
 from app.models.container import ContainerStatus
 
 
 class ContainerCreate(BaseModel):
     """创建容器请求体"""
-    student_id: int
+
+    user_id: int = Field(validation_alias=AliasChoices("user_id", "student_id"))
     image_name: str = "gzweb_sim:v1"
     cpu_limit: float = Field(default=1.0, ge=0.1, le=4.0, description="CPU 配额 (核心数)")
     memory_limit: int = Field(default=2048, ge=256, le=8192, description="内存配额 (MB)")
+
+    @property
+    def student_id(self) -> int:
+        """兼容旧代码中的 student_id 读取。"""
+        return self.user_id
 
 
 class ContainerResponse(BaseModel):

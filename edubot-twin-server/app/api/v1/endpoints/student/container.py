@@ -3,6 +3,7 @@
 
 路由前缀：/api/v1/students/container
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from app.schemas.common import ApiResponse
 from typing import Optional
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -31,7 +33,7 @@ async def get_my_container(
     db: AsyncSession = Depends(get_db),
 ):
     """从 JWT Token 自动解析 student_id，返回该学生的容器状态。"""
-    container = await crud_container.get_container_by_student(db, student_id)
+    container = await crud_container.get_container_by_user(db, student_id)
     if not container:
         return ApiResponse(code=0, data=None, message="尚未分配容器")
     return ApiResponse(code=0, data=ContainerStatusResponse.from_orm_with_host(container))
@@ -53,14 +55,21 @@ async def request_container(
     - 若已有容器（任意状态）→ 直接返回现有容器信息
     - 若无容器 → 自动创建新容器并启动 Docker 实例
     """
-    existing = await crud_container.get_container_by_student(db, student_id)
+    existing = await crud_container.get_container_by_user(db, student_id)
     if existing:
         return ApiResponse(code=0, data=ContainerResponse.model_validate(existing))
 
+    logger.info("[student.container.request] incoming student_id=%s", student_id)
     try:
         container = await crud_container.create_container(
             db,
-            ContainerCreate(student_id=student_id),
+            ContainerCreate(user_id=student_id),
+        )
+        logger.info(
+            "[student.container.request] created container_id=%s student_id=%s user_id=%s",
+            container.id,
+            getattr(container, "student_id", None),
+            getattr(container, "user_id", None),
         )
     except PortExhaustedError as e:
         raise HTTPException(
@@ -81,7 +90,7 @@ async def start_my_container(
     db: AsyncSession = Depends(get_db),
 ):
     """启动已停止的容器（status=stopped → running）。"""
-    container = await crud_container.get_container_by_student(db, student_id)
+    container = await crud_container.get_container_by_user(db, student_id)
     if not container:
         return ApiResponse(code=0, data=None, message="尚未分配容器")
     if container.status == ContainerStatus.RUNNING:
@@ -110,13 +119,13 @@ async def destroy_and_recreate(
 
     避免前端分两步调用导致的竞态条件。
     """
-    existing = await crud_container.get_container_by_student(db, student_id)
+    existing = await crud_container.get_container_by_user(db, student_id)
     if existing:
         await crud_container.delete_container(db, existing)
 
     try:
         container = await crud_container.create_container(
-            db, ContainerCreate(student_id=student_id)
+            db, ContainerCreate(user_id=student_id)
         )
     except PortExhaustedError as e:
         raise HTTPException(
@@ -142,7 +151,7 @@ async def heartbeat(
     返回容器当前状态，前端据此判断容器是否仍然存活。
     若容器不存在或已停止，前端可触发重新激活弹窗。
     """
-    container = await crud_container.get_container_by_student(db, student_id)
+    container = await crud_container.get_container_by_user(db, student_id)
     if not container:
         raise HTTPException(status_code=404, detail="尚未分配容器")
 
@@ -165,7 +174,7 @@ async def stop_my_container(
     db: AsyncSession = Depends(get_db),
 ):
     """学生主动停止自己的容器（退出仿真时调用）。"""
-    container = await crud_container.get_container_by_student(db, student_id)
+    container = await crud_container.get_container_by_user(db, student_id)
     if not container:
         raise HTTPException(status_code=404, detail="尚未分配容器")
     if container.status != ContainerStatus.RUNNING:
@@ -201,7 +210,7 @@ async def stop_on_exit(
     if not student_id:
         return {"ok": False, "reason": "no_user_id"}
 
-    container = await crud_container.get_container_by_student(db, student_id)
+    container = await crud_container.get_container_by_user(db, student_id)
     if container and container.status == ContainerStatus.RUNNING:
         await crud_container.stop_container(db, container)
 

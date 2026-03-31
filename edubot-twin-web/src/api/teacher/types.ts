@@ -10,6 +10,8 @@ export interface StudentInfo {
   real_name: string | null
   email: string | null
   is_active: boolean
+  role_id: string
+  role_code: string
   created_at: string
   updated_at: string
 }
@@ -26,6 +28,8 @@ export interface StudentCreateRequest {
   password: string
   real_name: string
   email?: string
+  role_id: string
+  role_code: string
 }
 
 /** 更新学生请求 */
@@ -33,6 +37,9 @@ export interface StudentUpdateRequest {
   real_name?: string
   email?: string
   password?: string
+  is_active?: boolean
+  role_id?: string
+  role_code?: string
 }
 
 // ─── 容器监控 ────────────────────────────────────────────────

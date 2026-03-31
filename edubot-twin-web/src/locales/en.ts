@@ -196,7 +196,7 @@ export default {
     simulation: 'Robot Simulation',
     teacher: 'Teacher Portal',
     teacherHome: 'Home',
-    studentManagement: 'Student Management',
+    studentManagement: 'User Management',
     containerManagement: 'Container Management',
     containerMonitor: 'Container Monitor'
   },

@@ -4,14 +4,14 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.container import SimContainer, ContainerStatus
-from app.schemas.container import ContainerCreate
-from app.core.port_allocator import allocate_ports
 from app.core import container_manager
 from app.core.docker_client import DockerConnectionError
+from app.core.port_allocator import allocate_ports
+from app.models.container import ContainerStatus, SimContainer
+from app.schemas.container import ContainerCreate
 
 
 async def create_container(
@@ -27,7 +27,7 @@ async def create_container(
     # 先建数据库记录（status=CREATING）
     container = SimContainer(
         container_id=None,
-        student_id=data.student_id,
+        user_id=data.user_id,
         image_name=data.image_name,
         status=ContainerStatus.CREATING,
         gzbridge_port=gz_port,
@@ -41,7 +41,7 @@ async def create_container(
     try:
         docker_id = await container_manager.create_container(
             image=data.image_name,
-            student_id=data.student_id,
+            student_id=data.user_id,
             gz_port=gz_port,
             ros_port=ros_port,
         )
@@ -76,27 +76,39 @@ async def get_container(db: AsyncSession, container_id: int) -> Optional[SimCont
     return result.scalar_one_or_none()
 
 
-async def get_container_by_student(
-    db: AsyncSession, student_id: int
+async def get_container_by_user(
+    db: AsyncSession, user_id: int
 ) -> Optional[SimContainer]:
-    """获取学生当前的容器（取最新的一个）"""
+    """获取用户当前的容器（取最新的一个）。"""
     result = await db.execute(
         select(SimContainer)
-        .where(SimContainer.student_id == student_id)
+        .where(SimContainer.user_id == user_id)
         .order_by(SimContainer.id.desc())
         .limit(1)
     )
     return result.scalar_one_or_none()
 
 
+async def get_container_by_student(
+    db: AsyncSession, student_id: int
+) -> Optional[SimContainer]:
+    """兼容学生语义的容器查询。"""
+    return await get_container_by_user(db, student_id)
+
+
+async def get_containers_by_user(
+    db: AsyncSession, user_id: int
+) -> list[SimContainer]:
+    """获取用户的所有容器。"""
+    result = await db.execute(select(SimContainer).where(SimContainer.user_id == user_id))
+    return list(result.scalars().all())
+
+
 async def get_containers_by_student(
     db: AsyncSession, student_id: int
 ) -> list[SimContainer]:
-    """获取学生的所有容器"""
-    result = await db.execute(
-        select(SimContainer).where(SimContainer.student_id == student_id)
-    )
-    return list(result.scalars().all())
+    """兼容学生语义的容器列表查询。"""
+    return await get_containers_by_user(db, student_id)
 
 
 async def start_container(

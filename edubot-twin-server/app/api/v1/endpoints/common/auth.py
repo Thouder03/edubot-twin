@@ -4,18 +4,25 @@
 支持学生和教师使用同一个接口登录,自动识别角色
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.database import get_db
-from app.schemas.common import ApiResponse
-from app.schemas.auth import LoginRequest, LoginData, TokenData
-from app.schemas.student import StudentResponse
-from app.crud import student as crud_student
-from app.core.security import create_access_token, verify_token
-# from app.crud import teacher as crud_teacher  # 未来添加
 import bcrypt
+import logging
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import create_access_token, verify_token
+from app.crud import student as crud_student
+from app.db.database import get_db
+from app.schemas.auth import LoginData, LoginRequest, TokenData
+from app.schemas.common import ApiResponse
+from app.schemas.student import StudentResponse
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _verify_password(plain_password: str, password_hash: str) -> bool:
+    """校验明文密码与 bcrypt 哈希。"""
+    return bcrypt.checkpw(plain_password.encode("utf-8"), password_hash.encode("utf-8"))
 
 
 @router.post("/login", response_model=ApiResponse[LoginData], summary="统一登录")
@@ -34,44 +41,24 @@ async def unified_login(
     # 统一错误响应
     error_response = ApiResponse(code=500, message="用户名或密码错误", data=None)
 
-    # 1. 先在学生表中查找
-    student = await crud_student.get_student_by_username(db, login_data.username)
-    if student:
-        # 验证密码
-        password_bytes = login_data.password.encode('utf-8')
-        stored_hash = student.password_hash.encode('utf-8')
-        if not bcrypt.checkpw(password_bytes, stored_hash):
-            return error_response
-        
-        # 检查账号状态
-        if not student.is_active:
-            return ApiResponse(code=403, message="账号已被禁用", data=None)
-        
-        # 根据用户名判断角色
-        if student.username == "admin":
-            role = "admin"
-            roleId = "1"
-        elif student.username == "teacher":
-            role = "teacher"
-            roleId = "2"
-        else:
-            role = "student"
-            roleId = "3"
-        
-        # 返回角色信息
-        return ApiResponse(
-            code=0,
-            data=LoginData(
-                username=student.username,
-                role=role,
-                roleId=roleId
-            )
-        )
-    
-    # ...
+    user = await crud_student.get_user_by_username(db, login_data.username)
+    if not user:
+        return error_response
 
-    # 3. 用户不存在
-    return error_response
+    if not _verify_password(login_data.password, user.password_hash):
+        return error_response
+
+    if not user.is_active:
+        return ApiResponse(code=403, message="账号已被禁用", data=None)
+
+    return ApiResponse(
+        code=0,
+        data=LoginData(
+            username=user.username,
+            role=user.role_code,
+            roleId=user.role_id,
+        ),
+    )
 
 
 @router.post("/token", response_model=ApiResponse[TokenData], summary="获取 JWT Token")
@@ -87,41 +74,27 @@ async def get_token(
     # 统一错误响应
     error_response = ApiResponse(code=500, message="用户名或密码错误", data=None)
 
-    # 1. 学生表查找
-    student = await crud_student.get_student_by_username(db, login_data.username)
-    if student:
-        password_bytes = login_data.password.encode('utf-8')
-        stored_hash = student.password_hash.encode('utf-8')
-        if not bcrypt.checkpw(password_bytes, stored_hash):
-            return error_response
-        
-        if not student.is_active:
-            return ApiResponse(code=403, message="账号已被禁用", data=None)
-        
-        # 根据用户名判断角色
-        if student.username == "admin":
-            role = "admin"
-        elif student.username == "teacher":
-            role = "teacher"
-        else:
-            role = "student"
-        
-        # 生成 Token
-        token_data = {
-            "sub": student.username,
-            "user_id": student.id,
-            "role": role
-        }
-        access_token = create_access_token(token_data)
-        return ApiResponse(
-            code=0,
-            data=TokenData(access_token=access_token, token_type="Bearer")
-        )
-    
-    # 2. 教师表查找 (未来实现)
-    # ...
-    
-    return error_response
+    user = await crud_student.get_user_by_username(db, login_data.username)
+    if not user:
+        return error_response
+
+    if not _verify_password(login_data.password, user.password_hash):
+        return error_response
+
+    if not user.is_active:
+        return ApiResponse(code=403, message="账号已被禁用", data=None)
+
+    token_data = {
+        "sub": user.username,
+        "user_id": user.id,
+        "role": user.role_code,
+        "role_id": user.role_id,
+    }
+    access_token = create_access_token(token_data)
+    return ApiResponse(
+        code=0,
+        data=TokenData(access_token=access_token, token_type="Bearer"),
+    )
 
 
 @router.get("/me", response_model=ApiResponse[StudentResponse], summary="获取当前用户")
@@ -139,25 +112,48 @@ async def get_current_user(
     # 验证 Token
     payload = verify_token(token)
     if not payload:
+        logger.warning("[auth.me] invalid-token")
         return auth_error
-    
+
     username = payload.get("sub")
     role = payload.get("role")
-    
+    role_id = payload.get("role_id")
+    user_id = payload.get("user_id")
+    logger.info(
+        "[auth.me] token-payload sub=%s user_id=%s role=%s role_id=%s",
+        username,
+        user_id,
+        role,
+        role_id,
+    )
+
     if not username or not role:
+        logger.warning("[auth.me] token-missing-required-fields sub=%s role=%s", username, role)
         return ApiResponse(code=401, message="Token 数据无效", data=None)
-    
-    # 根据角色查询对应表
-    if role == "student":
-        student = await crud_student.get_student_by_username(db, username)
-        if not student:
-            return ApiResponse(code=404, message="用户不存在", data=None)
-        return ApiResponse(code=0, data=student)
-    
-    # 教师逻辑 (未来实现)
-    # ...
-    
-    return ApiResponse(code=400, message="未知的用户角色", data=None)
+
+    user = await crud_student.get_user_by_username(db, username)
+    if not user:
+        logger.warning("[auth.me] user-not-found sub=%s", username)
+        return ApiResponse(code=404, message="用户不存在", data=None)
+
+    logger.info(
+        "[auth.me] db-user username=%s user_id=%s role_code=%s role_id=%s",
+        user.username,
+        user.id,
+        getattr(user, "role_code", None),
+        getattr(user, "role_id", None),
+    )
+
+    if user.role_code != role:
+        logger.warning(
+            "[auth.me] role-mismatch token_role=%s db_role=%s username=%s",
+            role,
+            user.role_code,
+            username,
+        )
+        return ApiResponse(code=401, message="Token 角色与用户数据不一致", data=None)
+
+    return ApiResponse(code=0, data=user)
 
 
 @router.get("/routes", response_model=ApiResponse[list[str]], summary="获取用户路由权限")

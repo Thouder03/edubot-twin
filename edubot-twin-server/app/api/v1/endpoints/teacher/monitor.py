@@ -35,7 +35,7 @@ async def get_container_monitor(
     """
     获取所有容器的实时运行监控数据。
 
-    - 通过 joinedload 预加载关联学生，避免 N+1 查询
+    - 通过 selectinload 预加载关联用户，避免 N+1 查询
     - 对 running 状态的容器调用 Docker stats 获取 CPU/内存数据
     - 非 running 状态的容器，CPU/内存返回 0，uptime_seconds 返回 0
     """
@@ -45,10 +45,10 @@ async def get_container_monitor(
     count_result = await db.execute(select(func.count()).select_from(SimContainer))
     total = count_result.scalar_one()
 
-    # 分页查询，预加载 student 关联
+    # 分页查询，预加载 user 关联
     result = await db.execute(
         select(SimContainer)
-        .options(selectinload(SimContainer.student))
+        .options(selectinload(SimContainer.user))
         .offset(offset)
         .limit(pageSize)
         .order_by(SimContainer.id.desc())
@@ -59,7 +59,7 @@ async def get_container_monitor(
     monitor_list = []
 
     for container in containers:
-        student = container.student
+        user = container.user
         cpu_percent = 0.0
         memory_mb = 0
         memory_limit_mb = 2048
@@ -88,9 +88,9 @@ async def get_container_monitor(
         monitor_list.append(ContainerMonitorInfo(
             id=container.id,
             container_id=container.container_id,
-            student_id=student.id if student else 0,
-            student_name=student.real_name if student else "未知",
-            student_username=student.username if student else "未知",
+            student_id=user.id if user else 0,
+            student_name=user.real_name if user else "未知",
+            student_username=user.username if user else "未知",
             purpose=container.purpose or "",
             status=container.status.value if hasattr(container.status, 'value') else str(container.status),
             image_name=container.image_name,

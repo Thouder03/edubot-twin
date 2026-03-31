@@ -34,6 +34,8 @@ async def test_student(db_session):
         username="test_user",
         password="test_pass",
         real_name="Test User",
-        email="test@example.com"
+        email="test@example.com",
+        role_id="10",
+        role_code="student",
     ))
     return student

@@ -5,6 +5,7 @@ import { ref, reactive, unref } from 'vue'
 import { useTable } from '@/hooks/web/useTable'
 import { CrudSchema, useCrudSchemas } from '@/hooks/web/useCrudSchemas'
 import { getStudentListApi, deleteStudentApi } from '@/api/teacher'
+import type { StudentInfo } from '@/api/teacher/types'
 import { ElMessage, ElMessageBox, ElButton, ElInput, ElForm, ElFormItem, ElTag } from 'element-plus'
 import Write from './components/Write.vue'
 import { Dialog } from '@/components/Dialog'
@@ -31,6 +32,11 @@ const { tableRegister, tableState, tableMethods } = useTable({
 })
 
 const { dataList, loading, currentPage, pageSize, total } = tableState
+const roleLabelMap: Record<string, string> = {
+  admin: '管理员',
+  teacher: '教师',
+  student: '学生'
+}
 const { getList, getElTableExpose } = tableMethods
 
 // ─── 搜索 / 重置 ─────────────────────────────────────────────
@@ -70,6 +76,27 @@ const crudSchemas = reactive<CrudSchema[]>([
     table: {
       slots: {
         default: (data: any) => data.row.email || '-'
+      }
+    }
+  },
+  {
+    field: 'role_code',
+    label: '角色',
+    table: {
+      width: 120,
+      slots: {
+        default: (data: { row: StudentInfo }) =>
+          roleLabelMap[data.row.role_code] || data.row.role_code || '-'
+      }
+    }
+  },
+  {
+    field: 'role_id',
+    label: '角色ID',
+    table: {
+      width: 100,
+      slots: {
+        default: (data: { row: StudentInfo }) => data.row.role_id || '-'
       }
     }
   },
@@ -117,7 +144,7 @@ const actionType = ref('')
 const currentRow = ref()
 
 const AddAction = () => {
-  dialogTitle.value = '新增学生'
+  dialogTitle.value = '新增用户'
   actionType.value = 'add'
   currentRow.value = undefined
   dialogVisible.value = true
@@ -125,7 +152,7 @@ const AddAction = () => {
 
 // ─── 单删 ─────────────────────────────────────────────────────
 const delData = async (row: any) => {
-  await ElMessageBox.confirm('确认删除该学生吗？删除后将同步清理其关联容器！', '警告', {
+  await ElMessageBox.confirm('确认删除该用户吗？删除后将同步清理其关联容器！', '警告', {
     confirmButtonText: '确定删除',
     cancelButtonText: '取消',
     type: 'warning'
@@ -140,11 +167,11 @@ const batchDelete = async () => {
   const elTableRef = await getElTableExpose()
   const selectedRows = elTableRef?.getSelectionRows() || []
   if (!selectedRows.length) {
-    ElMessage.warning('请先选择要删除的学生')
+    ElMessage.warning('请先选择要删除的用户')
     return
   }
   await ElMessageBox.confirm(
-    `确认批量删除 ${selectedRows.length} 名学生吗？删除后将同步清理关联容器！`,
+    `确认批量删除 ${selectedRows.length} 名用户吗？删除后将同步清理关联容器！`,
     '批量删除确认',
     {
       confirmButtonText: '确定删除',
@@ -158,18 +185,18 @@ const batchDelete = async () => {
       await deleteStudentApi(row.id)
       successCount++
     } catch (e) {
-      ElMessage.error(`删除学生 ${row.username} 失败`)
+      ElMessage.error(`删除用户 ${row.username} 失败`)
     }
   }
   if (successCount > 0) {
-    ElMessage.success(`成功删除 ${successCount} 名学生`)
+    ElMessage.success(`成功删除 ${successCount} 名用户`)
   }
   getList()
 }
 
 // ─── 编辑 ─────────────────────────────────────────────────────
 const editAction = (row: any) => {
-  dialogTitle.value = '编辑学生'
+  dialogTitle.value = '编辑用户'
   actionType.value = 'edit'
   currentRow.value = row
   dialogVisible.value = true
@@ -203,7 +230,7 @@ const onSubmit = () => {
 
     <!-- 工具栏 -->
     <div class="mb-10px flex items-center gap-10px">
-      <ElButton type="primary" @click="AddAction">新增学生</ElButton>
+      <ElButton type="primary" @click="AddAction">新增用户</ElButton>
       <ElButton type="danger" @click="batchDelete">批量删除</ElButton>
     </div>
 

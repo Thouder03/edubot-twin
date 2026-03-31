@@ -115,7 +115,7 @@ async def delete_student(
     if not student:
         raise HTTPException(status_code=404, detail="学生不存在")
     
-    containers = await container_crud.get_containers_by_student(db, student_id)
+    containers = await container_crud.get_containers_by_user(db, student_id)
     docker_errors = []
     
     # 容错清理 Docker 容器

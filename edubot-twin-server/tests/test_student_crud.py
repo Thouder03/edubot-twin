@@ -8,6 +8,8 @@ async def test_create_student(db_session):
     student = await student_crud.create_student(db_session, student_in)
     assert student.username == "new_user"
     assert student.real_name == "New User"
+    assert student.role_code == "student"
+    assert student.role_id == "10"
 
 @pytest.mark.asyncio
 async def test_get_student(db_session, test_student):
@@ -31,3 +33,18 @@ async def test_delete_student(db_session, test_student):
     assert result is True
     student = await student_crud.get_student(db_session, test_student.id)
     assert student is None
+
+
+@pytest.mark.asyncio
+async def test_create_student_with_explicit_teacher_role(db_session):
+    teacher_in = StudentCreate(
+        username="teacher_user",
+        password="pass123",
+        real_name="Teacher User",
+        role_id="20",
+        role_code="teacher",
+    )
+    teacher = await student_crud.create_student(db_session, teacher_in)
+    assert teacher.username == "teacher_user"
+    assert teacher.role_code == "teacher"
+    assert teacher.role_id == "20"
