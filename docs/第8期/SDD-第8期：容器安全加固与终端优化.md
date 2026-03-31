@@ -1,9 +1,9 @@
 # SDD-第八期：容器安全加固与终端优化
 
-**文档版本**: v1.1  
-**创建日期**: 2026-03-29  
-**修订日期**: 2026-03-29  
-**目标**: 实现容器层安全隔离、终端自由操作、gzweb 启动参数对齐、网络限制
+**文档版本**: v1.2
+**创建日期**: 2026-03-29
+**修订日期**: 2026-03-31
+**目标**: 实现容器安全基线（容器网络隔离、终端降权、启动参数对齐）
 
 ---
 
@@ -13,7 +13,7 @@
 
 1. **容器安全加固**: 采用"自由终端 + 受限容器"方案
 2. **终端保持自由**: 不拦截命令流，保留 ROS 调试能力
-3. **容器层限制**: 路径限制、只读文件系统、非 root 用户、降权、网络隔离
+3. **容器层限制**: 非特权运行、禁止提权、网络隔离、工作区权限修复
 4. **启动参数对齐**: 按照 gzweb/docker-compose.yml 的配置设置容器参数
 5. **磁盘配额**: 依赖第七期实现的文件上传配额检查
 
@@ -46,12 +46,10 @@ graph TB
     end
     
     subgraph 第三层：容器层
-        G[非 root 用户]
-        H[只读文件系统]
-        I[工作区可写挂载]
-        J[能力降权 cap_drop]
-        K[禁止特权提升]
-        L[网络隔离]
+        G[容器非特权运行]
+        H[工作区可写挂载]
+        I[禁止特权提升]
+        J[网络隔离]
     end
     
     subgraph 第四层：宿主机层
@@ -70,8 +68,6 @@ graph TB
     H --> M
     I --> M
     J --> M
-    K --> M
-    L --> M
 ```
 
 ### 2.2 安全策略对比
@@ -118,15 +114,7 @@ graph TB
             绑定: '/tmp/.X11-unix',
             模式: 'ro'
         },
-        # 系统目录只读（防止篡改）
-        '/opt/ros': {
-            绑定: '/opt/ros',
-            模式: 'ro'
-        },
-        '/usr': {
-            绑定: '/usr',
-            模式: 'ro'
-        }
+        # 不挂载宿主机系统目录（避免破坏镜像运行环境）
     },
     
     # ========== 设备挂载（对齐 gzweb） ==========
@@ -147,23 +135,12 @@ graph TB
     共享内存: "512m",  # 对齐 gzweb
     
     # ========== 安全配置 ==========
-    用户: "1000:1000",  # 非 root 用户（student）
     特权模式: False,  # 禁用特权模式
     安全选项: [
         'no-new-privileges:true'  # 禁止进程提升权限
     ],
-    能力移除: ['ALL'],  # 移除所有 Linux Capabilities
-    能力添加: [
-        'CHOWN',      # 允许修改文件所有者（工作区内）
-        'DAC_OVERRIDE',  # 允许绕过文件权限检查（工作区内）
-        'SETGID',     # 允许设置 GID
-        'SETUID'      # 允许设置 UID
-    ],
-    
+
     # ========== 网络隔离配置 ==========
-    网络模式: 'bridge',  # 使用桥接网络
-    DNS服务器: ['8.8.8.8', '8.8.4.4'],  # 指定 DNS
-    # 可选：创建自定义网络并限制出站流量
     网络: 'edubot_network',  # 自定义网络名称
     
     # ========== 工作目录 ==========
@@ -192,49 +169,39 @@ graph TB
 
 **网络创建伪代码**:
 ```
-FUNCTION create_edubot_network():
-    IF 网络 'edubot_network' 不存在 THEN
+ASYNC FUNCTION ensure_edubot_network():
+    await _run_in_executor(sync_ensure_network)
+
+FUNCTION sync_ensure_network():
+    IF 网络 'edubot_network' 已存在 THEN
+        RETURN
+    END IF
+
+    TRY:
         创建网络 'edubot_network' WITH {
             驱动: 'bridge',
-            内部网络: False,  # 允许访问外部（受防火墙规则限制）
-            子网: '172.20.0.0/16',
-            网关: '172.20.0.1'
+            options: {
+                'com.docker.network.bridge.enable_icc': 'false'
+            }
         }
-    END IF
+    CATCH APIError e:
+        IF e 包含 'already exists' THEN
+            RETURN  # 幂等
+        ELSE
+            RAISE
+        END IF
 END FUNCTION
-```
-
-**防火墙规则伪代码**（宿主机层面）:
-```
-# 允许容器访问的目标
-允许列表 = [
-    '8.8.8.8',      # DNS
-    '8.8.4.4',      # DNS
-    '宿主机IP',      # 访问宿主机服务
-    'ROS包仓库IP'    # 允许下载 ROS 包
-]
-
-# iptables 规则（示例）
-FOR EACH 容器IP IN edubot_network:
-    默认拒绝所有出站流量
-    FOR EACH 允许IP IN 允许列表:
-        允许 容器IP -> 允许IP
-    END FOR
-END FOR
 ```
 
 ### 3.3 安全配置说明
 
 | 配置项 | 作用 | 安全效果 |
 |--------|------|---------|
-| `user="1000:1000"` | 容器内使用非 root 用户 | 防止提权攻击 |
-| `privileged=False` | 禁用特权模式 | 防止访问宿主机设备 |
+| `privileged=False` | 禁用特权模式 | 降低容器逃逸风险 |
 | `no-new-privileges` | 禁止进程提升权限 | 防止 setuid 提权 |
-| `cap_drop=['ALL']` | 移除所有 Linux 能力 | 最小权限原则 |
-| `cap_add=[...]` | 仅添加必要能力 | 精细化权限控制 |
-| 只读挂载 `/opt/ros`, `/usr` | 系统目录不可写 | 防止篡改系统文件 |
+| `docker exec -u 1000` | 终端会话降权 | 学生终端不以 root 运行 |
 | 读写挂载 `/home/student/workspace` | 工作区可写 | 学生操作不受限 |
-| 自定义网络 + 防火墙 | 限制外部访问 | 防止恶意网络行为 |
+| `edubot_network + icc=false` | 容器间网络隔离 | 防止学生容器互访 |
 
 ---
 
@@ -258,7 +225,7 @@ END FOR
 启动终端进程:
     命令 = "script -qc"
     参数 = "docker exec -it " +
-           "-u student " +  # 指定用户
+           "-u 1000 " +  # 使用 UID，避免依赖镜像用户名
            "-w /home/student/workspace " +  # 指定工作目录
            "-e TERM=xterm " +
            "-e PS1='\\u@edubot:\\w\\$ ' " +  # 自定义提示符
@@ -268,33 +235,13 @@ END FOR
 ```
 
 **优化说明**:
-- `-u student`: 确保以非 root 用户身份进入
+- `-u 1000`: 确保以非 root 用户身份进入，且不依赖镜像 `/etc/passwd`
 - `-w /home/student/workspace`: 默认落点在工作目录
 - 自定义 `PS1`: 提示符显示 `student@edubot:~/workspace$`
 
-### 4.3 极端命令兜底（可选）
+### 4.3 极端命令兜底
 
-**仅拦截明显危险的命令**（不影响正常 ROS 操作）:
-
-```
-危险命令模式列表 = [
-    'rm -rf /',           # 删除根目录
-    ':\(\)\{.*\|\:&\}\;', # Fork 炸弹
-    'mkfs\.',             # 格式化文件系统
-    'dd if=.*of=/dev/'    # 写入设备
-]
-
-FUNCTION is_extremely_dangerous(命令):
-    FOR EACH 模式 IN 危险命令模式列表:
-        IF 命令匹配模式 THEN
-            RETURN True
-        END IF
-    END FOR
-    RETURN False
-END FUNCTION
-```
-
-**注意**: 此功能为可选项，不推荐在生产环境启用（容器层已足够安全）。
+本能力经 CEO + Eng 评审确认：**不纳入第8期范围**。本期保持终端命令透传，不做命令拦截。
 
 ---
 
@@ -339,9 +286,9 @@ services:
 
 **安全调整**:
 - ❌ `privileged: true` → `privileged: false`（安全加固）
-- ✅ 新增 `user: "1000:1000"`（非 root）
-- ✅ 新增 `security_opt`, `cap_drop`, `cap_add`（能力控制）
-- ✅ 新增网络隔离配置
+- ✅ 新增 `security_opt=["no-new-privileges:true"]`
+- ✅ 新增网络隔离配置（`network=edubot_network`）
+- ✅ 终端层新增 `docker exec -u 1000 -w /home/student/workspace`
 
 **端口说明**:
 - 11311 端口（ROS Master）不需要映射到宿主机，容器内部通信即可
@@ -381,7 +328,7 @@ sequenceDiagram
     W->>D: 查询容器状态
     D-->>W: 容器运行中
     W->>W: 接受 WebSocket 连接
-    W->>D: docker exec -it -u student -w /workspace
+    W->>D: docker exec -it -u 1000 -w /home/student/workspace
     D->>C: 启动 bash 会话
     C-->>D: bash 进程 PID
     
@@ -403,21 +350,15 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     A[学生执行命令] --> B{容器层检查}
-    B -->|写入 /opt/ros| C[拒绝：只读文件系统]
-    B -->|写入 /usr| C
+    B -->|写入系统目录| C[拒绝：UID 1000 无权限]
     B -->|写入 /home/student/workspace| D[允许：工作区可写]
-    B -->|尝试 sudo| E[拒绝：无 sudo 权限]
-    B -->|尝试 setuid| F[拒绝：no-new-privileges]
-    B -->|访问外部网络| G{网络规则检查}
+    B -->|尝试提权| E[拒绝：no-new-privileges]
+    B -->|访问其他学生容器| F[拒绝：icc=false]
     B -->|正常 ROS 命令| H[允许：正常执行]
-    
-    G -->|允许列表内| H
-    G -->|允许列表外| I[拒绝：网络隔离]
-    
+
     C --> J[返回错误：Permission denied]
     E --> J
     F --> J
-    I --> J
     D --> K[命令成功执行]
     H --> K
 ```
@@ -430,16 +371,9 @@ flowchart TD
 
 本模块不需要新增数据库表，复用现有 `containers` 表。
 
-### 8.2 容器表字段说明
+### 8.2 字段变更说明
 
-| 字段 | 类型 | 说明 | 新增/修改 |
-|------|------|------|----------|
-| `security_level` | String | 安全级别标识 | 新增（可选） |
-
-**SQL 迁移**（可选）:
-```sql
-ALTER TABLE containers ADD COLUMN security_level VARCHAR(20) DEFAULT 'restricted';
-```
+本期不新增 `containers` 表字段，不涉及 SQL 迁移。
 
 ---
 
@@ -472,7 +406,7 @@ ALTER TABLE containers ADD COLUMN security_level VARCHAR(20) DEFAULT 'restricted
 | 提示符显示 | `student@edubot:~/workspace$` | 更清晰的身份标识 |
 | 执行 `sudo` | 提示 `command not found` | 容器内无 sudo |
 | 写入系统目录 | 提示 `Permission denied` | 透明防护 |
-| 访问外部网络 | 部分网站无法访问 | 网络隔离生效 |
+| 访问其他学生容器 | 不可访问 | Docker 网络 ICC 关闭生效 |
 
 ---
 
@@ -483,23 +417,22 @@ ALTER TABLE containers ADD COLUMN security_level VARCHAR(20) DEFAULT 'restricted
 | 测试场景 | 操作 | 预期结果 |
 |---------|------|---------|
 | 尝试写入系统目录 | `echo "test" > /usr/bin/test` | Permission denied |
-| 尝试删除 ROS 文件 | `rm /opt/ros/noetic/setup.bash` | Permission denied (只读) |
+| 尝试删除系统文件 | `rm /usr/bin/test_sec` | Permission denied |
 | 工作区写入 | `echo "test" > ~/workspace/test.txt` | 成功 |
 | 尝试提权 | `sudo su` | sudo: command not found |
 | 执行 ROS 命令 | `roslaunch turtlebot3_gazebo ...` | 正常执行 |
-| Fork 炸弹（可选拦截） | `:(){:\|:&};:` | 被拦截或资源限制触发 |
-| 访问允许列表外网站 | `curl https://example.com` | 连接超时或拒绝 |
-| 访问宿主机服务 | `curl http://宿主机IP:8000` | 正常访问 |
+| 容器间网络隔离 | 从容器 A `ping` 容器 B | 不通（icc=false） |
+| 网络建立幂等 | 重启后端服务两次 | 无报错，`edubot_network` 仅存在一个 |
 
 ### 11.2 功能测试用例
 
 | 测试场景 | 操作 | 预期结果 |
 |---------|------|---------|
 | 终端默认目录 | 打开终端 | 位于 `/home/student/workspace` |
-| 提示符显示 | 查看提示符 | `student@edubot:~/workspace$` |
+| 身份与落点 | 查看提示符与目录 | 以 UID 1000 进入，默认目录 `/home/student/workspace` |
 | GPU 加速 | 启动 Gazebo | 正常使用 GPU 渲染 |
 | X11 显示 | 运行 `rqt` | 正常显示 GUI |
-| DNS 解析 | `nslookup google.com` | 正常解析 |
+| 工作区权限 | `ls -la /home/student/workspace` | owner 显示 `1000:1000` |
 
 ---
 
@@ -510,10 +443,10 @@ ALTER TABLE containers ADD COLUMN security_level VARCHAR(20) DEFAULT 'restricted
 | 任务 | 预估工时 | 优先级 |
 |------|---------|--------|
 | 容器创建参数调整 | 0.5 天 | P0 |
-| 网络隔离配置 | 0.5 天 | P0 |
+| 网络隔离配置（edubot_network + icc=false） | 0.5 天 | P0 |
 | 终端启动参数优化 | 0.5 天 | P0 |
 | 安全配置测试 | 0.5 天 | P0 |
-| 网络规则测试 | 0.5 天 | P1 |
+| 网络幂等与容器互访测试 | 0.5 天 | P1 |
 | 文档更新 | 0.5 天 | P1 |
 
 **总计**: 约 3 天
@@ -521,13 +454,12 @@ ALTER TABLE containers ADD COLUMN security_level VARCHAR(20) DEFAULT 'restricted
 ### 12.2 部署步骤
 
 1. **创建自定义 Docker 网络**
-2. **配置宿主机防火墙规则**（可选）
-3. **更新 `container_manager.py`**
+2. **更新 `container_manager.py`（含 ensure_edubot_network）**
 4. **更新 `terminal.py`**
 5. **重启后端服务**
 6. **创建测试容器验证**
 7. **执行安全测试用例**
-8. **执行网络隔离测试**
+8. **执行网络隔离与幂等测试**
 9. **清理旧容器，应用新配置**
 
 ---
@@ -536,11 +468,11 @@ ALTER TABLE containers ADD COLUMN security_level VARCHAR(20) DEFAULT 'restricted
 
 | 风险 | 影响 | 应对措施 |
 |------|------|---------|
-| 只读文件系统导致 ROS 无法写入临时文件 | ROS 节点启动失败 | 挂载 `/tmp` 为可写 |
-| GPU 驱动权限不足 | Gazebo 无法使用 GPU | 保留 `/dev/dri` 设备挂载 |
-| 非 root 用户无法绑定特权端口 | ROS Master 启动失败 | 使用非特权端口（11311 > 1024） |
-| 能力限制过严导致功能异常 | 部分 ROS 功能不可用 | 逐步测试，按需添加 capabilities |
-| 网络隔离过严影响 ROS 包下载 | 学生无法安装依赖 | 允许列表添加 ROS 仓库 IP |
+| `ensure_edubot_network` 重复创建冲突 | 服务重启失败 | 捕获 `already exists` 并幂等返回 |
+| Docker SDK 同步调用阻塞 lifespan | 启动阶段卡顿 | 用 `_run_in_executor` 封装 |
+| GPU 驱动权限不足 | Gazebo 无法使用 GPU | 保留 `/dev/dri` 设备挂载并做手测 |
+| 工作区 chown 失败 | 学生终端无法写入 | `chown -R` 使用 `check=True`，失败即抛错 |
+| `-u student` 依赖镜像用户名 | 终端启动失败 | 统一使用 `-u 1000` |
 
 ---
 
@@ -556,8 +488,8 @@ ALTER TABLE containers ADD COLUMN security_level VARCHAR(20) DEFAULT 'restricted
 
 **容器创建日志**（须新增）:
 ```
-记录: [Container] 创建容器: student={id}, security_level=restricted, 
-      user=1000:1000, network=edubot_network
+记录: [Container] 创建容器: student={id},
+      privileged=false, network=edubot_network, no_new_privileges=true
 ```
 
 ### 14.2 异常告警
@@ -572,14 +504,27 @@ ALTER TABLE containers ADD COLUMN security_level VARCHAR(20) DEFAULT 'restricted
 
 ## 十五、后续优化方向
 
-1. **命令审计**: 记录所有执行的命令（可选，隐私考虑）
-2. **动态网络策略**: 根据学生等级调整网络访问权限
-3. **会话录制**: 录制终端会话用于教学回放
-4. **动态安全策略**: 根据学生等级调整容器权限
+1. **`cap_drop ALL`**: 答辩后在 Gazebo 稳定前提下逐步加固
+2. **`read_only rootfs`**: 与 cap_drop 同批评估可写目录白名单
+3. **iptables 精细白名单**: 生产化阶段再引入
+4. **会话录制**: 用于教学回放（隐私合规后）
 5. **入侵检测**: 集成容器运行时安全监控工具
 
 ---
 
-**文档状态**: 已完成  
-**审核状态**: 待审核  
-**最后更新**: 2026-03-29
+**文档状态**: 已完成
+**审核状态**: CEO Review 与 Eng Review 已对齐
+**最后更新**: 2026-03-31
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | ISSUES_OPEN (HOLD SCOPE) | 2 设计错误修正，1 实现缺口补全，2 critical gaps（已知风险，无阻断决策） |
+| Codex Review | `/codex review` | Independent 2nd opinion | 1 | CLEAN | 3 issues (chmod 循环逻辑、-u student vs -u 1000、chown check=False)，已全部纳入实施范围 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 7 issues, 0 critical gaps；关键修正：user="1000:1000" 移至 docker exec 层，ensure_network async 包装，enable_icc SDK 格式，chown 递归 |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+
+**UNRESOLVED:** 0
+
+**VERDICT:** CEO + ENG CLEARED — 可直接进入实施阶段。
