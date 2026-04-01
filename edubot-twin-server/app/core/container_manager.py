@@ -7,6 +7,7 @@
 import asyncio
 import logging
 import os
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 # 学生工作区根目录
 STUDENTS_DATA_DIR = Path("data/students").resolve()
 TEMPLATES_DIR = Path("data/templates/ros_packages").resolve()
+EDUBOT_NETWORK = "edubot_network"
 
 # 专用线程池：Docker 操作可能耗时较长，独立于默认线程池
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="docker")
@@ -67,8 +69,39 @@ def create_student_workspace(student_id: int) -> Path:
                 except OSError as e:
                     logger.warning(f"复制模板失败: {item} -> {dest}: {e}")
     
+    subprocess.run(["chown", "-R", "1000:1000", str(workspace)], check=True)
+
     logger.info(f"学生工作区已初始化: {workspace}")
     return workspace
+
+
+# ─── 网络初始化 ───────────────────────────────────────────────
+
+async def ensure_edubot_network() -> None:
+    """确保 Edubot 专用 Docker 网络存在（幂等）。"""
+
+    def _sync():
+        client = get_docker_client()
+
+        try:
+            client.networks.get(EDUBOT_NETWORK)
+            return
+        except NotFound:
+            pass
+
+        try:
+            client.networks.create(
+                EDUBOT_NETWORK,
+                driver="bridge",
+                check_duplicate=True,
+                options={"com.docker.network.bridge.enable_icc": "false"},
+            )
+        except APIError as e:
+            if "already exists" in str(e).lower():
+                return
+            raise
+
+    await _run_in_executor(_sync)
 
 
 # ─── 容器创建 ───────────────────────────────────────────────
@@ -108,6 +141,11 @@ async def create_container(
 
         # 构建 Volume 挂载配置（第七期新增）
         volumes = {}
+        # X11
+        volumes["/tmp/.X11-unix"]={
+            "bind": "/tmp/.X11-unix",
+            "mode": "rw",
+        }
         if workspace_path and workspace_path.exists():
             volumes[str(workspace_path)] = {
                 "bind": "/home/student/workspace",
@@ -161,6 +199,12 @@ async def create_container(
                 "edubot.type": "simulation",
             },
             remove=False,
+            privileged=False,
+            security_opt=["no-new-privileges:true"],
+            network=EDUBOT_NETWORK,
+            shm_size="512m",
+            devices=["/dev/dri:/dev/dri"],#启用显卡
+            environment=["DISPLAY=:0"],#启用显示器
         )
         return container.short_id
 

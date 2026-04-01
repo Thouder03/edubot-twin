@@ -11,6 +11,7 @@ from app.crud import container as crud_container
 from app.crud import container_metrics as crud_metrics
 from app.schemas.container_metrics import ContainerMetricsCreate
 from app.core.logger import log_container_event
+from app.core.container_manager import ensure_edubot_network
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,8 @@ async def _metrics_cleanup_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan：启动 → yield → 关闭"""
+    await ensure_edubot_network()
+
     # 启动后台任务
     cleanup_task = asyncio.create_task(_stale_container_cleanup_loop())
     metrics_task = asyncio.create_task(_metrics_collection_loop())

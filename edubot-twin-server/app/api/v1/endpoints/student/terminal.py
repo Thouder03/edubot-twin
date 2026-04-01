@@ -14,6 +14,7 @@ from fastapi.websockets import WebSocketState
 from app.core.security import verify_token
 from app.db.database import AsyncSessionLocal
 from app.crud import container as crud_container
+from app.crud import student as crud_student
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,14 @@ async def terminal_ws(
     # ── 2. 查找容器 ──────────────────────────────────────────────
     async with AsyncSessionLocal() as db:
         container = await crud_container.get_container_by_user(db, student_id)
+        student = await crud_student.get_student(db, student_id)
+
+    terminal_username = (
+        student.username if student and getattr(student, "username", None) else "student"
+    )
+    safe_terminal_username = "".join(
+        ch for ch in terminal_username if ch.isalnum() or ch in {"-", "_", "."}
+    ) or "student"
 
     if not container or not container.container_id:
         logger.warning(f"[Terminal] 拒绝连接: 未找到学生容器, student={student_id}, client={client}")
@@ -118,7 +127,18 @@ async def terminal_ws(
     proc: asyncio.subprocess.Process | None = None
     try:
         proc = await asyncio.create_subprocess_exec(
-            "script", "-qc", f"docker exec -it -e TERM=xterm {safe_container_id} /bin/bash", "/dev/null",
+            "script",
+            "-qc",
+            f"docker exec -it -u 1000 -w /home/student/workspace "
+            f"-e TERM=xterm -e USER={safe_terminal_username} -e LOGNAME={safe_terminal_username} "
+            f"-e HOME=/home/student "
+            f"{safe_container_id} /bin/bash -lc \""
+            f"source /opt/ros/noetic/setup.bash && "
+            f"source /home/ubuntu20/catkin_ws/devel/setup.bash && "
+            f"export PS1='{safe_terminal_username}@\\h: \\w\\$ ' && "
+            f"exec /bin/bash --noprofile --norc -i"
+            f"\"",
+            "/dev/null",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
