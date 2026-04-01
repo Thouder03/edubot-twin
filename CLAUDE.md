@@ -11,64 +11,50 @@ Edubot Twin 是一个面向移动机器人实训的数字孪生评测平台，�
 
 ## 开发环境
 
-### 前端开发
+### scripts/ 规范
+
+> ⚠️ 所有 Run & Debug 操作必须通过 `scripts/` 目录下的 `.sh` 脚本进行，严禁直接使用 `pnpm`、`uvicorn` 等命令。
+> 该目录尚未创建——首次执行启停操作时，先在 `scripts/` 下创建对应脚本，再通过脚本执行。
+
+### 前端常用命令（通过 scripts/ 封装后使用）
 
 ```bash
+# 原始命令，仅作参考，请封装到 scripts/start_web.sh
 cd edubot-twin-web
-
-# 安装依赖
-pnpm install
-
-# 启动开发服务器 (http://localhost:4000)
-pnpm run dev
-
-# 类型检查
-pnpm ts:check
-
-# 代码格式化
-pnpm lint:eslint
-pnpm lint:format
-
-# 构建
-pnpm build:pro    # 生产环境
-pnpm build:dev    # 开发环境
-pnpm build:test   # 测试环境
+pnpm install          # 安装依赖
+pnpm run dev          # 开发服务器 http://localhost:4000
+pnpm ts:check         # 类型检查（提交前必须通过）
+pnpm lint:eslint      # ESLint
+pnpm lint:format      # Prettier
+pnpm build:pro        # 生产构建
 ```
 
 **要求**: Node.js >= 18.0.0, pnpm >= 8.1.0
 
-### 后端开发
+### 后端常用命令（通过 scripts/ 封装后使用）
 
 ```bash
+# 原始命令，仅作参考，请封装到 scripts/start_server.sh
 cd edubot-twin-server
-
-# 安装依赖 (使用项目根目录的虚拟环境)
-../.venv/bin/pip install -r requirements.txt
-
-# 初始化数据库 (首次运行)
-../.venv/bin/python init_db.py
-
-# 启动开发服务器 (http://localhost:8000)
+../.venv/bin/pip install -r requirements.txt  # 安装依赖
+../.venv/bin/python init_db.py                # 初始化数据库（首次）
 ../.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# API 文档
-# - Swagger UI: http://localhost:8000/docs
-# - ReDoc: http://localhost:8000/redoc
+# API 文档: http://localhost:8000/docs
 ```
 
 ## 核心架构
 
 ### 前端架构
 
-**目录结构**:
 ```
 edubot-twin-web/src/
 ├── views/
 │   ├── Simulation/          # ★ 核心仿真工作台 (Golden Layout v2.6)
 │   │   ├── Simulation.vue   # 主容器
-│   │   ├── panels/          # 功能面板 (ROS3DViewer, Terminal, GzWeb)
+│   │   ├── panels/          # 7 个功能面板（见下文）
 │   │   ├── composables/     # useRenderer, useRosConnection
-│   │   └── stores/          # 面板状态管理
+│   │   ├── stores/          # panelState（面板状态管理）
+│   │   └── types/           # settings.ts（设置树类型）
 │   ├── Student/             # 学生端页面
 │   └── Authorization/       # 教师管理端
 ├── api/                     # HTTP 请求封装
@@ -77,42 +63,49 @@ edubot-twin-web/src/
 ```
 
 **关键技术点**:
-- **ROS 通信**: 使用 `roslibjs` 通过 WebSocket 连接 ROS
-- **3D 渲染**: 基于 `ros3djs` + Three.js，采用 Lichtblick Renderer 架构
-- **布局系统**: Golden Layout 2.6.0 支持面板拖拽、拆分、堆叠
-- **状态管理**: Pinia (全局) + 局部 stores (Simulation)
+- **ROS 通信**: `roslibjs` 通过 WebSocket 连接 ROS
+- **3D 渲染**: 移植自 Lichtblick 的 Renderer-Extension 架构（见下文）
+- **布局系统**: Golden Layout 2.6.0，支持面板拖拽、拆分、堆叠
+- **状态管理**: Pinia (全局) + `panelState` store (Simulation 局部)
+
+### 已实现的面板（panels/）
+
+| 面板 | 目录 | 说明 |
+|------|------|------|
+| ROS3DViewer | `ROS3DViewer/` | Three.js 3D 可视化，核心面板 |
+| ContainerTerminal | `ContainerTerminal/` | 容器终端（xterm.js） |
+| GzWebViewer | `GzWebViewer/` | Gazebo Web iframe 嵌入 |
+| WorkspacePanel | `WorkspacePanel/` | 文件树 + 代码编辑器 |
+| KeyboardControl | `KeyboardControl/` | 键盘控制机器人运动 |
+| RosoutPanel | `RosoutPanel/` | ROS 日志输出面板 |
+| CameraPanel | `CameraPanel/` | 摄像头视频流面板 |
 
 ### 后端架构
 
-**模块化分层设计**:
 ```
 edubot-twin-server/app/
 ├── api/v1/endpoints/
-│   ├── student/             # 学生模块 (CRUD, auth, exams)
-│   ├── teacher/             # 教师模块 (容器管理, 资源分发)
-│   └── common/              # 公共接口 (健康检查)
+│   ├── student/             # files, container, terminal, basic
+│   ├── teacher/             # containers, students, monitor
+│   └── common/              # auth（登录、Token、路由权限）
+├── core/                    # security, docker_client, container_manager, port_allocator, logger
 ├── models/                  # SQLAlchemy ORM 模型
 ├── schemas/                 # Pydantic 数据验证
 ├── crud/                    # 数据库操作层
 └── db/                      # 数据库配置
 ```
 
-**安全特性**:
-- 密码使用 bcrypt 哈希存储
-- API 响应自动过滤敏感字段
-- CORS 配置限制跨域访问
+## ROS3D Renderer 架构（重要）
 
-## ROS3D Renderer 架构 (重要)
-
-本项目的 `ROS3DViewer` 采用移植自 Lichtblick 的 Renderer-Extension 架构：
+本项目的 `ROS3DViewer` 采用移植自 Lichtblick 的 Renderer-Extension 架构，详细文档见 `panels/ROS3DViewer/CLAUDE.md`。
 
 ### 核心原则
 
-1. **解耦设计**: `Renderer` 类不直接依赖 `roslib`，通过 `addMessageEvent()` 接收标准化数据
+1. **解耦设计**: `Renderer` 不依赖 `roslib`，通过 `addMessageEvent()` 接收标准化数据
 2. **桥接模式**: `index.vue` 作为桥接层，负责 ROS 连接和消息注入
-3. **扩展注册**: 所有 3D 功能 (网格、坐标系、雷达) 都是 `SceneExtension`，必须在 `useRenderer.ts` 的 `createExtensionConfig()` 中显式注册
-4. **按需渲染**: 非连续渲染循环，状态变化时必须调用 `queueAnimationFrame()` 触发渲染
-5. **双向同步**: 3D 交互 ↔ 设置面板的状态同步，浮点数必须 `round` 处理防止抖动
+3. **扩展注册**: 所有 3D 功能都是 `SceneExtension`，必须在 `useRenderer.ts` 的 `createExtensionConfig()` 中显式注册
+4. **按需渲染**: 状态变化后必须调用 `queueAnimationFrame()` 触发渲染
+5. **双向同步**: 3D 交互 ↔ 设置面板，浮点数必须 `round` 处理防止抖动
 
 ### 消息注入格式
 
@@ -129,102 +122,94 @@ renderer.addMessageEvent({
 
 - **Grids**: 网格地面
 - **FrameAxes**: TF 坐标系
-- **LaserScans**: 激光雷达点云
-- **Markers**: visualization_msgs/Marker(Array)，支持 12 种类型
-- **Poses / PoseArrays**: 姿态可视化 (axis/arrow/line 模式)
+- **LaserScans**: 激光雷达点云（**标准参考实现**）
+- **PointClouds**: PointCloud2，支持多种颜色模式、decayTime
+- **OccupancyGrids**: 占据栅格地图（DataTexture 渲染，需 polygonOffset）
+- **Markers / TopicMarkers**: visualization_msgs/Marker(Array)，12 种类型
+- **Poses / PoseArrays**: 姿态可视化
+- **Polygons**: 多边形
 - **PublishClickTool**: 3D 场景点击发布 (goal/point/pose_estimate)
+- **SceneSettings**: 全局场景设置
 
 ## 角色与路由系统
 
 ### 测试账号
 
-| 用户名  | 密码    | 角色    | 说明                     |
-|---------|---------|---------|--------------------------|
-| admin   | admin   | admin   | 超级管理员，完整管理菜单 |
-| test    | test    | test    | 测试账号，部分管理菜单   |
-| student | student | student | 学生账号，仅学生工作台   |
+| 用户名  | 密码    | 角色    | 说明 |
+|---------|---------|---------|------|
+| admin   | admin   | admin   | 超级管理员 |
+| test    | test    | test    | 测试账号 |
+| student | student | student | 学生账号，仅学生工作台 |
 
-### 双重配置原则 (重要)
+### 路由配置原则（重要）
 
-每个角色的路由必须在两处配置：
-1. `src/router/index.ts` 的 `asyncRouterMap` (静态路由)
-2. `mock/role/index.mock.ts` 对应角色的路由列表 (动态路由)
+本项目使用**后端驱动的动态路由**，路由权限由后端接口返回，新增路由必须同时修改两处：
 
-**常见错误**: 只在 `asyncRouterMap` 中定义路由，但 mock 中未配置，导致用户无法访问。
+1. **前端路由定义**: `src/router/index.ts` 的 `asyncRouterMap`
+2. **后端路由权限**: `app/api/v1/endpoints/common/auth.py` 的 `get_user_routes()` 中对应角色的路径列表
+
+**常见错误**: 只在前端定义了路由，但后端 `get_user_routes` 未返回该路径，导致用户无法访问。
+
+```bash
+# 调试：验证后端是否返回了新路径
+curl "http://localhost:8000/api/v1/auth/routes?role=student"
+```
+
+详细说明见 `.claude/rules/router-map-guidance.md`。
 
 ## 开发规范
 
 ### TypeScript
 
-- 为 ROS Message 定义 Interface (如 `Twist`, `Odometry`)，避免滥用 `any`
+- 为 ROS Message 定义 Interface，严禁 `any`
 - 使用 Composition API + `<script setup>`
-- 严格模式: `pnpm ts:check` 必须通过
+- `pnpm ts:check` 必须通过
 
 ### 样式系统
 
-- **BEM (Less)**: 复杂组件 (如 RosViewer)
+- **BEM (Less)**: 复杂组件（如 RosViewer）
 - **Atomic CSS (UnoCSS)**: 布局和间距
-- **样式隔离**: 使用 `useDesign` Hook 生成前缀 (默认 `v-`)
+- **样式隔离**: 使用 `useDesign` Hook 生成前缀（默认 `v-`）
 
 ### Git 提交规范
 
-遵循 Conventional Commits:
-- `feat`: 新功能
-- `fix`: Bug 修复
-- `refactor`: 重构
-- `docs`: 文档更新
-- `style`: 代码格式调整
+遵循 Conventional Commits（中文提交信息）：`feat`、`fix`、`refactor`、`docs`、`style`
 
 ## 常见任务
 
 ### 添加新的 SceneExtension
 
-1. 在 `edubot-twin-web/src/views/Simulation/panels/ROS3DViewer/extensions/` 创建扩展类
-2. 继承 `SceneExtension` 并实现 `startFrame()`, `handleSettingsAction()` 等方法
+1. 在 `extensions/` 创建扩展类，继承 `SceneExtension`
+2. 实现 `getSubscriptions()`、`settingsNodes()`、`handleSettingsAction()`、`startFrame()`
 3. 在 `composables/useRenderer.ts` 的 `createExtensionConfig()` 中注册
-4. 在 `index.vue` 中订阅对应的 ROS Topic 并调用 `renderer.addMessageEvent()`
+4. 在 `index.vue` 订阅 ROS Topic 并调用 `renderer.addMessageEvent()`
+
+> ⚠️ `handleSettingsAction` 必须同时处理 `path.length === 2`（眼睛图标 visible 切换）和 `path.length === 3`（字段更新），详见 `.claude/rules/ros3dviewer-extension-guidance.md`。
+
+### 添加仿真工作台面板
+
+详见 `.claude/rules/simulation-panel-guidance.md`。关键步骤：创建 `panels/<Name>/index.vue` 和 `settings.ts`，然后在 `panels/registry.ts` 注册。
 
 ### 添加后端 API 端点
 
-1. 在 `app/models/` 创建 ORM 模型
-2. 在 `app/schemas/` 创建 Pydantic Schema
-3. 在 `app/crud/` 创建 CRUD 操作
-4. 在 `app/api/v1/endpoints/` 对应模块创建路由
-5. 在模块的 `__init__.py` 中注册路由
-
-### 调试 ROS 连接
-
-```typescript
-// 在浏览器控制台查看 ROS 连接状态
-console.log(ros.isConnected)
-
-// 查看已订阅的 Topics
-console.log(renderer.topics)
-
-// 手动触发渲染
-renderer.queueAnimationFrame()
-```
-
-## 项目记忆系统
-
-项目使用 `.ai_memory/` 目录维护长期上下文：
-- `1_project_context.md`: 核心知识库 (只读)
-- `2_active_task.md`: 当前任务状态 (快照覆盖)
-- `3_work_log.md`: 开发流水账 (追加)
-- `0_archive_context.md`: 思维演变历史 (追加)
-
-**注意**: 这些文件使用简体中文编写。
+1. `app/models/` → ORM 模型
+2. `app/schemas/` → Pydantic Schema
+3. `app/crud/` → CRUD 操作
+4. `app/api/v1/endpoints/` 对应模块 → 路由
+5. 模块 `__init__.py` → 注册路由
 
 ## 技术债务与已知问题
 
-1. **GzWeb 集成**: 采用 iframe 嵌入，通信能力有限
-2. **数据库迁移**: 当前使用 SQLite，生产环境需切换到 PostgreSQL
-3. **Token 认证**: 前后端联调中，Token 存储和使用机制待完善
-4. **容器管理**: Docker SDK 集成尚未完成
+1. **scripts/ 未创建**: 违反全局规范，首次启动前需补建
+2. **GzWeb 集成**: iframe 嵌入，通信能力有限
+3. **数据库迁移**: 当前 SQLite，生产需切换 PostgreSQL
+4. **Token 认证**: 前后端联调中，Token 存储机制待完善
+5. **容器管理**: Docker SDK 集成尚未完成（`app/core/docker_client.py` 骨架已有）
 
 ## 相关文档
 
-- 前端 README: `edubot-twin-web/README.md`
-- 后端 README: `edubot-twin-server/README.md`
+- ROS3DViewer 扩展开发: `panels/ROS3DViewer/CLAUDE.md`（内含详细开发指南和内存管理规范）
+- 扩展开发规范: `.claude/rules/ros3dviewer-extension-guidance.md`
+- 面板添加指南: `.claude/rules/simulation-panel-guidance.md`
+- 路由添加指南: `.claude/rules/router-map-guidance.md`
 - API 架构设计: `edubot-twin-server/API_ARCHITECTURE.md`
-- ROS3D 面板差异: `edubot-twin-web/src/views/Simulation/3D_PANEL_DIFF_CN.md`
