@@ -1,8 +1,8 @@
 # SDD-第九期：rosout 日志与摄像头监控面板
 
-**文档版本**: v1.1  
-**创建日期**: 2026-03-29  
-**修订日期**: 2026-03-29  
+**文档版本**: v1.2
+**创建日期**: 2026-03-29
+**修订日期**: 2026-04-01
 **目标**: 实现 ROS 日志实时显示和摄像头图像监控功能
 
 ---
@@ -71,10 +71,10 @@ sequenceDiagram
     V->>U: 渲染日志行
 
     Note over R,U: 摄像头图像流程
-    R->>B: 发布 /camera/image_raw
-    B->>W: 推送 compressed 图像
+    R->>B: 发布 /camera/image_raw/compressed
+    B->>W: 推送 JSON 消息（data 为 Base64 string）
     W->>V: onMessage 回调
-    V->>V: Base64 解码
+    V->>V: format 解析 + Data URL 拼接
     V->>U: 更新 <img> src
 ```
 
@@ -112,13 +112,16 @@ sequenceDiagram
 edubot-twin-web/src/views/Simulation/panels/
 ├── RosoutPanel/
 │   ├── index.vue                 # 主面板
-│   ├── LogItem.vue              # 单条日志组件
+│   ├── LogItem.vue               # 单条日志组件
+│   ├── settings.ts               # 配置接口 + buildNodes + applyAction
 │   └── composables/
-│       └── useRosout.ts         # 日志订阅逻辑
-└── CameraPanel/
-    ├── index.vue                 # 主面板
-    └── composables/
-        └── useCamera.ts          # 图像订阅逻辑
+│       └── useRosout.ts          # 日志订阅逻辑
+├── CameraPanel/
+│   ├── index.vue                 # 主面板
+│   ├── settings.ts               # 配置接口 + buildNodes + applyAction
+│   └── composables/
+│       └── useCamera.ts          # 图像订阅逻辑
+└── registry.ts                   # 面板注册（本期修改）
 ```
 
 ---
@@ -195,48 +198,47 @@ interface LogEntry {
 **useRosout.ts 核心逻辑伪代码**:
 
 ```
-FUNCTION useRosout():
+FUNCTION useRosout(panelId):
+    注入:
+        containerRosUrl = inject('containerRosUrl', ref(null))
+        containerStatus = inject('containerStatus', ref(null))
+
+    配置:
+        config = usePanelConfig(panelId, DEFAULT_CONFIG, buildNodes, applyAction)
+
     初始化状态:
         logs = 空数组
-        maxLogs = 500
         paused = false
-    
-    FUNCTION subscribe(ros连接):
-        创建 Topic 订阅 {
-            名称: '/rosout',
-            类型: 'rosgraph_msgs/Log'
+        _seq = 0  # composable 函数体内（实例级闭包）
+
+    FUNCTION connectRos(url):
+        建立 Ros 连接
+        连接成功后订阅 Topic(config.topic)
+
+    监听消息回调:
+        IF paused THEN 返回
+
+        创建日志条目 {
+            id: `${Date.now()}-${_seq++}`,
+            timestamp: 从消息头提取时间,
+            level: 消息.level,
+            node: 消息.name,
+            message: 消息.msg,
+            file: 消息.file,
+            line: 消息.line
         }
-        
-        监听消息回调:
-            IF paused THEN 返回
-            
-            创建日志条目 {
-                id: 时间戳 + 随机数,
-                timestamp: 从消息头提取时间,
-                level: 消息.level,
-                node: 消息.name,
-                message: 消息.msg,
-                file: 消息.file,
-                line: 消息.line
-            }
-            
-            添加到 logs 数组
-            
-            IF logs.length > maxLogs THEN
-                移除最旧的日志
-            END IF
-        END 监听
-    END FUNCTION
-    
-    FUNCTION unsubscribe():
-        取消 Topic 订阅
-    END FUNCTION
-    
-    FUNCTION clear():
-        清空 logs 数组
-    END FUNCTION
-    
-    返回 { logs, paused, subscribe, unsubscribe, clear }
+
+        添加到 logs 数组
+        IF logs.length > config.maxLogs THEN
+            移除最旧的日志（FIFO）
+        END IF
+
+    FUNCTION onBeforeUnmount():
+        topic.unsubscribe()
+        ros.close()
+        unregisterPanel(panelId)
+
+    返回 { logs, paused, connectRos, clear, exportLogs }
 END FUNCTION
 ```
 
@@ -256,10 +258,12 @@ END FUNCTION
 ```
 
 **关键特性**:
-- 虚拟滚动：使用 `vue-virtual-scroller` 处理大量日志
+- 普通列表渲染：`v-for` 渲染 + 500 条上限（不引入虚拟滚动依赖）
 - 颜色编码：不同级别使用不同颜色
 - 时间戳：显示相对时间或绝对时间
 - 节点过滤：点击节点名快速过滤
+- 日志导出：JSON Lines 格式，下载为 `.log` 文件
+- 状态联动：容器非 running 时显示遮罩并禁用操作
 
 ---
 
@@ -277,8 +281,8 @@ interface CompressedImage {
     stamp: { secs: number; nsecs: number }
     frame_id: string
   }
-  format: string  // "jpeg", "png"
-  data: number[]  // Base64 编码的图像数据
+  format: string  // "jpeg" | "png" | "rgb8; jpeg compressed bgr8" 等
+  data: string    // JSON 传输下为 Base64 字符串
 }
 ```
 
@@ -299,31 +303,40 @@ interface CameraState {
 **useCamera.ts 核心逻辑伪代码**:
 
 ```
-FUNCTION useCamera():
+FUNCTION useCamera(panelId):
+    注入:
+        containerRosUrl = inject('containerRosUrl', ref(null))
+        containerStatus = inject('containerStatus', ref(null))
+
+    配置:
+        config = usePanelConfig(panelId, DEFAULT_CONFIG, buildNodes, applyAction)
+
     初始化状态:
         imageSrc = 空字符串
         fps = 0
         paused = false
         frameCount = 0
         lastFpsUpdate = 当前时间
-    
+        lastFrameTime = 0
+
     FUNCTION subscribe(ros连接, topic名称):
         创建 Topic 订阅 {
             名称: topic名称,
-            类型: 'sensor_msgs/CompressedImage',
-            压缩: 'cbor'
+            类型: 'sensor_msgs/CompressedImage'
         }
-        
+
         监听消息回调:
+            IF !message.data THEN 返回  # Critical Gap: 防 broken image
             IF paused THEN 返回
-            
-            # 将 Base64 数据转换为 Data URL
-            base64数据 = 将消息.data转为Base64字符串
-            imageSrc = "data:image/" + 消息.format + ";base64," + base64数据
-            
-            # 计算 FPS
-            frameCount++
+
             当前时间 = 获取当前时间
+            IF 当前时间 - lastFrameTime < 33毫秒 THEN 返回  # 30fps 节流
+            lastFrameTime = 当前时间
+
+            mimeType = (message.format || '').split(';')[0].trim() || 'jpeg'
+            imageSrc = "data:image/" + mimeType + ";base64," + message.data
+
+            frameCount++
             IF 当前时间 - lastFpsUpdate >= 1000毫秒 THEN
                 fps = frameCount
                 frameCount = 0
@@ -331,12 +344,21 @@ FUNCTION useCamera():
             END IF
         END 监听
     END FUNCTION
-    
-    FUNCTION unsubscribe():
-        取消 Topic 订阅
-    END FUNCTION
-    
-    返回 { imageSrc, fps, paused, subscribe, unsubscribe }
+
+    FUNCTION startFpsResetTimer():
+        每秒检查一次
+        IF 超过 1.5 秒没有新帧 THEN
+            fps = 0
+            frameCount = 0
+        END IF
+
+    FUNCTION onBeforeUnmount():
+        topic.unsubscribe()
+        ros.close()
+        clearInterval(fpsResetTimer)
+        unregisterPanel(panelId)
+
+    返回 { imageSrc, fps, paused, subscribe, screenshot }
 END FUNCTION
 ```
 
@@ -352,15 +374,16 @@ END FUNCTION
 │                                                  │
 │                                                  │
 ├──────────────────────────────────────────────────┤
-│ [⏸ 暂停] [📷 截图] [🔄 刷新] 质量: [●○○]         │
+│ [⏸ 暂停] [📷 截图] [🔄 刷新]                     │
 └──────────────────────────────────────────────────┘
 ```
 
 **关键特性**:
 - 自适应缩放：图像自动适应面板大小
-- 帧率显示：实时显示当前 FPS
+- 帧率显示：实时显示当前 FPS（无帧超 1.5s 自动归零）
 - 截图功能：保存当前帧为图片
-- 质量调节：切换不同压缩质量的 Topic
+- Topic 可配置：通过设置树切换订阅 Topic
+- 状态联动：容器非 running 时显示遮罩
 
 ---
 
@@ -368,55 +391,17 @@ END FUNCTION
 
 ### 8.1 面板注册
 
-**修改位置**: `edubot-twin-web/src/views/Simulation/Simulation.vue`
+**修改位置**: `edubot-twin-web/src/views/Simulation/panels/registry.ts`
 
 **注册伪代码**:
 ```
-面板组件映射 = {
-  'ros3d-viewer': ROS3DViewer组件,
-  'gzweb': GzWebPanel组件,
-  'terminal': TerminalPanel组件,
-  'keyboard': KeyboardPanel组件,
-  'rosout': RosoutPanel组件,      // 新增
-  'camera': CameraPanel组件        // 新增
-}
+registerPanel('RosoutPanel', RosoutPanel)
+registerPanel('CameraPanel', CameraPanel)
 ```
 
 ### 8.2 默认布局配置
 
-**布局配置伪代码**:
-```
-默认布局 = {
-  根节点: {
-    类型: '行',
-    内容: [
-      {
-        类型: '列',
-        宽度: 60%,
-        内容: [
-          { 类型: '组件', 名称: 'gzweb', 标题: 'Gazebo' },
-          { 类型: '组件', 名称: 'keyboard', 标题: '键盘控制' }
-        ]
-      },
-      {
-        类型: '列',
-        宽度: 40%,
-        内容: [
-          { 类型: '组件', 名称: 'ros3d-viewer', 标题: 'ROS 3D' },
-          {
-            类型: '堆叠',  // Tab 堆叠
-            内容: [
-              { 类型: '组件', 名称: 'terminal', 标题: '终端' },
-              { 类型: '组件', 名称: 'rosout', 标题: '日志' },
-              { 类型: '组件', 名称: 'camera', 标题: '摄像头' }
-            ]
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+本期**不修改默认布局**（`predefined-layouts.ts` 保持不变），仅完成面板注册，允许用户在自定义布局中按需添加。
 
 ---
 
@@ -426,7 +411,7 @@ END FUNCTION
 
 | 优化项 | 方案 | 效果 |
 |--------|------|------|
-| 虚拟滚动 | vue-virtual-scroller | 支持 10000+ 条日志流畅滚动 |
+| 列表渲染 | `v-for` 普通列表（500 条上限） | 零依赖、维护成本低 |
 | 日志限制 | 最多保留 500 条 | 防止内存溢出 |
 | 暂停接收 | paused 状态 | 调试时冻结日志 |
 | 防抖过滤 | debounce 300ms | 减少重复渲染 |
@@ -435,10 +420,10 @@ END FUNCTION
 
 | 优化项 | 方案 | 效果 |
 |--------|------|------|
-| 压缩传输 | CompressedImage | 带宽减少 80% |
+| 压缩传输 | CompressedImage（JSON） | 带宽减少 80% |
 | 帧率限制 | throttle 30fps | 避免过度渲染 |
-| 图像缓存 | 复用 Data URL | 减少 Base64 转换 |
-| 质量调节 | 切换不同 Topic | 平衡清晰度与性能 |
+| 图像缓存 | 复用 Data URL | 减少字符串处理 |
+| Topic 配置 | 设置树切换 Topic | 适配不同实训环境 |
 
 ---
 
@@ -448,10 +433,12 @@ END FUNCTION
 
 | 任务 | 预估工时 | 优先级 |
 |------|---------|--------|
-| RosoutPanel 组件开发 | 1 天 | P1 |
-| CameraPanel 组件开发 | 1 天 | P2 |
-| Golden Layout 集成 | 0.5 天 | P1 |
-| 性能优化与测试 | 0.5 天 | P1 |
+| RosoutPanel / CameraPanel settings.ts | 0.5 天 | P1 |
+| useRosout.ts（含 onBeforeUnmount 清理） | 0.5 天 | P1 |
+| RosoutPanel + LogItem.vue | 0.5 天 | P1 |
+| useCamera.ts（含 FPS 归零定时器清理） | 0.5 天 | P1 |
+| CameraPanel + registry.ts 注册 | 0.5 天 | P1 |
+| 人工测试矩阵执行 | 0.5 天 | P1 |
 
 **总计**: 约 3 天
 
@@ -461,10 +448,15 @@ END FUNCTION
 |---------|------|---------|
 | 订阅 rosout | 启动 ROS 节点 | 日志实时显示 |
 | 日志过滤 | 选择 ERROR 级别 | 仅显示错误日志 |
-| 关键词搜索 | 输入 "move_base" | 高亮匹配行 |
-| 日志清空 | 点击清空按钮 | 日志列表清空 |
+| 关键词搜索 | 输入 "move_base" | 300ms 后生效 |
+| 超 500 条自动删旧 | 注入 501 条日志 | 最旧日志被静默移除 |
+| ROS 断线后重连 | 手动断开后恢复 rosbridge | 日志/画面可恢复更新 |
+| 日志导出 | 点击导出按钮 | 下载 JSON Lines `.log` 文件 |
+| data 为空保护 | 注入空 data 消息 | 不出现 broken image |
+| format fallback | 注入非标准 format | 回退为 `image/jpeg` 正常显示 |
+| FPS 无帧归零 | 暂停消息 1.5 秒以上 | FPS 显示归零 |
+| 容器状态遮罩 | 切换容器到非 running | Rosout/Camera 均显示遮罩 |
 | 摄像头订阅 | 启动摄像头节点 | 图像实时显示 |
-| 帧率显示 | 观察 FPS 指示器 | 显示实际帧率 |
 | 截图功能 | 点击截图按钮 | 下载当前帧 |
 | 暂停/恢复 | 切换暂停状态 | 图像冻结/恢复 |
 
@@ -474,23 +466,44 @@ END FUNCTION
 
 | 风险 | 影响 | 应对措施 |
 |------|------|---------|
-| 大量日志导致浏览器卡顿 | 用户体验差 | 虚拟滚动 + 日志限制 |
-| 图像传输带宽占用高 | 网络拥堵 | 使用 CompressedImage |
-| rosbridge 连接不稳定 | 数据丢失 | 自动重连机制 |
-| 不同摄像头 Topic 名称不一致 | 无法订阅 | 提供 Topic 选择器 |
+| 面板卸载资源未清理 | 内存泄漏/重复订阅 | `onBeforeUnmount` 清理 ros/topic/interval |
+| 图像传输带宽占用高 | 网络拥堵 | 使用 CompressedImage + 30fps 节流 |
+| rosbridge 连接不稳定 | 数据丢失 | 监听 `containerRosUrl` 变化并重连 |
+| 不同摄像头 Topic 名称不一致 | 无法订阅 | 设置树可配置 Topic |
 
 ---
 
 ## 十二、后续优化方向
 
-1. **日志导出**: 支持导出为 .log 文件
-2. **日志回放**: 录制并回放历史日志
-3. **多摄像头**: 同时显示多个摄像头
-4. **图像标注**: 在图像上绘制检测框
+1. **Topic 自动发现**: 调用 rosbridge topic list API（P2）
+2. **日志回放**: 录制并回放历史日志（P3）
+3. **多摄像头 PiP**: 同时显示多个摄像头（P3）
+4. **图像标注**: 在图像上绘制检测框（P3）
 5. **性能监控**: 显示 CPU/内存/网络使用情况
 
 ---
 
 **文档状态**: 已完成  
-**审核状态**: 待审核  
-**最后更新**: 2026-03-29
+**审核状态**: CEO + Eng 已审批（按审查意见修订）
+**最后更新**: 2026-04-01
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 3 | ISSUES_OPEN (SELECTIVE EXPANSION) | 4 scope proposals accepted, 3 deferred, 2 critical gaps |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 2 | CLEAR (PLAN) — 2 commits stale | 7 issues found, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | issues_open (via /autoplan) | — |
+
+**CRITICAL GAPS (2):**
+- `CameraPanel`: `data` 为空时未处理 → `<img>` 显示 broken image
+- `CameraPanel`: 无帧超 1 秒时 FPS 不重置 → 显示过期 FPS 值
+
+**SCOPE CHANGES VS SDD:**
+- ✅ Topic 名称可配置（设置树）
+- ✅ 容器运行状态联动（非 running 显示遮罩）
+- ✅ 日志导出为 JSON Lines .log 文件
+- ✅ 不改默认布局，仅在 registry.ts 注册新面板
+
+**VERDICT:** CEO + ENG CLEARED — 可进入实现。建议先跑一次新鲜 `/plan-eng-review` 覆盖 cherry-pick 范围变更。
