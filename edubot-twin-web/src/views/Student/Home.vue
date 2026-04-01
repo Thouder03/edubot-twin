@@ -9,7 +9,8 @@ import {
   getMyContainerApi,
   requestContainerApi,
   startMyContainerApi,
-  destroyAndRecreateApi
+  destroyAndRecreateApi,
+  heartbeatApi
 } from '@/api/container'
 import type { ContainerStatusResponse } from '@/api/container/types'
 
@@ -111,11 +112,32 @@ async function waitForContainerRunning(
   intervalMs = 2_000
 ): Promise<ContainerStatusResponse | null> {
   const deadline = Date.now() + maxWaitMs
+  const warmupHeartbeatIntervalMs = 10_000
+  let lastHeartbeatAt = 0
+
+  const sendWarmupHeartbeat = async (force = false) => {
+    const now = Date.now()
+    if (!force && now - lastHeartbeatAt < warmupHeartbeatIntervalMs) return
+
+    lastHeartbeatAt = now
+    try {
+      await heartbeatApi()
+    } catch {
+      // 创建阶段可能短暂失败，忽略并继续轮询
+    }
+  }
+
   while (Date.now() < deadline) {
+    // Student/Home 等待期间也持续刷新心跳，直到 Simulation 页面接管
+    await sendWarmupHeartbeat()
+
     try {
       const res = await getMyContainerApi()
       const data = res?.data
       if (data?.status === 'running') {
+        // running 后立即补一跳，避免清理任务在页面切换窗口期误判
+        await sendWarmupHeartbeat(true)
+
         // 后端说 running 了，还需要探测一下容器里的 ROSBridge WebSockets 服务是否真的起来了
         if (data.rosbridge_url && data.gzbridge_url) {
           const isReady =
