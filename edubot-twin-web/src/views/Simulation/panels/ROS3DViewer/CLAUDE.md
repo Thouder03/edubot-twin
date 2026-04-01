@@ -40,12 +40,14 @@ ROS3DViewer/
 ### 1. SceneExtension 扩展系统
 
 所有可视化功能都通过 `SceneExtension` 实现，每个扩展负责：
+
 - 订阅特定 ROS 话题
 - 将消息数据转换为 Three.js 对象
 - 管理自己的设置项
 - 处理坐标变换
 
 **示例扩展：**
+
 - `Markers` - 可视化 `visualization_msgs/Marker`
 - `PointClouds` - 可视化 `sensor_msgs/PointCloud2`
 - `LaserScans` - 可视化 `sensor_msgs/LaserScan`
@@ -80,6 +82,7 @@ ROS3DViewer/
 ### 修改现有扩展
 
 **重要原则：**
+
 - 所有 Three.js 对象的创建/销毁必须正确管理，避免内存泄漏
 - 使用 `dispose()` 方法清理 GPU 资源（geometry、material、texture）
 - 坐标变换通过 `updatePose()` 自动处理，不要手动设置 position/rotation
@@ -92,10 +95,10 @@ ROS3DViewer/
 ```typescript
 export class MyExtension extends SceneExtension {
   public constructor(renderer: IRenderer) {
-    super("my_extension", renderer)
+    super('my_extension', renderer)
 
     // 订阅话题
-    renderer.addTopicSubscription("my_topic", this.handleMessage)
+    renderer.addTopicSubscription('my_topic', this.handleMessage)
   }
 
   private handleMessage = (messageEvent: MessageEvent<MyMsg>) => {
@@ -107,15 +110,15 @@ export class MyExtension extends SceneExtension {
 #### 2. 使用 Renderable 自动处理坐标变换
 
 ```typescript
-const renderable = new Renderable("object_id", this.renderer, {
+const renderable = new Renderable('object_id', this.renderer, {
   receiveTime: message.receiveTime,
   messageTime: message.message.header.stamp,
   frameId: message.message.header.frame_id,
-  pose: somePose,
+  pose: somePose
   // ...
 })
 this.add(renderable)
-this.renderables.set("object_id", renderable)
+this.renderables.set('object_id', renderable)
 ```
 
 #### 3. 对象池复用
@@ -148,12 +151,14 @@ this.pool.release(obj)
 ### 常见问题排查
 
 1. **物体不显示**
+
    - 检查 TF 树是否包含该 frame_id
    - 检查物体是否在相机视野内
    - 检查 material 的 visible 属性
    - 使用浏览器开发工具查看 Three.js 场景树
 
 2. **坐标变换错误**
+
    - 确认 Fixed Frame 设置正确
    - 检查 TransformTree 是否收到 TF 数据
    - 查看控制台的 "MISSING_TRANSFORM" 错误
@@ -166,12 +171,14 @@ this.pool.release(obj)
 ### 内存管理
 
 **必须 dispose 的资源：**
+
 - `THREE.BufferGeometry`
 - `THREE.Material`
 - `THREE.Texture`
 - `THREE.WebGLRenderTarget`
 
 **示例：**
+
 ```typescript
 public override dispose(): void {
   this.geometry.dispose()
@@ -183,21 +190,27 @@ public override dispose(): void {
 ## 核心文件说明
 
 ### Renderer.ts
+
 主渲染器，负责：
+
 - 管理 Three.js 场景、相机、渲染循环
 - 注册和管理所有 SceneExtension
 - 处理话题订阅和消息分发
 - 管理设置树和用户交互
 
 ### SceneExtension.ts
+
 扩展基类，提供：
+
 - 自动坐标变换更新（通过 `updatePose()`）
 - 设置项管理接口
 - 生命周期钩子（`startFrame()`, `dispose()`）
 - Renderable 对象管理
 
 ### TransformTree.ts
+
 TF 坐标变换树，功能：
+
 - 存储和查询坐标系之间的变换关系
 - 支持时间插值
 - 处理 `tf2_msgs/TFMessage` 消息
@@ -215,6 +228,7 @@ TF 坐标变换树，功能：
 ### 修改代码时应该：
 
 ✅ **DO:**
+
 - 阅读相关扩展的完整代码，理解现有逻辑
 - 复用现有的工具函数和模式
 - 正确处理资源释放，避免内存泄漏
@@ -222,6 +236,7 @@ TF 坐标变换树，功能：
 - 考虑性能影响，特别是高频消息
 
 ❌ **DON'T:**
+
 - 不要直接修改 `core/lichtblick-shim.ts`（这是上游兼容层）
 - 不要绕过 TransformTree 手动计算坐标变换
 - 不要在渲染循环中创建新对象（使用对象池）
@@ -231,12 +246,15 @@ TF 坐标变换树，功能：
 ## 调试技巧
 
 1. **启用 Three.js 调试工具**
+
    - 浏览器控制台输入 `window.__THREE_DEVTOOLS__` 查看场景树
 
 2. **查看 TF 树状态**
+
    - 在 Renderer 中添加日志查看 `this.transformTree`
 
 3. **性能分析**
+
    - 使用 Chrome DevTools Performance 面板
    - 关注 `startFrame()` 和消息处理函数的耗时
 

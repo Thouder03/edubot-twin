@@ -46,11 +46,8 @@ export function applyAction(
 ): ContainerTerminalConfig {
   if (action.action !== 'update') return config
   const next = { ...config }
-  const field = action.payload.path[
-    action.payload.path.length - 1
-  ] as keyof ContainerTerminalConfig
+  const field = action.payload.path[action.payload.path.length - 1] as keyof ContainerTerminalConfig
   if (field in next) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(next as any)[field] = action.payload.value
   }
   return next

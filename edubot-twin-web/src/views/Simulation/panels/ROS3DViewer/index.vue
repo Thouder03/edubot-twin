@@ -474,8 +474,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="less" scoped>
-
-
 @keyframes pulse {
   0%,
   100% {

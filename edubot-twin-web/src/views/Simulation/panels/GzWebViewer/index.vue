@@ -137,8 +137,6 @@ watch(config, refreshSettingsTree, { deep: true })
 </template>
 
 <style lang="less" scoped>
-
-
 @keyframes pulse {
   0%,
   100% {

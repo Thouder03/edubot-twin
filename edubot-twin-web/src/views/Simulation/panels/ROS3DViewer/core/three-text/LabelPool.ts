@@ -1,15 +1,15 @@
 /* eslint-disable */
 // @ts-nocheck
 // 本地补丁版本：修复 LinearTosRGB GLSL 函数在 Three.js r152+ 中不存在的问题
-import * as THREE from "three";
-import { EventDispatcher } from "three";
+import * as THREE from 'three'
+import { EventDispatcher } from 'three'
 
-import { FontManager, FontManagerOptions } from "./FontManager";
+import { FontManager, FontManagerOptions } from './FontManager'
 
-const tempVec2 = new THREE.Vector2();
+const tempVec2 = new THREE.Vector2()
 
 export class LabelMaterial extends THREE.ShaderMaterial {
-  picking: boolean;
+  picking: boolean
 
   constructor(params: { atlasTexture?: THREE.Texture; picking?: boolean }) {
     super({
@@ -133,19 +133,19 @@ void main() {
         uCanvasSize: { value: [0, 0] },
         uScale: { value: 0 },
         uTextureSize: {
-          value: [params.atlasTexture?.image.width ?? 0, params.atlasTexture?.image.height ?? 0],
+          value: [params.atlasTexture?.image.width ?? 0, params.atlasTexture?.image.height ?? 0]
         },
         uMap: { value: params.atlasTexture },
         uColor: { value: [0, 0, 0, 1] },
-        uBackgroundColor: { value: [1, 1, 1, 1] },
+        uBackgroundColor: { value: [1, 1, 1, 1] }
       },
 
       side: THREE.DoubleSide,
       transparent: false,
-      depthWrite: true,
-    });
+      depthWrite: true
+    })
 
-    this.picking = params.picking ?? false;
+    this.picking = params.picking ?? false
   }
 }
 
@@ -157,185 +157,185 @@ void main() {
  */
 class InstancedMeshWithBasicBoundingSphere extends THREE.InstancedMesh {
   override computeBoundingSphere(): void {
-    this.geometry.computeBoundingSphere();
-    const boundingSphere = this.geometry.boundingSphere;
+    this.geometry.computeBoundingSphere()
+    const boundingSphere = this.geometry.boundingSphere
     if (boundingSphere) {
-      (this.boundingSphere ??= new THREE.Sphere()).copy(boundingSphere);
+      ;(this.boundingSphere ??= new THREE.Sphere()).copy(boundingSphere)
     }
   }
 }
 
 export class Label extends THREE.Object3D {
-  text = "";
-  mesh: THREE.InstancedMesh;
-  geometry: THREE.InstancedBufferGeometry;
-  material: LabelMaterial;
-  pickingMaterial: LabelMaterial;
+  text = ''
+  mesh: THREE.InstancedMesh
+  geometry: THREE.InstancedBufferGeometry
+  material: LabelMaterial
+  pickingMaterial: LabelMaterial
 
-  instanceAttrData: Float32Array;
-  instanceAttrBuffer: THREE.InstancedInterleavedBuffer;
+  instanceAttrData: Float32Array
+  instanceAttrBuffer: THREE.InstancedInterleavedBuffer
 
-  instanceBoxPosition: THREE.InterleavedBufferAttribute;
-  instanceCharPosition: THREE.InterleavedBufferAttribute;
-  instanceUv: THREE.InterleavedBufferAttribute;
-  instanceBoxSize: THREE.InterleavedBufferAttribute;
-  instanceCharSize: THREE.InterleavedBufferAttribute;
+  instanceBoxPosition: THREE.InterleavedBufferAttribute
+  instanceCharPosition: THREE.InterleavedBufferAttribute
+  instanceUv: THREE.InterleavedBufferAttribute
+  instanceBoxSize: THREE.InterleavedBufferAttribute
+  instanceCharSize: THREE.InterleavedBufferAttribute
 
-  lineHeight = 1;
+  lineHeight = 1
 
   constructor(public labelPool: LabelPool) {
-    super();
+    super()
 
-    this.geometry = new THREE.InstancedBufferGeometry();
+    this.geometry = new THREE.InstancedBufferGeometry()
 
-    this.geometry.setAttribute("position", LabelPool.QUAD_POSITIONS);
-    this.geometry.setAttribute("uv", LabelPool.QUAD_UVS);
+    this.geometry.setAttribute('position', LabelPool.QUAD_POSITIONS)
+    this.geometry.setAttribute('uv', LabelPool.QUAD_UVS)
 
-    this.instanceAttrData = new Float32Array();
-    this.instanceAttrBuffer = new THREE.InstancedInterleavedBuffer(this.instanceAttrData, 10, 1);
-    this.instanceBoxPosition = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 0);
-    this.instanceCharPosition = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 2);
-    this.instanceUv = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 4);
-    this.instanceBoxSize = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 6);
-    this.instanceCharSize = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 8);
-    this.geometry.setAttribute("instanceBoxPosition", this.instanceBoxPosition);
-    this.geometry.setAttribute("instanceCharPosition", this.instanceCharPosition);
-    this.geometry.setAttribute("instanceUv", this.instanceUv);
-    this.geometry.setAttribute("instanceBoxSize", this.instanceBoxSize);
-    this.geometry.setAttribute("instanceCharSize", this.instanceCharSize);
+    this.instanceAttrData = new Float32Array()
+    this.instanceAttrBuffer = new THREE.InstancedInterleavedBuffer(this.instanceAttrData, 10, 1)
+    this.instanceBoxPosition = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 0)
+    this.instanceCharPosition = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 2)
+    this.instanceUv = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 4)
+    this.instanceBoxSize = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 6)
+    this.instanceCharSize = new THREE.InterleavedBufferAttribute(this.instanceAttrBuffer, 2, 8)
+    this.geometry.setAttribute('instanceBoxPosition', this.instanceBoxPosition)
+    this.geometry.setAttribute('instanceCharPosition', this.instanceCharPosition)
+    this.geometry.setAttribute('instanceUv', this.instanceUv)
+    this.geometry.setAttribute('instanceBoxSize', this.instanceBoxSize)
+    this.geometry.setAttribute('instanceCharSize', this.instanceCharSize)
 
-    this.material = new LabelMaterial({ atlasTexture: labelPool.atlasTexture });
-    this.pickingMaterial = new LabelMaterial({ picking: true });
+    this.material = new LabelMaterial({ atlasTexture: labelPool.atlasTexture })
+    this.pickingMaterial = new LabelMaterial({ picking: true })
 
-    this.mesh = new InstancedMeshWithBasicBoundingSphere(this.geometry, this.material, 0);
-    this.mesh.userData.pickingMaterial = this.pickingMaterial;
+    this.mesh = new InstancedMeshWithBasicBoundingSphere(this.geometry, this.material, 0)
+    this.mesh.userData.pickingMaterial = this.pickingMaterial
 
     this.mesh.onBeforeRender = (renderer, _scene, _camera, _geometry, _material, _group) => {
-      renderer.getSize(tempVec2);
-      this.material.uniforms.uCanvasSize!.value[0] = tempVec2.x;
-      this.material.uniforms.uCanvasSize!.value[1] = tempVec2.y;
-      this.pickingMaterial.uniforms.uCanvasSize!.value[0] = tempVec2.x;
-      this.pickingMaterial.uniforms.uCanvasSize!.value[1] = tempVec2.y;
-    };
+      renderer.getSize(tempVec2)
+      this.material.uniforms.uCanvasSize!.value[0] = tempVec2.x
+      this.material.uniforms.uCanvasSize!.value[1] = tempVec2.y
+      this.pickingMaterial.uniforms.uCanvasSize!.value[0] = tempVec2.x
+      this.pickingMaterial.uniforms.uCanvasSize!.value[1] = tempVec2.y
+    }
 
-    this.add(this.mesh);
+    this.add(this.mesh)
 
-    labelPool.addEventListener("scaleFactorChange", () => {
+    labelPool.addEventListener('scaleFactorChange', () => {
       // Trigger recalculation of scale uniform
-      this.setLineHeight(this.lineHeight);
-    });
+      this.setLineHeight(this.lineHeight)
+    })
 
-    labelPool.addEventListener("atlasChange", () => {
-      this.#handleAtlasChange();
-    });
-    this.#handleAtlasChange();
+    labelPool.addEventListener('atlasChange', () => {
+      this.#handleAtlasChange()
+    })
+    this.#handleAtlasChange()
   }
 
   #handleAtlasChange() {
-    this.material.uniforms.uTextureSize!.value[0] = this.labelPool.atlasTexture.image.width;
-    this.material.uniforms.uTextureSize!.value[1] = this.labelPool.atlasTexture.image.height;
-    this.setLineHeight(this.lineHeight);
-    this.#needsUpdateLayout = true;
-    this.#updateLayoutIfNeeded();
+    this.material.uniforms.uTextureSize!.value[0] = this.labelPool.atlasTexture.image.width
+    this.material.uniforms.uTextureSize!.value[1] = this.labelPool.atlasTexture.image.height
+    this.setLineHeight(this.lineHeight)
+    this.#needsUpdateLayout = true
+    this.#updateLayoutIfNeeded()
   }
 
   dispose(): void {
-    this.geometry.dispose();
-    this.material.dispose();
-    this.pickingMaterial.dispose();
-    this.mesh.dispose();
+    this.geometry.dispose()
+    this.material.dispose()
+    this.pickingMaterial.dispose()
+    this.mesh.dispose()
   }
 
   #reallocateAttributeBufferIfNeeded(numChars: number) {
-    const requiredLength = numChars * 10 * Float32Array.BYTES_PER_ELEMENT;
+    const requiredLength = numChars * 10 * Float32Array.BYTES_PER_ELEMENT
     if (this.instanceAttrData.byteLength < requiredLength) {
-      this.instanceAttrData = new Float32Array(requiredLength);
-      this.instanceAttrBuffer = new THREE.InstancedInterleavedBuffer(this.instanceAttrData, 10, 1);
-      this.instanceBoxPosition.data = this.instanceAttrBuffer;
-      this.instanceCharPosition.data = this.instanceAttrBuffer;
-      this.instanceUv.data = this.instanceAttrBuffer;
-      this.instanceBoxSize.data = this.instanceAttrBuffer;
-      this.instanceCharSize.data = this.instanceAttrBuffer;
+      this.instanceAttrData = new Float32Array(requiredLength)
+      this.instanceAttrBuffer = new THREE.InstancedInterleavedBuffer(this.instanceAttrData, 10, 1)
+      this.instanceBoxPosition.data = this.instanceAttrBuffer
+      this.instanceCharPosition.data = this.instanceAttrBuffer
+      this.instanceUv.data = this.instanceAttrBuffer
+      this.instanceBoxSize.data = this.instanceAttrBuffer
+      this.instanceCharSize.data = this.instanceAttrBuffer
     }
   }
 
   setText(text: string): void {
     if (text !== this.text) {
-      this.text = text;
-      this.#needsUpdateLayout = true;
-      this.labelPool.updateAtlas(text);
-      this.#updateLayoutIfNeeded();
+      this.text = text
+      this.#needsUpdateLayout = true
+      this.labelPool.updateAtlas(text)
+      this.#updateLayoutIfNeeded()
     }
   }
 
-  #needsUpdateLayout = false;
+  #needsUpdateLayout = false
   #updateLayoutIfNeeded() {
     if (!this.#needsUpdateLayout) {
-      return;
+      return
     }
-    const layoutInfo = this.labelPool.fontManager.layout(this.text);
-    this.material.uniforms.uLabelSize!.value[0] = layoutInfo.width;
-    this.material.uniforms.uLabelSize!.value[1] = layoutInfo.height;
-    this.pickingMaterial.uniforms.uLabelSize!.value[0] = layoutInfo.width;
-    this.pickingMaterial.uniforms.uLabelSize!.value[1] = layoutInfo.height;
+    const layoutInfo = this.labelPool.fontManager.layout(this.text)
+    this.material.uniforms.uLabelSize!.value[0] = layoutInfo.width
+    this.material.uniforms.uLabelSize!.value[1] = layoutInfo.height
+    this.pickingMaterial.uniforms.uLabelSize!.value[0] = layoutInfo.width
+    this.pickingMaterial.uniforms.uLabelSize!.value[1] = layoutInfo.height
 
-    this.geometry.instanceCount = this.mesh.count = layoutInfo.chars.length;
+    this.geometry.instanceCount = this.mesh.count = layoutInfo.chars.length
 
-    this.#reallocateAttributeBufferIfNeeded(layoutInfo.chars.length);
+    this.#reallocateAttributeBufferIfNeeded(layoutInfo.chars.length)
 
-    let i = 0;
+    let i = 0
     for (const char of layoutInfo.chars) {
       // instanceBoxPosition
-      this.instanceAttrData[i++] = char.left;
-      this.instanceAttrData[i++] = layoutInfo.height - char.boxTop - char.boxHeight;
+      this.instanceAttrData[i++] = char.left
+      this.instanceAttrData[i++] = layoutInfo.height - char.boxTop - char.boxHeight
       // instanceCharPosition
-      this.instanceAttrData[i++] = char.left;
+      this.instanceAttrData[i++] = char.left
       this.instanceAttrData[i++] =
-        layoutInfo.height - char.boxTop - char.boxHeight + char.top - char.boxTop;
+        layoutInfo.height - char.boxTop - char.boxHeight + char.top - char.boxTop
       // instanceUv
-      this.instanceAttrData[i++] = char.atlasX;
-      this.instanceAttrData[i++] = char.atlasY;
+      this.instanceAttrData[i++] = char.atlasX
+      this.instanceAttrData[i++] = char.atlasY
       // instanceBoxSize
-      this.instanceAttrData[i++] = char.xAdvance;
-      this.instanceAttrData[i++] = char.boxHeight;
+      this.instanceAttrData[i++] = char.xAdvance
+      this.instanceAttrData[i++] = char.boxHeight
       // instanceCharSize
-      this.instanceAttrData[i++] = char.width;
-      this.instanceAttrData[i++] = char.height;
+      this.instanceAttrData[i++] = char.width
+      this.instanceAttrData[i++] = char.height
     }
-    this.instanceAttrBuffer.needsUpdate = true;
-    this.#needsUpdateLayout = false;
+    this.instanceAttrBuffer.needsUpdate = true
+    this.#needsUpdateLayout = false
   }
 
   /** Values should be in working (linear-srgb) color space */
   setColor(r: number, g: number, b: number, a = 1): void {
-    this.material.uniforms.uColor!.value[0] = r;
-    this.material.uniforms.uColor!.value[1] = g;
-    this.material.uniforms.uColor!.value[2] = b;
-    this.material.uniforms.uColor!.value[3] = a;
-    this.#updateTransparency();
+    this.material.uniforms.uColor!.value[0] = r
+    this.material.uniforms.uColor!.value[1] = g
+    this.material.uniforms.uColor!.value[2] = b
+    this.material.uniforms.uColor!.value[3] = a
+    this.#updateTransparency()
   }
 
   /** Values should be in working (linear-srgb) color space */
   setBackgroundColor(r: number, g: number, b: number, a = 1): void {
-    this.material.uniforms.uBackgroundColor!.value[0] = r;
-    this.material.uniforms.uBackgroundColor!.value[1] = g;
-    this.material.uniforms.uBackgroundColor!.value[2] = b;
-    this.material.uniforms.uBackgroundColor!.value[3] = a;
-    this.#updateTransparency();
+    this.material.uniforms.uBackgroundColor!.value[0] = r
+    this.material.uniforms.uBackgroundColor!.value[1] = g
+    this.material.uniforms.uBackgroundColor!.value[2] = b
+    this.material.uniforms.uBackgroundColor!.value[3] = a
+    this.#updateTransparency()
   }
 
   #updateTransparency(): void {
-    const bgOpacity = this.material.uniforms.uBackgroundColor!.value[3];
-    const fgOpacity = this.material.uniforms.uColor!.value[3];
-    const transparent = bgOpacity < 1 || fgOpacity < 1;
-    this.material.transparent = transparent;
-    this.material.depthWrite = !transparent;
+    const bgOpacity = this.material.uniforms.uBackgroundColor!.value[3]
+    const fgOpacity = this.material.uniforms.uColor!.value[3]
+    const transparent = bgOpacity < 1 || fgOpacity < 1
+    this.material.transparent = transparent
+    this.material.depthWrite = !transparent
   }
 
   // eslint-disable-next-line @lichtblick/no-boolean-parameters
   setBillboard(billboard: boolean): void {
-    this.material.uniforms.uBillboard!.value = billboard;
-    this.pickingMaterial.uniforms.uBillboard!.value = billboard;
+    this.material.uniforms.uBillboard!.value = billboard
+    this.pickingMaterial.uniforms.uBillboard!.value = billboard
   }
 
   /**
@@ -344,32 +344,32 @@ export class Label extends THREE.Object3D {
    */
   // eslint-disable-next-line @lichtblick/no-boolean-parameters
   setSizeAttenuation(sizeAttenuation: boolean): void {
-    this.material.uniforms.uSizeAttenuation!.value = sizeAttenuation;
-    this.pickingMaterial.uniforms.uSizeAttenuation!.value = sizeAttenuation;
+    this.material.uniforms.uSizeAttenuation!.value = sizeAttenuation
+    this.pickingMaterial.uniforms.uSizeAttenuation!.value = sizeAttenuation
   }
 
   setAnchorPoint(x: number, y: number): void {
-    this.material.uniforms.uAnchorPoint!.value[0] = x;
-    this.material.uniforms.uAnchorPoint!.value[1] = y;
-    this.pickingMaterial.uniforms.uAnchorPoint!.value[0] = x;
-    this.pickingMaterial.uniforms.uAnchorPoint!.value[1] = y;
+    this.material.uniforms.uAnchorPoint!.value[0] = x
+    this.material.uniforms.uAnchorPoint!.value[1] = y
+    this.pickingMaterial.uniforms.uAnchorPoint!.value[0] = x
+    this.pickingMaterial.uniforms.uAnchorPoint!.value[1] = y
   }
 
   setLineHeight(lineHeight: number): void {
-    this.lineHeight = lineHeight;
+    this.lineHeight = lineHeight
     const scale =
       (this.lineHeight * this.labelPool.scaleFactor) /
-      this.labelPool.fontManager.atlasData.lineHeight;
-    this.material.uniforms.uScale!.value = scale;
-    this.pickingMaterial.uniforms.uScale!.value = scale;
+      this.labelPool.fontManager.atlasData.lineHeight
+    this.material.uniforms.uScale!.value = scale
+    this.pickingMaterial.uniforms.uScale!.value = scale
   }
 }
 
 export class LabelPool extends EventDispatcher<{ scaleFactorChange: object; atlasChange: object }> {
-  atlasTexture: THREE.DataTexture;
+  atlasTexture: THREE.DataTexture
 
-  #availableLabels: Label[] = [];
-  #disposed = false;
+  #availableLabels: Label[] = []
+  #disposed = false
 
   static QUAD_POINTS: THREE.Vector3Tuple[] = [
     [0, 0, 0],
@@ -377,25 +377,25 @@ export class LabelPool extends EventDispatcher<{ scaleFactorChange: object; atla
     [1, 0, 0],
     [1, 0, 0],
     [0, 1, 0],
-    [1, 1, 0],
-  ];
-  static QUAD_POSITIONS = new THREE.BufferAttribute(new Float32Array(this.QUAD_POINTS.flat()), 3);
+    [1, 1, 0]
+  ]
+  static QUAD_POSITIONS = new THREE.BufferAttribute(new Float32Array(this.QUAD_POINTS.flat()), 3)
   static QUAD_UVS = new THREE.BufferAttribute(
     new Float32Array(this.QUAD_POINTS.flatMap(([x, y]) => [x, 1 - y])),
-    2,
-  );
+    2
+  )
 
-  fontManager: FontManager;
-  scaleFactor = 1;
+  fontManager: FontManager
+  scaleFactor = 1
 
   setScaleFactor(scaleFactor: number): void {
-    this.scaleFactor = scaleFactor;
-    this.dispatchEvent({ type: "scaleFactorChange" });
+    this.scaleFactor = scaleFactor
+    this.dispatchEvent({ type: 'scaleFactorChange' })
   }
 
   constructor(options: FontManagerOptions = {}) {
-    super();
-    this.fontManager = new FontManager(options);
+    super()
+    this.fontManager = new FontManager(options)
 
     this.atlasTexture = new THREE.DataTexture(
       new Uint8ClampedArray(),
@@ -407,53 +407,53 @@ export class LabelPool extends EventDispatcher<{ scaleFactorChange: object; atla
       THREE.ClampToEdgeWrapping,
       THREE.ClampToEdgeWrapping,
       THREE.LinearFilter,
-      THREE.LinearFilter,
-    );
+      THREE.LinearFilter
+    )
 
-    this.fontManager.addEventListener("atlasChange", () => {
-      this.#updateAtlasTexture();
-    });
-    this.#updateAtlasTexture();
+    this.fontManager.addEventListener('atlasChange', () => {
+      this.#updateAtlasTexture()
+    })
+    this.#updateAtlasTexture()
   }
 
   updateAtlas(text: string): void {
-    this.fontManager.update(text);
+    this.fontManager.update(text)
   }
 
   #updateAtlasTexture() {
-    const data = new Uint8ClampedArray(this.fontManager.atlasData.data.length * 4);
+    const data = new Uint8ClampedArray(this.fontManager.atlasData.data.length * 4)
     for (let i = 0; i < this.fontManager.atlasData.data.length; i++) {
-      data[i * 4 + 0] = data[i * 4 + 1] = data[i * 4 + 2] = 1;
-      data[i * 4 + 3] = this.fontManager.atlasData.data[i]!;
+      data[i * 4 + 0] = data[i * 4 + 1] = data[i * 4 + 2] = 1
+      data[i * 4 + 3] = this.fontManager.atlasData.data[i]!
     }
 
     this.atlasTexture.image = {
       data,
       width: this.fontManager.atlasData.width,
-      height: this.fontManager.atlasData.height,
-    };
-    this.atlasTexture.needsUpdate = true;
-    this.dispatchEvent({ type: "atlasChange" });
+      height: this.fontManager.atlasData.height
+    }
+    this.atlasTexture.needsUpdate = true
+    this.dispatchEvent({ type: 'atlasChange' })
   }
 
   acquire(): Label {
-    return this.#availableLabels.pop() ?? new Label(this);
+    return this.#availableLabels.pop() ?? new Label(this)
   }
 
   release(label: Label): void {
     if (this.#disposed) {
-      label.dispose();
+      label.dispose()
     } else {
-      label.removeFromParent();
-      this.#availableLabels.push(label);
+      label.removeFromParent()
+      this.#availableLabels.push(label)
     }
   }
 
   dispose(): void {
     for (const label of this.#availableLabels) {
-      label.dispose();
+      label.dispose()
     }
-    this.atlasTexture.dispose();
-    this.#disposed = true;
+    this.atlasTexture.dispose()
+    this.#disposed = true
   }
 }
