@@ -18,7 +18,8 @@ const {
   togglePause,
   resetWorld,
   resetModels,
-  resetView
+  resetView,
+  reconnect
 } = useGzBridge()
 </script>
 
@@ -56,6 +57,18 @@ const {
     <ElTooltip content="重置视角" placement="bottom">
       <ElButton text :disabled="!isConnected" class="ctrl-btn" @click="resetView">
         <Icon icon="vi-carbon:center-to-fit" :size="16" />
+      </ElButton>
+    </ElTooltip>
+
+    <!-- Reconnect -->
+    <ElTooltip content="刷新连接" placement="bottom">
+      <ElButton
+        text
+        :disabled="connectionStatus === 'connecting'"
+        class="ctrl-btn"
+        @click="reconnect"
+      >
+        <Icon icon="vi-carbon:renew" :size="16" />
       </ElButton>
     </ElTooltip>
 
@@ -104,7 +117,8 @@ const {
   transition: background-color 0.3s ease;
 
   &.disconnected {
-    background: #6c7086;
+    background: #f38ba8;
+    box-shadow: 0 0 6px rgb(243 139 168 / 50%);
   }
 
   &.connecting {

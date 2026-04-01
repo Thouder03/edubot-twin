@@ -40,6 +40,7 @@ const _currentGzwebUrl = ref<string>('')
 // 心跳内部状态
 let _heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let _pongTimer: ReturnType<typeof setTimeout> | null = null
+let _retryTimer: ReturnType<typeof setInterval> | null = null
 let _messageHandler: ((event: MessageEvent) => void) | null = null
 
 // CSS 定位同步状态
@@ -81,7 +82,13 @@ function _handleMessage(event: MessageEvent): void {
       break
 
     case 'gz:connection':
-      _connectionStatus.value = msg.payload.connected ? 'connected' : 'error'
+      if (msg.payload.connected) {
+        _connectionStatus.value = 'connected'
+        _stopRetry()
+      } else {
+        _connectionStatus.value = 'error'
+        _startRetry()
+      }
       break
 
     case 'gz:paused':
@@ -102,9 +109,16 @@ function _handleMessage(event: MessageEvent): void {
         clearTimeout(_pongTimer)
         _pongTimer = null
       }
-      // 用 pong 中的 connected 状态更新
-      if (msg.payload.connected && _connectionStatus.value !== 'connected') {
-        _connectionStatus.value = 'connected'
+      if (msg.payload.connected) {
+        if (_connectionStatus.value !== 'connected') {
+          _connectionStatus.value = 'connected'
+        }
+        _stopRetry()
+      } else {
+        // pong 回来但 connected=false：Gazebo 后端已断开，iframe 仍运行
+        // 必须在此处处理，否则 pong 超时被取消后状态永远卡在 connected
+        _connectionStatus.value = 'error'
+        _startRetry()
       }
       break
   }
@@ -119,6 +133,7 @@ function _startHeartbeat(): void {
       // 设置 pong 超时
       _pongTimer = setTimeout(() => {
         _connectionStatus.value = 'error'
+        _startRetry()
       }, PONG_TIMEOUT)
     }
   }, HEARTBEAT_INTERVAL)
@@ -134,6 +149,45 @@ function _stopHeartbeat(): void {
     clearTimeout(_pongTimer)
     _pongTimer = null
   }
+}
+
+/** 停止自动重试定时器 */
+function _stopRetry(): void {
+  if (_retryTimer !== null) {
+    clearInterval(_retryTimer)
+    _retryTimer = null
+  }
+}
+
+/**
+ * 重新连接：重置桥接状态并重新加载 iframe src
+ * 停止所有定时器后重置 src，触发完整 ready→connecting→connected 流程
+ */
+function _reconnect(): void {
+  if (!_iframe.value) return
+  _stopRetry()
+  _stopHeartbeat()
+  _isBridgeReady.value = false
+  _connectionStatus.value = 'disconnected'
+  // 先清空 src，再下一帧重新赋值，强制浏览器重新加载 iframe
+  // 若直接设置相同 URL，浏览器会静默忽略，gz:ready 永远不会触发
+  const src = _buildIframeSrc(_currentGzwebUrl.value)
+  _iframe.value.src = ''
+  requestAnimationFrame(() => {
+    if (_iframe.value) _iframe.value.src = src
+  })
+}
+
+/**
+ * 启动自动重试定时器
+ * 幂等：若已有定时器则不重复启动
+ * @param interval 重试间隔毫秒数，默认 15000ms
+ */
+function _startRetry(interval = 15000): void {
+  if (_retryTimer !== null) return
+  _retryTimer = setInterval(() => {
+    _reconnect()
+  }, interval)
 }
 
 /** 重置所有状态 */
@@ -271,6 +325,7 @@ export function useGzBridge() {
   const dispose = (): void => {
     _stopPositionSync()
     _stopHeartbeat()
+    _stopRetry()
     if (_messageHandler) {
       window.removeEventListener('message', _messageHandler)
       _messageHandler = null
@@ -412,6 +467,7 @@ export function useGzBridge() {
     showGrid,
     showCollisions,
     showOrbitIndicator,
-    updateGzwebUrl
+    updateGzwebUrl,
+    reconnect: _reconnect
   }
 }
