@@ -5,6 +5,8 @@ import GzWebViewer from './GzWebViewer/index.vue'
 import KeyboardControl from './KeyboardControl/index.vue'
 import ContainerTerminal from './ContainerTerminal/index.vue'
 import WorkspacePanel from './WorkspacePanel/index.vue'
+import RosoutPanel from './RosoutPanel/index.vue'
+import CameraPanel from './CameraPanel/index.vue'
 
 export interface PanelRegistryEntry {
   /** Vue 组件 */
@@ -34,6 +36,14 @@ export const panelRegistry: Record<string, PanelRegistryEntry> = {
   WorkspacePanel: {
     component: markRaw(WorkspacePanel),
     label: '文件管理 / 代码编辑'
+  },
+  RosoutPanel: {
+    component: markRaw(RosoutPanel),
+    label: 'ROS 日志'
+  },
+  CameraPanel: {
+    component: markRaw(CameraPanel),
+    label: '摄像头监控'
   }
 }
 

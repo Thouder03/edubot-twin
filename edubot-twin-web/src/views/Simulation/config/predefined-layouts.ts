@@ -190,5 +190,7 @@ export const availablePanels = [
   { type: 'GzWebViewer', label: 'Gazebo 仿真' },
   { type: 'KeyboardControl', label: '键盘控制' },
   { type: 'ContainerTerminal', label: '容器终端' },
-  { type: 'WorkspacePanel', label: '文件管理 / 代码编辑' }
+  { type: 'WorkspacePanel', label: '文件管理 / 代码编辑' },
+  { type: 'RosoutPanel', label: 'ROS 日志' },
+  { type: 'CameraPanel', label: '摄像头监控' }
 ] as const
