@@ -17,7 +17,7 @@
 import { ref, onMounted, onBeforeUnmount, provide, readonly } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { LayoutConfig, type ResolvedLayoutConfig } from 'golden-layout'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import SimulationHeader from './components/SimulationHeader.vue'
 import GLayout from './components/GLayout.vue'
@@ -37,7 +37,14 @@ import { useUserStore } from '@/store/modules/user'
 
 // ---------- 路由 ----------
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
+
+const experimentContext = ref<{
+  experiment_name?: string
+  version_name?: string
+  environment_key?: string
+} | null>(null)
 
 // ---------- GzWeb 通信（页面级初始化）----------
 const { initialize: initGzBridge, dispose: disposeGzBridge } = useGzBridge()
@@ -317,6 +324,19 @@ onMounted(async () => {
   window.addEventListener('beforeunload', handleBeforeUnload)
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
+  const experimentName =
+    typeof route.query.experiment_name === 'string' ? route.query.experiment_name : undefined
+  const versionName =
+    typeof route.query.version_name === 'string' ? route.query.version_name : undefined
+  const environmentKey =
+    typeof route.query.environment_key === 'string' ? route.query.environment_key : undefined
+
+  experimentContext.value = {
+    experiment_name: experimentName,
+    version_name: versionName,
+    environment_key: environmentKey
+  }
+
   // ── 页面级 GzWeb 通信初始化 ──
   try {
     const res = await getMyContainerApi()
@@ -390,6 +410,7 @@ async function handleBack() {
 <template>
   <div class="simulation-page">
     <SimulationHeader
+      :experiment-context="experimentContext"
       @layout-change="handleLayoutChange"
       @add-panel="handleAddPanel"
       @back="handleBack"

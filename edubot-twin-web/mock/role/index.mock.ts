@@ -708,6 +708,15 @@ const adminList = [
         }
       },
       {
+        path: 'experiments',
+        component: 'views/Teacher/Experiments/Experiments',
+        name: 'TeacherExperiments',
+        meta: {
+          title: 'router.teacherExperiments',
+          icon: 'vi-carbon:chemistry'
+        }
+      },
+      {
         path: 'containers',
         component: '##',
         redirect: '/teacher/containers/monitor',

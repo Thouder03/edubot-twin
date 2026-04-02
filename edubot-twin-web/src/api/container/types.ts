@@ -21,6 +21,7 @@ export interface ContainerResponse {
   error_message: string | null
   created_at: string
   updated_at: string
+  current_version_id: number | null
 }
 
 /** 容器简要状态（学生端查询响应） */
@@ -29,6 +30,7 @@ export interface ContainerStatusResponse {
   status: ContainerStatus
   gzbridge_url: string | null
   rosbridge_url: string | null
+  current_version_id: number | null
 }
 
 /** 创建容器请求体 */

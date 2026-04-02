@@ -18,11 +18,21 @@ import SimControlBar from './SimControlBar.vue'
 import type { LayoutConfig } from 'golden-layout'
 import { stopMyContainerApi } from '@/api/container'
 
+interface ExperimentContext {
+  experiment_name?: string
+  version_name?: string
+  environment_key?: string
+}
+
 interface Emits {
   (e: 'layoutChange', config: LayoutConfig): void
   (e: 'addPanel', type: string, title: string): void
   (e: 'back'): void
 }
+
+const props = defineProps<{
+  experimentContext?: ExperimentContext | null
+}>()
 
 const emit = defineEmits<Emits>()
 
@@ -64,10 +74,22 @@ function handleAddPanel(type: string, label: string) {
         返回
       </ElButton>
       <ElDivider direction="vertical" />
-      <span class="header-title">
-        <Icon icon="vi-carbon:cube" :size="18" class="mr-6px" />
-        机器人仿真工作台
-      </span>
+      <div class="header-title-wrap">
+        <span class="header-title">
+          <Icon icon="vi-carbon:cube" :size="18" class="mr-6px" />
+          机器人仿真工作台
+        </span>
+        <span
+          v-if="props.experimentContext?.experiment_name || props.experimentContext?.version_name"
+          class="header-subtitle"
+        >
+          {{ props.experimentContext?.experiment_name || '-' }} /
+          {{ props.experimentContext?.version_name || '-' }}
+          <template v-if="props.experimentContext?.environment_key">
+            ({{ props.experimentContext.environment_key }})
+          </template>
+        </span>
+      </div>
     </div>
 
     <!-- 中间: 仿真控制栏 -->
@@ -147,12 +169,25 @@ function handleAddPanel(type: string, label: string) {
     }
   }
 
+  .header-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
   .header-title {
     display: flex;
     font-size: 14px;
     font-weight: 500;
     color: #cdd6f4;
     align-items: center;
+  }
+
+  .header-subtitle {
+    margin-left: 24px;
+    color: #a6adc8;
+    font-size: 12px;
+    line-height: 1;
   }
 }
 

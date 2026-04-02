@@ -198,7 +198,8 @@ export default {
     teacherHome: 'Home',
     studentManagement: 'User Management',
     containerManagement: 'Container Management',
-    containerMonitor: 'Container Monitor'
+    containerMonitor: 'Container Monitor',
+    teacherExperiments: 'Experiment Management'
   },
   permission: {
     hasPermission: 'Please set the operation permission value'

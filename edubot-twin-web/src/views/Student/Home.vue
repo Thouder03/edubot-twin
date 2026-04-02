@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { useDesign } from '@/hooks/web/useDesign'
-import { ElCard, ElRow, ElCol, ElSkeleton, ElLoading, ElMessage, ElMessageBox } from 'element-plus'
+import {
+  ElCard,
+  ElRow,
+  ElCol,
+  ElSkeleton,
+  ElLoading,
+  ElMessage,
+  ElSelect,
+  ElOption
+} from 'element-plus'
 import { BaseButton } from '@/components/Button'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getStudentHomeDataApi } from '@/api/student'
-import {
-  getMyContainerApi,
-  requestContainerApi,
-  startMyContainerApi,
-  destroyAndRecreateApi,
-  heartbeatApi
-} from '@/api/container'
-import type { ContainerStatusResponse } from '@/api/container/types'
+import { getAvailableExperimentsApi, startSimulationApi } from '@/api/experiment'
+import type { StudentAvailableVersionItem } from '@/api/experiment/types'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('student-home')
@@ -27,18 +30,38 @@ const pendingExams = ref(0)
 // 未读消息数据
 const unreadMessages = ref(0)
 
+const availableVersions = ref<StudentAvailableVersionItem[]>([])
+const selectedVersionId = ref<string>('')
+
+const selectedVersion = computed(() => {
+  const id = Number(selectedVersionId.value)
+  if (!id) return null
+  return availableVersions.value.find((item) => item.version_id === id) || null
+})
+
 // 获取学生首页数据
 const getHomeData = async () => {
   try {
     const res = await getStudentHomeDataApi()
-    if (res && res.data) {
+    if (res?.data) {
       pendingExams.value = res.data.pendingExams
       unreadMessages.value = res.data.unreadMessages
     }
   } catch (error) {
     console.error('获取学生首页数据失败:', error)
-  } finally {
-    loading.value = false
+  }
+}
+
+const getAvailableVersions = async () => {
+  try {
+    const res = await getAvailableExperimentsApi()
+    availableVersions.value = res?.data || []
+    if (!selectedVersionId.value && availableVersions.value.length > 0) {
+      selectedVersionId.value = String(availableVersions.value[0].version_id)
+    }
+  } catch (error) {
+    console.error('获取实验版本失败:', error)
+    ElMessage.error('获取实验版本失败，请稍后重试')
   }
 }
 
@@ -52,279 +75,88 @@ const handleMessageCardClick = () => {
   console.log('TODO: 跳转到未读消息列表页面')
 }
 
-// ---------- 仿真启动核心逻辑 ----------
+function openSimulationPage(version: StudentAvailableVersionItem) {
+  const url = router.resolve({
+    name: 'Simulation',
+    query: {
+      experiment_name: version.experiment_name,
+      version_name: version.version_name,
+      environment_key: version.environment_key,
+      experiment_id: String(version.experiment_id),
+      version_id: String(version.version_id)
+    }
+  }).href
 
-/** 打开仿真工作台（新标签页） */
-function openSimulationPage() {
-  const url = router.resolve({ name: 'Simulation' }).href
   const newWin = window.open(url, '_blank')
   if (!newWin) {
     ElMessage.warning('新标签页被浏览器拦截，将在当前标签页跳转')
-    router.push({ name: 'Simulation' })
+    router.push({
+      name: 'Simulation',
+      query: {
+        experiment_name: version.experiment_name,
+        version_name: version.version_name,
+        environment_key: version.environment_key,
+        experiment_id: String(version.experiment_id),
+        version_id: String(version.version_id)
+      }
+    })
   }
 }
 
-/**
- * 测试 WebSocket 连接是否真正可用
- */
-function testWebSocketConnection(url: string, timeoutMs = 3000): Promise<boolean> {
-  return new Promise((resolve) => {
-    try {
-      const ws = new WebSocket(url)
-      let resolved = false
-      const timer = setTimeout(() => {
-        if (!resolved) {
-          resolved = true
-          ws.close()
-          resolve(false)
-        }
-      }, timeoutMs)
-
-      ws.onopen = () => {
-        if (!resolved) {
-          resolved = true
-          clearTimeout(timer)
-          ws.close()
-          resolve(true)
-        }
-      }
-
-      ws.onerror = () => {
-        if (!resolved) {
-          resolved = true
-          clearTimeout(timer)
-          ws.close()
-          resolve(false)
-        }
-      }
-    } catch {
-      resolve(false)
-    }
-  })
-}
-
-/**
- * 轮询等待容器进入 running 状态并彻底就绪
- * @returns 容器信息（成功）或 null（超时/错误）
- */
-async function waitForContainerRunning(
-  maxWaitMs = 60_000,
-  intervalMs = 2_000
-): Promise<ContainerStatusResponse | null> {
-  const deadline = Date.now() + maxWaitMs
-  const warmupHeartbeatIntervalMs = 10_000
-  let lastHeartbeatAt = 0
-
-  const sendWarmupHeartbeat = async (force = false) => {
-    const now = Date.now()
-    if (!force && now - lastHeartbeatAt < warmupHeartbeatIntervalMs) return
-
-    lastHeartbeatAt = now
-    try {
-      await heartbeatApi()
-    } catch {
-      // 创建阶段可能短暂失败，忽略并继续轮询
-    }
-  }
-
-  while (Date.now() < deadline) {
-    // Student/Home 等待期间也持续刷新心跳，直到 Simulation 页面接管
-    await sendWarmupHeartbeat()
-
-    try {
-      const res = await getMyContainerApi()
-      const data = res?.data
-      if (data?.status === 'running') {
-        // running 后立即补一跳，避免清理任务在页面切换窗口期误判
-        await sendWarmupHeartbeat(true)
-
-        // 后端说 running 了，还需要探测一下容器里的 ROSBridge WebSockets 服务是否真的起来了
-        if (data.rosbridge_url && data.gzbridge_url) {
-          const isReady =
-            (await testWebSocketConnection(data.rosbridge_url)) &&
-            (await testWebSocketConnection(data.gzbridge_url))
-          if (isReady) {
-            return data
-          }
-          // 不 ready 则继续等
-        } else {
-          // 如果没有 rosbridge_url 和 gzbridge_url 字段，那就强制等 2 秒当做缓冲然后返回
-          await new Promise((r) => setTimeout(r, 2000))
-          return data
-        }
-      }
-      if (data?.status === 'error') return null
-    } catch {
-      // 可能 404，继续轮询
-    }
-    await new Promise((r) => setTimeout(r, intervalMs))
-  }
-  return null // 超时
-}
-
-/** 销毁旧容器、创建新容器并等待就绪 */
-async function recreateAndWait(loadingInstance: ReturnType<typeof ElLoading.service>) {
-  loadingInstance.setText('正在重建仿真环境...')
-  try {
-    await destroyAndRecreateApi()
-  } catch (e: any) {
-    const detail = e?.response?.data?.detail ?? '请求失败'
-    if (detail.includes('503') || e?.response?.status === 503) {
-      ElMessage.error('服务器资源已满，请稍后再试')
-    } else {
-      ElMessage.error(`启动失败：${detail}`)
-    }
+const handleStartSimulation = async () => {
+  const version = selectedVersion.value
+  if (!version) {
+    ElMessage.warning('请先选择实验版本')
     return
   }
 
-  loadingInstance.setText('等待仿真环境就绪（最多 60 秒）...')
-  const container = await waitForContainerRunning()
-  if (container) {
-    openSimulationPage()
-  } else {
-    ElMessage.error('仿真环境启动超时或发生错误，请联系教师')
-  }
-}
-
-/** 点击「开始仿真」按钮 */
-const handleStartSimulation = async () => {
   const loadingInstance = ElLoading.service({
-    text: '正在检查仿真环境...',
+    text: '正在启动仿真环境...',
     background: 'rgba(0,0,0,0.5)'
   })
 
   try {
-    let containerInfo: ContainerStatusResponse | null = null
+    await startSimulationApi({
+      version_id: version.version_id
+    })
 
-    try {
-      const res = await getMyContainerApi()
-      containerInfo = res?.data ?? null
-    } catch (e: any) {
-      ElMessage.error('网络错误，请检查连接')
+    ElMessage.success('仿真环境启动成功')
+    openSimulationPage(version)
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail === 'EXPERIMENT_VERSION_NOT_FOUND') {
+      ElMessage.error('实验版本不存在或未发布，请重新选择')
+      await getAvailableVersions()
       return
     }
 
-    // ── 情况 1：无容器（返回 null）──
-    if (!containerInfo) {
-      loadingInstance.setText('首次启动，正在创建仿真环境...')
-      try {
-        await requestContainerApi()
-      } catch (e: any) {
-        const status = e?.response?.status
-        if (status === 503) {
-          ElMessage.error('服务器资源已满，请稍后再试')
-        } else {
-          ElMessage.error('创建仿真环境失败，请联系教师')
-        }
-        return
-      }
-
-      loadingInstance.setText('等待仿真环境就绪（最多 60 秒）...')
-      const ready = await waitForContainerRunning()
-      if (ready) {
-        openSimulationPage()
-      } else {
-        ElMessage.error('仿真环境启动超时，请联系教师')
-      }
+    if (e?.response?.status === 503) {
+      ElMessage.error('服务器资源已满，请稍后再试')
       return
     }
 
-    const { status } = containerInfo
-
-    // ── 情况 2：running ──
-    if (status === 'running') {
-      loadingInstance.close()
-      try {
-        await ElMessageBox.confirm('发现正在运行的仿真环境，是否继续使用？', '仿真环境', {
-          confirmButtonText: '继续使用',
-          cancelButtonText: '重新创建',
-          type: 'info',
-          distinguishCancelAndClose: true
-        })
-        // 点「继续使用」
-        openSimulationPage()
-      } catch (action) {
-        if (action === 'cancel') {
-          // 点「重新创建」
-          const loadingInstance2 = ElLoading.service({
-            text: '正在重建...',
-            background: 'rgba(0,0,0,0.5)'
-          })
-          try {
-            await recreateAndWait(loadingInstance2)
-          } finally {
-            loadingInstance2.close()
-          }
-        }
-        // 点 X 关闭弹窗 → 不做任何操作
-      }
-      return
-    }
-
-    // ── 情况 3：stopped ──
-    if (status === 'stopped') {
-      loadingInstance.close()
-      try {
-        await ElMessageBox.confirm('发现上次的仿真环境（已暂停），是否恢复使用？', '仿真环境', {
-          confirmButtonText: '恢复使用',
-          cancelButtonText: '重新创建',
-          type: 'warning',
-          distinguishCancelAndClose: true
-        })
-        // 点「恢复使用」
-        const loadingInstance2 = ElLoading.service({
-          text: '正在启动仿真环境...',
-          background: 'rgba(0,0,0,0.5)'
-        })
-        try {
-          await startMyContainerApi()
-          const ready = await waitForContainerRunning()
-          if (ready) {
-            openSimulationPage()
-          } else {
-            ElMessage.error('仿真环境启动超时，请联系教师')
-          }
-        } finally {
-          loadingInstance2.close()
-        }
-      } catch (action) {
-        if (action === 'cancel') {
-          // 点「重新创建」
-          const loadingInstance2 = ElLoading.service({
-            text: '正在重建...',
-            background: 'rgba(0,0,0,0.5)'
-          })
-          try {
-            await recreateAndWait(loadingInstance2)
-          } finally {
-            loadingInstance2.close()
-          }
-        }
-      }
-      return
-    }
-
-    // ── 情况 4：error / creating（自动销毁重建）──
-    await recreateAndWait(loadingInstance)
+    ElMessage.error('启动失败，请稍后重试')
   } finally {
     loadingInstance.close()
   }
 }
 
-// TODO: 开始考试/测试按钮点击事件
 const handleStartExam = () => {
   console.log('TODO: 开始考试/测试逻辑')
 }
 
-// 组件挂载时获取数据
-onMounted(() => {
-  getHomeData()
+onMounted(async () => {
+  loading.value = true
+  try {
+    await Promise.all([getHomeData(), getAvailableVersions()])
+  } finally {
+    loading.value = false
+  }
 })
 </script>
 
 <template>
   <div :class="prefixCls">
-    <!-- 状态卡片区域 -->
     <ElRow :gutter="20" class="status-cards">
       <ElCol :xs="24" :sm="12">
         <ElCard shadow="hover" class="status-card">
@@ -349,6 +181,7 @@ onMounted(() => {
           </ElSkeleton>
         </ElCard>
       </ElCol>
+
       <ElCol :xs="24" :sm="12">
         <ElCard shadow="hover" class="status-card">
           <ElSkeleton :loading="loading" animated :rows="2">
@@ -377,14 +210,23 @@ onMounted(() => {
       </ElCol>
     </ElRow>
 
-    <!-- 操作按钮区域 -->
     <div class="action-buttons">
-      <BaseButton type="primary" size="large" @click="handleStartSimulation">
-        开始仿真按键
-      </BaseButton>
-      <BaseButton type="success" size="large" @click="handleStartExam">
-        开始考试/测试按键
-      </BaseButton>
+      <ElSelect
+        v-model="selectedVersionId"
+        placeholder="请选择实验版本"
+        style="width: 360px"
+        :disabled="loading"
+      >
+        <ElOption
+          v-for="item in availableVersions"
+          :key="item.version_id"
+          :value="String(item.version_id)"
+          :label="`${item.experiment_name} / ${item.version_name} (${item.environment_key})`"
+        />
+      </ElSelect>
+
+      <BaseButton type="primary" size="large" @click="handleStartSimulation">开始仿真</BaseButton>
+      <BaseButton type="success" size="large" @click="handleStartExam">开始考试/测试</BaseButton>
     </div>
   </div>
 </template>
@@ -448,8 +290,8 @@ onMounted(() => {
     flex-wrap: wrap;
 
     .el-button {
-      min-width: 180px;
-      padding: 12px 30px;
+      min-width: 160px;
+      padding: 12px 24px;
     }
   }
 }

@@ -194,7 +194,8 @@ export default {
     teacherHome: '首页',
     studentManagement: '用户管理',
     containerManagement: '容器管理',
-    containerMonitor: '容器监控'
+    containerMonitor: '容器监控',
+    teacherExperiments: '实验管理'
   },
   permission: {
     hasPermission: '请设置操作权限值'
