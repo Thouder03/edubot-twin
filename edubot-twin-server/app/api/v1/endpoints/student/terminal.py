@@ -6,7 +6,7 @@
 import asyncio
 import logging
 from collections import defaultdict, deque
-from typing import Deque
+from typing import Deque, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from fastapi.websockets import WebSocketState
@@ -124,7 +124,7 @@ async def terminal_ws(
     # ── 4. 启动 docker exec ──────────────────────────────────────
     import shlex
     safe_container_id = shlex.quote(container_id)
-    proc: asyncio.subprocess.Process | None = None
+    proc: Optional[asyncio.subprocess.Process] = None
     try:
         proc = await asyncio.create_subprocess_exec(
             "script",

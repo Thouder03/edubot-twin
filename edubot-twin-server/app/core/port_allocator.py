@@ -7,6 +7,7 @@
 - gzbridge：9000 ~ 9499（支持 500 个并发容器）
 - rosbridge：9500 ~ 9999
 """
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -50,7 +51,7 @@ async def allocate_ports(db: AsyncSession) -> tuple[int, int]:
     used_ros_ports = {row[1] for row in rows if row[1] is not None}
 
     # 找第一个可用的 gzbridge 端口
-    gz_port: int | None = None
+    gz_port: Optional[int] = None
     for port in range(GZBRIDGE_PORT_RANGE[0], GZBRIDGE_PORT_RANGE[1] + 1):
         if port not in used_gz_ports:
             gz_port = port
@@ -62,7 +63,7 @@ async def allocate_ports(db: AsyncSession) -> tuple[int, int]:
         )
 
     # 找第一个可用的 rosbridge 端口
-    ros_port: int | None = None
+    ros_port: Optional[int] = None
     for port in range(ROSBRIDGE_PORT_RANGE[0], ROSBRIDGE_PORT_RANGE[1] + 1):
         if port not in used_ros_ports:
             ros_port = port
