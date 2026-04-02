@@ -12,6 +12,7 @@ class ContainerCreate(BaseModel):
 
     user_id: int = Field(validation_alias=AliasChoices("user_id", "student_id"))
     image_name: str = "gzweb_sim:v1"
+    current_version_id: Optional[int] = None
     cpu_limit: float = Field(default=1.0, ge=0.1, le=4.0, description="CPU 配额 (核心数)")
     memory_limit: int = Field(default=2048, ge=256, le=8192, description="内存配额 (MB)")
 
@@ -31,6 +32,7 @@ class ContainerResponse(BaseModel):
     gzbridge_port: Optional[int] = None
     rosbridge_port: Optional[int] = None
     error_message: Optional[str] = None
+    current_version_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -60,6 +62,7 @@ class ContainerStatusResponse(BaseModel):
     status: str
     gzbridge_url: Optional[str] = None
     rosbridge_url: Optional[str] = None
+    current_version_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -82,6 +85,7 @@ class ContainerStatusResponse(BaseModel):
             status=obj.status,  # type: ignore[union-attr]
             gzbridge_url=gzbridge_url,
             rosbridge_url=rosbridge_url,
+            current_version_id=getattr(obj, "current_version_id", None),
         )
 
 

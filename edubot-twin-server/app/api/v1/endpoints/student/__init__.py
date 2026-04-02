@@ -11,7 +11,7 @@
 """
 
 from fastapi import APIRouter
-from . import basic, container, terminal, files
+from . import basic, container, terminal, files, experiments, simulation
 
 # 创建学生路由聚合器
 router = APIRouter()
@@ -27,6 +27,10 @@ router.include_router(terminal.router, prefix="/terminal", tags=["学生-终端"
 
 # 挂载文件管理路由（第七期新增）
 router.include_router(files.router, prefix="/files", tags=["学生-文件管理"])
+
+# 第10期：实验版本与仿真启动主链路
+router.include_router(experiments.router, prefix="/experiments", tags=["学生-实验版本"])
+router.include_router(simulation.router, prefix="/simulation", tags=["学生-仿真启动"])
 
 # 后续添加其他模块路由:
 # from . import exams, learning, homework

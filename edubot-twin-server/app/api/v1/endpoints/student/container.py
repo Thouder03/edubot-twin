@@ -158,10 +158,9 @@ async def heartbeat(
     await crud_container.update_heartbeat(db, container)
     await db.refresh(container)
 
-    return ApiResponse(
-        code=0,
-        data=ContainerStatusResponse.from_orm_with_host(container)
-    )
+    data = ContainerStatusResponse.from_orm_with_host(container)
+    data.current_version_id = container.current_version_id
+    return ApiResponse(code=0, data=data)
 
 
 @router.post(

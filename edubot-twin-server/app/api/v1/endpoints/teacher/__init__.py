@@ -11,7 +11,7 @@
 """
 
 from fastapi import APIRouter
-from . import containers, students, monitor
+from . import containers, students, monitor, experiments
 
 # 创建教师路由聚合器
 router = APIRouter()
@@ -19,8 +19,12 @@ router = APIRouter()
 # ⚠️ 注册顺序关键：/containers/monitor 必须在 /containers/{container_id} 之前注册
 # 否则 FastAPI 会把字符串 "monitor" 当作整型 container_id 解析，返回 422
 
+# 实验管理（第10期新增）
+router.include_router(experiments.router, prefix="/experiments", tags=["教师-实验管理"])
+
 # 容器监控（第五期）—— 具体路径，优先注册
 router.include_router(monitor.router, prefix="/containers/monitor", tags=["教师-容器监控"])
+
 
 # 容器管理（第二期）—— 含 /{container_id} 参数路径，必须在具体路径之后注册
 router.include_router(containers.router, prefix="/containers", tags=["教师-容器管理"])

@@ -4,6 +4,7 @@ from app.db.database import engine
 from app.db.base import Base
 from app.models.student import Student
 from app.models.container import SimContainer  # 确保 sim_containers 表被 metadata 发现
+from app.models.experiment import Experiment, ExperimentVersion, ExperimentPublishLog
 from app.crud.student import create_student
 from app.schemas.student import StudentCreate
 from app.db.database import AsyncSessionLocal

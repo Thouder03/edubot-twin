@@ -32,6 +32,7 @@ async def create_container(
         status=ContainerStatus.CREATING,
         gzbridge_port=gz_port,
         rosbridge_port=ros_port,
+        current_version_id=data.current_version_id,
     )
     db.add(container)
     await db.commit()
