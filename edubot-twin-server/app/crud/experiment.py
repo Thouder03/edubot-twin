@@ -6,9 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.experiment import (
     Experiment,
+    ExperimentFileBundle,
     ExperimentPublishLog,
     ExperimentStatus,
     ExperimentVersion,
+    FileBundleStatus,
     PublishStatus,
 )
 
@@ -128,6 +130,37 @@ async def create_version(
     return version
 
 
+async def update_version(
+    db: AsyncSession,
+    *,
+    version: ExperimentVersion,
+    version_name: str,
+    environment_key: str,
+    image_name: str,
+    launch_file_path: str,
+    launch_args_template: dict,
+    startup_script_ref: Optional[str],
+    file_bundle_id: Optional[int],
+    is_visible: bool,
+) -> ExperimentVersion:
+    """
+    更新实验版本配置（仅用于草稿版本）
+    """
+    version.version_name = version_name
+    version.environment_key = environment_key
+    version.image_name = image_name
+    version.launch_file_path = launch_file_path
+    version.launch_args_template = launch_args_template
+    version.startup_script_ref = startup_script_ref
+    version.file_bundle_id = file_bundle_id
+    version.is_visible = is_visible
+    version.updated_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(version)
+    return version
+
+
 async def get_version(db: AsyncSession, version_id: int) -> Optional[ExperimentVersion]:
     """
     获取单个版本详情
@@ -185,6 +218,33 @@ async def list_publish_logs(db: AsyncSession, experiment_id: int) -> list[Experi
         .order_by(ExperimentPublishLog.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+async def create_bundle(
+    db: AsyncSession,
+    *,
+    experiment_id: int,
+    file_manifest: list,
+    created_by: int,
+    validate_status: FileBundleStatus = FileBundleStatus.VALID,
+) -> ExperimentFileBundle:
+    """创建实验文件包记录"""
+    bundle = ExperimentFileBundle(
+        experiment_id=experiment_id,
+        file_manifest=file_manifest,
+        validate_status=validate_status,
+        created_by=created_by,
+    )
+    db.add(bundle)
+    await db.commit()
+    await db.refresh(bundle)
+    return bundle
+
+
+async def get_bundle(db: AsyncSession, bundle_id: int) -> Optional[ExperimentFileBundle]:
+    """通过 ID 获取文件包"""
+    result = await db.execute(select(ExperimentFileBundle).where(ExperimentFileBundle.id == bundle_id))
+    return result.scalar_one_or_none()
 
 
 async def list_student_available_versions(db: AsyncSession) -> list[ExperimentVersion]:

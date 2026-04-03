@@ -1,7 +1,13 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
 
 from pydantic import BaseModel, Field
+
+
+class FileManifestItem(BaseModel):
+    """文件清单中的单个文件项"""
+    relative_path: str
+    chmod_mode: str = "0755"
 
 
 class ExperimentCreate(BaseModel):
@@ -11,8 +17,8 @@ class ExperimentCreate(BaseModel):
     description: Optional[str] = Field(default=None, max_length=512, description="实验描述")
 
 
-class ExperimentVersionCreate(BaseModel):
-    """创建实验版本请求体"""
+class ExperimentVersionBase(BaseModel):
+    """实验版本基础字段"""
     version_name: str = Field(..., min_length=1, max_length=64, description="版本号，如 v1.0.0")
     environment_key: str = Field(..., min_length=1, max_length=128, description="环境标识")
     image_name: str = Field(default="gzweb_sim:v1", min_length=1, max_length=200, description="Docker镜像名")
@@ -21,6 +27,14 @@ class ExperimentVersionCreate(BaseModel):
     startup_script_ref: Optional[str] = Field(default=None, max_length=255, description="启动脚本引用标识")
     file_bundle_id: Optional[int] = None
     is_visible: bool = True
+
+
+class ExperimentVersionCreate(ExperimentVersionBase):
+    """创建实验版本请求体"""
+
+
+class ExperimentVersionUpdate(ExperimentVersionBase):
+    """更新实验版本请求体（仅草稿可更新）"""
 
 
 class ExperimentVersionResponse(BaseModel):
@@ -125,4 +139,35 @@ class StudentSimulationStartResponse(BaseModel):
     task_id: Optional[str] = None
     container_status: str
     experiment_context: dict
+
+
+class FileDistributeRequest(BaseModel):
+    """文件分发请求体（SDD §6: POST /students/simulation/files/distribute）"""
+    version_id: int
+    selected_paths: list[str] = Field(default_factory=list, description="空数组表示全选清单所有文件")
+    mode: Literal["pull", "refresh", "retry"] = "pull"
+
+
+class FileDistributeResponse(BaseModel):
+    """文件分发响应体，202 Accepted"""
+    task_id: str
+    task_status: str
+    accepted_at: str          # ISO 8601 字符串，避免 JSONResponse 序列化问题
+    target_dir: str
+
+
+class SimulationTaskStageStatusItem(BaseModel):
+    stage: str
+    status: Literal["PENDING", "IN_PROGRESS", "SUCCEEDED", "FAILED"]
+    elapsed_ms: int
+
+
+class StudentSimulationTaskResponse(BaseModel):
+    task_id: str
+    task_status: Literal["PENDING", "IN_PROGRESS", "SUCCEEDED", "FAILED"]
+    elapsed_ms: int
+    retryable: bool
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    stage_statuses: list[SimulationTaskStageStatusItem]
 

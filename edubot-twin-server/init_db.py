@@ -5,6 +5,7 @@ from app.db.base import Base
 from app.models.student import Student
 from app.models.container import SimContainer  # 确保 sim_containers 表被 metadata 发现
 from app.models.experiment import Experiment, ExperimentVersion, ExperimentPublishLog
+from app.models.simulation_task import SimulationTask
 from app.crud.student import create_student
 from app.schemas.student import StudentCreate
 from app.db.database import AsyncSessionLocal
@@ -15,16 +16,16 @@ logger = logging.getLogger(__name__)
 async def init_database():
     """初始化数据库:创建表并插入示例数据"""
     print("🔨 开始创建数据库表...")
-    
+
     # 创建所有表
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     print("✅ 数据库表创建完成!")
-    
+
     # 插入示例数据
     print("\n📝 插入示例数据...")
-    
+
     sample_students = [
         # 教师测试账号
         StudentCreate(
@@ -77,7 +78,7 @@ async def init_database():
             role_code="student",
         ),
     ]
-    
+
     async with AsyncSessionLocal() as db:
         created_count = 0
         for student_data in sample_students:
@@ -104,7 +105,7 @@ async def init_database():
                     e,
                 )
                 print(f"  ✗ 创建学生失败 ({student_data.username}): {e}")
-    
+
     print(f"\n🎉 数据库初始化完成! 共创建 {created_count} 个示例学生")
     print(f"📊 数据库文件: edubot.db")
 

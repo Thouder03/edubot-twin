@@ -15,6 +15,17 @@ export interface ExperimentVersionCreateRequest {
   is_visible?: boolean
 }
 
+export interface ExperimentVersionUpdateRequest {
+  version_name: string
+  environment_key: string
+  image_name?: string
+  launch_file_path: string
+  launch_args_template: Record<string, string>
+  startup_script_ref?: string
+  file_bundle_id?: number
+  is_visible?: boolean
+}
+
 export interface ExperimentVersionResponse {
   version_id: number
   experiment_id: number
@@ -92,6 +103,24 @@ export interface StudentAvailableVersionItem {
   version_name: string
   environment_key: string
   summary?: string
+}
+
+export type SimulationTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUCCEEDED' | 'FAILED'
+
+export interface SimulationTaskStageStatusItem {
+  stage: string
+  status: SimulationTaskStatus
+  elapsed_ms: number
+}
+
+export interface StudentSimulationTaskResponse {
+  task_id: string
+  task_status: SimulationTaskStatus
+  elapsed_ms: number
+  retryable: boolean
+  error_code?: string
+  error_message?: string
+  stage_statuses: SimulationTaskStageStatusItem[]
 }
 
 export interface StudentSimulationStartRequest {

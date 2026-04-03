@@ -717,6 +717,19 @@ const adminList = [
         }
       },
       {
+        path: 'experiments/:id',
+        component: 'views/Teacher/Experiments/ExperimentDetail',
+        name: 'TeacherExperimentDetail',
+        meta: {
+          title: 'router.teacherExperiments',
+          noTagsView: true,
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/teacher/experiments'
+        }
+      },
+      {
         path: 'containers',
         component: '##',
         redirect: '/teacher/containers/monitor',

@@ -18,6 +18,7 @@ from app.schemas.experiment import (
     ExperimentResponse,
     ExperimentVersionCreate,
     ExperimentVersionResponse,
+    ExperimentVersionUpdate,
 )
 
 router = APIRouter()
@@ -189,6 +190,47 @@ async def create_version(
         is_visible=data.is_visible,
     )
     return ApiResponse(data=_to_version_response(version))
+
+
+@router.put(
+    "/{experiment_id}/versions/{version_id}",
+    response_model=ApiResponse[ExperimentVersionResponse],
+    summary="更新实验版本",
+)
+async def update_version(
+    experiment_id: int,
+    version_id: int,
+    data: ExperimentVersionUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: int = Depends(get_current_teacher),
+):
+    """
+    更新实验版本配置。仅草稿版本允许编辑。
+    """
+    exp = await crud_experiment.get_experiment(db, experiment_id)
+    if not exp:
+        raise HTTPException(status_code=404, detail="实验不存在")
+
+    version = await crud_experiment.get_version(db, version_id)
+    if not version or version.experiment_id != experiment_id:
+        raise HTTPException(status_code=404, detail="实验版本不存在")
+
+    if version.publish_status.value != "draft":
+        raise HTTPException(status_code=409, detail="仅草稿版本允许编辑")
+
+    updated = await crud_experiment.update_version(
+        db,
+        version=version,
+        version_name=data.version_name,
+        environment_key=data.environment_key,
+        image_name=data.image_name,
+        launch_file_path=data.launch_file_path,
+        launch_args_template=data.launch_args_template,
+        startup_script_ref=data.startup_script_ref,
+        file_bundle_id=data.file_bundle_id,
+        is_visible=data.is_visible,
+    )
+    return ApiResponse(data=_to_version_response(updated))
 
 
 @router.post(

@@ -778,6 +778,19 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         }
       },
       {
+        path: 'experiments/:id',
+        component: () => import('@/views/Teacher/Experiments/ExperimentDetail.vue'),
+        name: 'TeacherExperimentDetail',
+        meta: {
+          title: t('router.teacherExperiments'),
+          noTagsView: true,
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/teacher/experiments'
+        }
+      },
+      {
         path: 'containers',
         component: getParentLayout(),
         redirect: '/teacher/containers/monitor',

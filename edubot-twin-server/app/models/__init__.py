@@ -6,8 +6,15 @@ from app.models.experiment import (
     Experiment,
     ExperimentVersion,
     ExperimentPublishLog,
+    ExperimentFileBundle,
     ExperimentStatus,
+    FileBundleStatus,
     PublishStatus,
+)
+from app.models.simulation_task import (
+    SimulationTask,
+    SimulationTaskStage,
+    SimulationTaskStatus,
 )
 
 __all__ = [
@@ -18,6 +25,11 @@ __all__ = [
     "Experiment",
     "ExperimentVersion",
     "ExperimentPublishLog",
+    "ExperimentFileBundle",
     "ExperimentStatus",
+    "FileBundleStatus",
     "PublishStatus",
+    "SimulationTask",
+    "SimulationTaskStage",
+    "SimulationTaskStatus",
 ]

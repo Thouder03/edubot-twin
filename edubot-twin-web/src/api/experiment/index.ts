@@ -8,9 +8,11 @@ import type {
   ExperimentPublishResponse,
   ExperimentVersionCreateRequest,
   ExperimentVersionResponse,
+  ExperimentVersionUpdateRequest,
   StudentAvailableVersionItem,
   StudentSimulationStartRequest,
-  StudentSimulationStartResponse
+  StudentSimulationStartResponse,
+  StudentSimulationTaskResponse
 } from './types'
 
 export const getExperimentListApi = (params?: {
@@ -39,6 +41,17 @@ export const createExperimentVersionApi = (
   return request.post({ url: `/api/v1/teachers/experiments/${experimentId}/versions`, data })
 }
 
+export const updateExperimentVersionApi = (
+  experimentId: number,
+  versionId: number,
+  data: ExperimentVersionUpdateRequest
+): Promise<IResponse<ExperimentVersionResponse>> => {
+  return request.put({
+    url: `/api/v1/teachers/experiments/${experimentId}/versions/${versionId}`,
+    data
+  })
+}
+
 export const publishExperimentVersionApi = (
   experimentId: number,
   versionId: number,
@@ -64,4 +77,10 @@ export const startSimulationApi = (
   data: StudentSimulationStartRequest
 ): Promise<IResponse<StudentSimulationStartResponse>> => {
   return request.post({ url: '/api/v1/students/simulation/start', data })
+}
+
+export const getSimulationTaskApi = (
+  taskId: string
+): Promise<IResponse<StudentSimulationTaskResponse>> => {
+  return request.get({ url: `/api/v1/students/tasks/${taskId}` })
 }

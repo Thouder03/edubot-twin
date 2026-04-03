@@ -57,6 +57,11 @@ class SimContainer(Base):
         String(200), nullable=True,
         comment="容器用途说明（实验名称等）"
     )
+    current_version_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="当前绑定实验版本ID（第10期）"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )

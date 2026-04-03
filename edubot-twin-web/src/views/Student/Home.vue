@@ -14,8 +14,15 @@ import { BaseButton } from '@/components/Button'
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getStudentHomeDataApi } from '@/api/student'
-import { getAvailableExperimentsApi, startSimulationApi } from '@/api/experiment'
-import type { StudentAvailableVersionItem } from '@/api/experiment/types'
+import {
+  getAvailableExperimentsApi,
+  getSimulationTaskApi,
+  startSimulationApi
+} from '@/api/experiment'
+import type {
+  StudentAvailableVersionItem,
+  StudentSimulationTaskResponse
+} from '@/api/experiment/types'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('student-home')
@@ -103,6 +110,27 @@ function openSimulationPage(version: StudentAvailableVersionItem) {
   }
 }
 
+async function pollTaskUntilDone(taskId: string): Promise<StudentSimulationTaskResponse> {
+  const maxRounds = 60
+  const intervalMs = 1000
+
+  for (let i = 0; i < maxRounds; i++) {
+    const res = await getSimulationTaskApi(taskId)
+    const task = res.data
+    if (!task) {
+      throw new Error('task response empty')
+    }
+
+    if (task.task_status === 'SUCCEEDED' || task.task_status === 'FAILED') {
+      return task
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+
+  throw new Error('task timeout')
+}
+
 const handleStartSimulation = async () => {
   const version = selectedVersion.value
   if (!version) {
@@ -116,9 +144,19 @@ const handleStartSimulation = async () => {
   })
 
   try {
-    await startSimulationApi({
+    const startRes = await startSimulationApi({
       version_id: version.version_id
     })
+
+    const startData = startRes.data
+    if (startData?.task_id) {
+      loadingInstance.setText('正在重建仿真环境，请稍候...')
+      const task = await pollTaskUntilDone(startData.task_id)
+      if (task.task_status === 'FAILED') {
+        ElMessage.error(task.error_message || '环境重建失败，请重试')
+        return
+      }
+    }
 
     ElMessage.success('仿真环境启动成功')
     openSimulationPage(version)
@@ -127,6 +165,11 @@ const handleStartSimulation = async () => {
     if (detail === 'EXPERIMENT_VERSION_NOT_FOUND') {
       ElMessage.error('实验版本不存在或未发布，请重新选择')
       await getAvailableVersions()
+      return
+    }
+
+    if (detail === 'CONTAINER_REBUILD_IN_PROGRESS') {
+      ElMessage.warning('已有重建任务进行中，请稍后重试')
       return
     }
 

@@ -85,6 +85,37 @@ class ExperimentVersion(Base):
     experiment: Mapped["Experiment"] = relationship(back_populates="versions", lazy="selectin")
 
 
+class FileBundleStatus(str, enum.Enum):
+    """实验文件包校验状态"""
+    PENDING = "pending"   # 上传后待校验
+    VALID = "valid"       # 已通过校验，可分发
+    INVALID = "invalid"   # 校验失败，不可分发
+
+
+class ExperimentFileBundle(Base):
+    """
+    实验文件包表（第10期新增：文件分发主链路）
+    存储教师上传的实验资源包元数据与文件清单。
+    manifest 以 JSON 存储，每条格式：{"relative_path": str, "chmod_mode": str}
+    """
+    __tablename__ = "experiment_file_bundles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("experiments.id", ondelete="CASCADE"), nullable=False, index=True, comment="关联实验ID"
+    )
+    file_manifest: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False,
+        comment="文件清单 JSON 数组，元素格式：{relative_path, chmod_mode}"
+    )
+    checksum: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="文件包 SHA256 校验值")
+    validate_status: Mapped[FileBundleStatus] = mapped_column(
+        Enum(FileBundleStatus), default=FileBundleStatus.PENDING, nullable=False, comment="校验状态"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, comment="上传时间")
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False, comment="上传教师ID")
+
+
 class ExperimentPublishLog(Base):
     """
     实验发布日志表
