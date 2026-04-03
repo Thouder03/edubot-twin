@@ -25,12 +25,42 @@ const FILE_ICON_MAP: Record<string, string> = {
   '.json': 'vi-vscode-icons:file-type-json',
   '.yaml': 'vi-vscode-icons:file-type-yaml',
   '.txt': 'vi-carbon:document',
-  default: 'vi-carbon:document' // 简化骨架，具体实现再丰满
+  default: 'vi-carbon:document'
 }
 
 const getFileIcon = (ext?: string) => {
   return ext && FILE_ICON_MAP[ext] ? FILE_ICON_MAP[ext] : FILE_ICON_MAP.default
 }
+
+// ─── 树形引导线
+// 每个元素对应一个缩进层级，描述该层应渲染的线条类型：
+//   'line'        — 祖先级还有更多兄弟在下方，绘制完整竖线
+//   'branch-mid'  — 当前节点非最后兄弟，绘制 ├─ 形状
+//   'branch-last' — 当前节点是最后兄弟，绘制 └─ 形状
+//   ''            — 祖先是最后一个子节点，此层无需续线
+const guideInfos = computed(() => {
+  const level = props.stat.level as number
+  if (level <= 1) return []
+
+  // 从当前节点向上收集祖先链：chain[0] = 第 1 层祖先，chain[level-1] = 当前节点
+  const chain: any[] = []
+  let node = props.stat
+  while (node.parent) {
+    chain.unshift(node)
+    node = node.parent
+  }
+
+  return chain.map((ancestor: any, i: number) => {
+    const siblings: any[] = ancestor.parent?.children ?? []
+    const isLast = siblings[siblings.length - 1] === ancestor
+    const isCurrentLevel = i === chain.length - 1
+
+    if (isCurrentLevel) {
+      return isLast ? 'branch-last' : 'branch-mid'
+    }
+    return isLast ? '' : 'line'
+  })
+})
 
 // ─── 内联编辑状态管理
 const localName = ref('')
@@ -41,7 +71,6 @@ watch(
   (isRenaming) => {
     if (isRenaming) {
       localName.value = props.node.name || props.node.label
-      // nextTick聚焦
       setTimeout(() => {
         inputRef.value?.focus()
       }, 0)
@@ -75,13 +104,20 @@ function cancelRename() {
 <template>
   <div
     :class="[prefixCls, isSelected && 'is-selected']"
-    :style="{ paddingLeft: `${stat.level * 16}px` }"
     :data-node-path="node.path"
     :data-node-type="node.type"
     :data-node-expanded="node.isExpanded ? 'true' : 'false'"
     @dragenter="allowExternalFileDrop"
     @dragover="allowExternalFileDrop"
   >
+    <!-- 层级缩进引导线 -->
+    <span
+      v-for="(guide, i) in guideInfos"
+      :key="i"
+      class="indent-guide"
+      :class="guide && `indent-guide--${guide}`"
+    ></span>
+
     <!-- 展开/折叠箭头 -->
     <span v-if="node.type === 'directory'" class="expand-icon" @click.stop="emit('toggle-expand')">
       <Icon :icon="node.isExpanded ? 'vi-ep:arrow-down' : 'vi-ep:arrow-right'" />
@@ -114,11 +150,15 @@ function cancelRename() {
 
 <style lang="less" scoped>
 @prefix: v-file-tree-node;
+@guide-width: 14px;
+@guide-line-left: 7px;
+@guide-color: var(--el-border-color-light);
 
 .@{prefix} {
   display: flex;
   align-items: center;
-  padding: 4px 8px;
+  height: 24px;
+  padding: 0 8px 0 4px;
   cursor: pointer;
   user-select: none;
 
@@ -131,23 +171,84 @@ function cancelRename() {
     background-color: var(--el-color-primary-light-9);
   }
 
+  .indent-guide {
+    display: inline-flex;
+    width: @guide-width;
+    align-self: stretch;
+    flex-shrink: 0;
+    position: relative;
+
+    // 祖先级继续向下：完整竖线（上下各延伸 1px 消除亚像素间隙）
+    &--line::before {
+      content: '';
+      position: absolute;
+      top: -1px;
+      bottom: -1px;
+      left: @guide-line-left;
+      width: 1px;
+      background-color: @guide-color;
+    }
+
+    // ├─ 中间节点：竖线全高 + 右向横线
+    &--branch-mid::before {
+      content: '';
+      position: absolute;
+      top: -1px;
+      bottom: -1px;
+      left: @guide-line-left;
+      width: 1px;
+      background-color: @guide-color;
+    }
+
+    &--branch-mid::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: @guide-line-left;
+      right: 0;
+      height: 1px;
+      background-color: @guide-color;
+    }
+
+    // └─ 末尾节点：竖线到中点 + 右向横线
+    &--branch-last::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 50%;
+      left: @guide-line-left;
+      width: 1px;
+      background-color: @guide-color;
+    }
+
+    &--branch-last::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: @guide-line-left;
+      right: 0;
+      height: 1px;
+      background-color: @guide-color;
+    }
+  }
+
   .expand-icon {
     display: inline-flex;
-    width: 16px;
+    width: 11px;
     height: 16px;
-    margin-right: 4px;
+    margin-right: 2px;
     font-size: 12px;
     justify-content: center;
     align-items: center;
   }
 
   .expand-icon-placeholder {
-    width: 16px;
-    margin-right: 4px;
+    width: 4px;
+    margin-right: 1px;
   }
 
   .type-icon {
-    margin-right: 6px;
+    margin-right: 4px;
     font-size: 16px;
   }
 

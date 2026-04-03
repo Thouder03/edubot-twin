@@ -234,6 +234,7 @@ function onDrop(e: DragEvent) {
       v-else
       ref="draggableRef"
       :model-value="treeData"
+      :indent="0"
       :each-droppable="checkDroppable"
       @after-drop="onTreeAfterDrop"
       @click:node="onClickNode"
