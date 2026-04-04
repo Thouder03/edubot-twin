@@ -117,9 +117,9 @@ const schema = computed<ContextMenuSchema[]>(() => {
     {
       icon: 'vi-carbon:download',
       label: '下载 (Download)',
-      disabled: !singleSelected,
+      disabled: paths.length === 0,
       command: () => {
-        if (node) props.commands.downloadCommand(node.path)
+        props.commands.downloadCommand(paths)
       }
     },
     {

@@ -135,6 +135,40 @@ export const downloadFile = async (
   const cd = res.headers.get('Content-Disposition') ?? ''
   const match = cd.match(/filename="?([^"\s]+)"?/)
   const filename = match?.[1] ?? path.split('/').pop() ?? 'download'
+  triggerBlobDownload(blob, filename)
+}
+
+/**
+ * 批量下载多个文件/目录（服务端打成 zip 后流式返回）
+ */
+export const downloadMultipleFiles = async (
+  paths: string[],
+  archiveName: string,
+  token: string,
+  tokenKey = 'Authorization'
+): Promise<void> => {
+  const url = `${import.meta.env.VITE_API_BASE_PATH}${BASE}/download-multiple`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [tokenKey]: token ? `Bearer ${token}` : ''
+    },
+    body: JSON.stringify({ paths, archive_name: archiveName })
+  })
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}))
+    throw new Error(json?.detail ?? `下载失败 (${res.status})`)
+  }
+  const blob = await res.blob()
+  const cd = res.headers.get('Content-Disposition') ?? ''
+  const match = cd.match(/filename="?([^"\s]+)"?/)
+  const filename = match?.[1] ?? archiveName
+  triggerBlobDownload(blob, filename)
+}
+
+/** 触发浏览器下载 Blob */
+function triggerBlobDownload(blob: Blob, filename: string) {
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
   link.download = filename

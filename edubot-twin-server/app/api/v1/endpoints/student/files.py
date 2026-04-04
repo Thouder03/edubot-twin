@@ -783,3 +783,56 @@ async def download_file(
                 "Content-Disposition": f'attachment; filename="{zip_name}"',
             }
         )
+
+
+class DownloadMultipleRequest(BaseModel):
+    paths: list[str]           # 要打包下载的路径列表
+    archive_name: Optional[str] = None  # 自定义 zip 文件名，默认 "download.zip"
+
+
+@router.post("/download-multiple")
+async def download_multiple(
+    request: DownloadMultipleRequest,
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    批量下载：将多个文件/目录打成一个 zip 包后流式返回（内存操作，不写磁盘）
+    """
+    if not request.paths:
+        raise HTTPException(status_code=400, detail="至少需要一个路径")
+
+    workspace = get_workspace(student_id)
+
+    # 验证所有路径
+    sources: list[Path] = []
+    for p in request.paths:
+        src = validate_path(workspace, p)
+        if not src.exists():
+            raise HTTPException(status_code=404, detail=f"路径不存在: {p}")
+        sources.append(src)
+
+    zip_filename = request.archive_name or "download.zip"
+    if not zip_filename.endswith(".zip"):
+        zip_filename += ".zip"
+
+    def zip_generator():
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for src in sources:
+                if src.is_file():
+                    zf.write(src, src.name)
+                elif src.is_dir():
+                    for file in src.rglob("*"):
+                        if file.is_file():
+                            zf.write(file, src.name + "/" + str(file.relative_to(src)))
+        buf.seek(0)
+        while chunk := buf.read(65536):
+            yield chunk
+
+    return StreamingResponse(
+        zip_generator(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{zip_filename}"',
+        }
+    )

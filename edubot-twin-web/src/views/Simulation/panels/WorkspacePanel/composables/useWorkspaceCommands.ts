@@ -8,7 +8,8 @@ import {
   copyFiles,
   extractFile,
   compressFiles,
-  downloadFile
+  downloadFile,
+  downloadMultipleFiles
 } from '@/api/files'
 import { useUserStoreWithOut } from '@/store/modules/user'
 // 导入其他组合式函数状态（由调用方注入或者这里直接构建命令工厂）
@@ -377,14 +378,21 @@ export function useWorkspaceCommands(treeState: any, selectionState: any, clipbo
     }
   }
 
-  // 下载文件或目录
-  async function downloadCommand(path: string) {
-    if (!path) return
+  // 下载文件或目录（支持多选）
+  async function downloadCommand(paths: string[]) {
+    if (!paths.length) return
     const userStore = useUserStoreWithOut()
     const tokenKey = userStore.getTokenKey ?? 'Authorization'
     const token = userStore.getToken ?? ''
     try {
-      await downloadFile(path, token, tokenKey)
+      if (paths.length === 1) {
+        // 单个路径：直接下载（文件/目录均支持）
+        await downloadFile(paths[0], token, tokenKey)
+      } else {
+        // 多选：打成 zip 下载
+        const archiveName = 'download.zip'
+        await downloadMultipleFiles(paths, archiveName, token, tokenKey)
+      }
     } catch (e: any) {
       ElMessage.error(`下载失败: ${e.message ?? e}`)
     }
