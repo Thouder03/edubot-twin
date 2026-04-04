@@ -1,6 +1,6 @@
 # SDD-第10期补充：实验管理增强与资源管理体系
 
-- **文档版本**：v1.1
+- **文档版本**：v1.2
 - **创建日期**：2026-04-04
 - **修订日期**：2026-04-04
 - **负责人**：架构组
@@ -421,7 +421,7 @@ flowchart TD
 | `/api/v1/teachers/experiments/{id}/status` | PATCH | Bearer(teacher) | `{status: "draft"\|"active"\|"archived"}` | `{experiment_id, status, updated_at}` | 200/400/404 |
 | `/api/v1/teachers/experiments/{eid}/versions/{vid}` | DELETE | Bearer(teacher) | 路径参数 | `204 No Content` | 204/404/409(非 draft 不可删) |
 | `/api/v1/teachers/experiments/{eid}/versions/{vid}/publish-status` | PATCH | Bearer(teacher) | `{publish_status: "published"\|"deprecated", publish_note?: str}` | `{version_id, publish_status, updated_at}` | 200/400/404/409 |
-| `/api/v1/teachers/experiments/{eid}/versions/{vid}/validate` | POST | Bearer(teacher) | 路径参数 | `{valid: bool, issues: [{field, message}]}` | 200/404 |
+| `/api/v1/teachers/experiments/{eid}/versions/{vid}/validate` | POST | Bearer(teacher) | 路径参数 | `{valid: bool, issues: [{field, code, severity, message}]}` | 200/404 |
 
 ### 6.4 学生端修改（10-S1）
 
@@ -443,9 +443,11 @@ flowchart TD
 | `ROSBRIDGE_NOT_READY` | rosbridge 端口超时未就绪 | 显示具体阶段 + 重试 |
 | `DRY_RUN_RESOURCE_EXHAUSTED` | Dry Run 容器配额已满（上限 3） | 提示清理已有测试容器 |
 | `STARTUP_SCRIPT_PROTECTED` | 启动脚本 startup.sh 不可删除 | 提示该文件受保护 |
-| `STARTUP_SCRIPT_PROTECTED` | 启动脚本 startup.sh 不可删除 | 提示该文件受保护 |
 | `UPLOAD_SIZE_EXCEEDED` | 上传文件超过 200MB 限制 | 提示减小文件包体积 |
-| `VALIDATION_FAILED` | 版本配置验证失败 | 展示具体 issues 列表 |
+| `FILE_UPLOAD_CONFLICT` | 同一路径重复上传且客户端声明禁止覆盖 | 提示选择覆盖或更名 |
+| `FILE_SAVE_CONFLICT` | 保存时文件已被其他操作更新 | 提示刷新后重试，避免静默覆盖 |
+| `VALIDATION_FAILED` | 版本配置验证失败 | 展示结构化 issues 列表 |
+| `VALIDATION_BLOCKING_ISSUE` | 验证存在阻断项 | 阻止发布并高亮问题字段 |
 
 ---
 
@@ -531,7 +533,7 @@ PREPARING_CONFIG → STOPPING_OLD_CONTAINER → CREATING_NEW_CONTAINER
 | created_at | datetime | 创建时间 |
 
 Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunContainer]`）。
-**清理策略**：容器停止后立即自动清理（通过 `DELETE /teachers/dry-run/{container_id}` 触发，或通过 Docker event 监听容器退出事件自动清理）。不再使用 30 分钟过期机制，但保留最大并发限制（每位教师最多 3 个 Dry Run 容器）。
+**清理策略**：容器停止后立即自动清理（通过 `DELETE /teachers/dry-run/{container_id}` 触发，或通过 Docker event 监听容器退出事件自动清理）。Dry Run 页面直接复用学生仿真页既有心跳机制；前端在关闭页签、路由离开、刷新页面时执行 best-effort 清理请求，服务端继续以容器退出事件兜底。不再使用 30 分钟过期机制，但保留最大并发限制（每位教师最多 3 个 Dry Run 容器）。
 
 ---
 
@@ -567,9 +569,11 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 | dry-run | 配额已满（3个） | 是（DRY_RUN_RESOURCE_EXHAUSTED） | 是 | 是 | 提示清理已有测试容器 |
 | dry-run | 容器异常退出 | 否（自动清理） | 是 | 是 | Docker event 监听到容器退出后立即清理内存记录和端口 |
 | dry-run | 容器启动失败 | 是（容器日志摘要） | 是 | 是 | 自动清理 + 提示修正配置 |
-| version-validate | 镜像不存在 | 是（issues 列表） | 是 | 是 | 教师更换镜像名 |
-| version-validate | file_bundle 不存在或为空 | 是（issues 列表） | 是 | 是 | 教师重新关联文件包 |
-| version-validate | env_bundle 不存在 | 是（issues 列表） | 是 | 是 | 教师关联环境包 |
+| version-validate | 镜像不存在 | 是（issues 列表） | 是 | 是 | 返回 `code=missing_image,severity=blocking`，教师更换镜像名 |
+| version-validate | file_bundle 不存在或为空 | 是（issues 列表） | 是 | 是 | 返回 `code=missing_bundle/empty_bundle,severity=blocking`，教师重新关联文件包 |
+| version-validate | env_bundle 不存在 | 是（issues 列表） | 是 | 是 | 返回 `code=missing_env_bundle,severity=blocking`，教师关联环境包 |
+| version-validate | startup.sh 缺失 | 是（issues 列表） | 是 | 是 | 返回 `code=missing_startup_script,severity=blocking`，教师修复环境包 |
+| file-save | 保存时文件已被其他操作更新 | 是（409 FILE_SAVE_CONFLICT） | 是 | 是 | 返回最新 `modified_at`，前端提示刷新后重试 |
 
 ---
 
@@ -608,11 +612,18 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 
 ### 11.1 测试覆盖地图
 
+**强约束**：所有关键失败模式测试必须同时断言四项结果：
+1. 错误码正确。
+2. 日志字段完整（至少含 `bundle_id` / `version_id` / `dry_run_container_id` / `readiness_stage` 中的相关字段）。
+3. 前端提示文案与错误语义一致。
+4. 清理动作正确完成（容器、端口、临时状态无泄漏）。
+
 | 流程/分支 | 类型 | 用例要点 | 通过标准 |
 |---|---|---|---|
 | 文件包 CRUD 全流程 | 集成 | 创建→上传→列表→详情→重命名→删除 | 全操作成功，数据一致 |
 | 文件包上传文件 | 集成 | 上传文件，压缩包不自动解压 | 压缩包文件直接保存，文件树中可手动解压 |
 | 文件包上传单文件 | 集成 | 上传单个 .py 文件 | 文件保存到正确路径 |
+| 文件保存冲突 | 集成 | 读取后由第二会话先保存，再由第一会话提交 | 返回 `409 FILE_SAVE_CONFLICT`，日志和前端提示一致，原文件未被静默覆盖 |
 | 文件包路径穿越 | 安全 | 读取/保存路径含 `../` | 返回 400，无越界操作 |
 | 文件包被引用时删除 | 业务 | 删除被版本引用的文件包 | 返回 409 BUNDLE_IN_USE |
 | 文件包重命名影响检测 | 业务 | 重命名被 3 个版本引用的文件包 | 返回 affected_versions 含 3 条记录 |
@@ -625,10 +636,12 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 | 学生可见性过滤 | 集成 | 版本 publish_status=deprecated 时查询 | 该版本不在列表中 |
 | container_manager launch 注入 | 集成 | 创建容器时传入自定义 launch_file_path | Docker command 包含正确路径 |
 | 就绪检测 Happy Path | 集成 | 容器创建后检测双端口 | CHECKING_GZWEB→CHECKING_ROSBRIDGE→SUCCEEDED |
-| 就绪检测超时 | 集成 | 模拟端口不可达 | 60s 后 FAILED + GZWEB_NOT_READY |
+| 就绪检测超时 | 集成 | 模拟端口不可达 | 60s 后 FAILED + GZWEB_NOT_READY，日志字段和容器清理动作齐全 |
 | 版本验证 Happy Path | 集成 | 所有配置项正确 | `{valid: true, issues: []}` |
-| 版本验证 — 镜像不存在 | 集成 | image_name 无效 | `{valid: false, issues: [{field: "image_name", ...}]}` |
+| 版本验证 — 镜像不存在 | 集成 | image_name 无效 | `{valid: false, issues: [{field: "image_name", code: "missing_image", severity: "blocking"}]}` |
+| 版本验证 — startup.sh 缺失 | 集成 | 删除或重命名启动脚本后执行 validate | 返回 `missing_startup_script` 阻断项 |
 | Dry Run 全流程 | 集成 | 创建→就绪→访问仿真页→结束清理 | 容器创建成功，复用仿真页面，停止后立即清理 |
+| Dry Run 离开页面回收 | 集成 | 关闭页签/路由离开后触发学生页心跳终止 | 触发 best-effort 清理，请求失败时仍由容器退出事件兜底 |
 | startup.sh 禁删 | 业务 | 尝试通过 files/delete 删除 startup.sh | 返回 403，文件仍存在 |
 | startup.sh 自动创建 | 集成 | 创建环境包后检查文件系统 | storage_root 下存在 startup.sh 且包含模板内容 |
 | Dry Run 配额限制 | 业务 | 同一教师创建第 4 个 | 返回 DRY_RUN_RESOURCE_EXHAUSTED |
@@ -675,7 +688,7 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 | `app/api/v1/endpoints/teacher/experiments.py` | 新增 DELETE、PATCH /status、DELETE /versions/{vid}、PATCH /publish-status、POST /validate |
 | `app/api/v1/endpoints/student/simulation.py` | `_run_rebuild_task` 注入 launch 配置；健康检查拆分为 CHECKING_GZWEB + CHECKING_ROSBRIDGE |
 | `app/api/v1/endpoints/student/experiments.py` | 可见性过滤条件修改 |
-| `app/core/container_manager.py` | `create_container()` 新增 `launch_file_path`、`launch_args`、`startup_script`、`env_volumes` 参数 |
+| `app/core/container_manager.py` | `create_container()` 新增 `launch_file_path`、`launch_args`、`startup_script`、`env_volumes` 参数，并按“镜像/端口、启动配置、文件挂载、运行模式”四组在内部数据结构中分层实现 |
 | `app/core/readiness_checker.py` | 新建：TCP 端口探测工具，支持 gzweb 和 rosbridge 分别检测 |
 | `app/core/dry_run_manager.py` | 新建：Dry Run 容器生命周期管理（内存存储 + 停止即清理 + Docker event 监听兜底） |
 | `app/core/system_entrypoint.py` | 新建：系统常驻启动脚本管理，负责生成和挂载 `system_entrypoint.sh` |
@@ -741,7 +754,7 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 
 | 延后项 | 延后原因 | 触发条件 |
 |---|---|---|
-| AssetLibrary 统一资源域 | 本期文件包独立化已满足需求，统一资源域需更大重构 | 出现 3+ 种资源类型需统一管理时 |
+| AssetLibrary 统一资源域 | 本期文件包独立化已满足需求，统一资源域需更大重构 | 出现 3+ 种资源类型需统一管理、或 file/env bundle 出现重复治理逻辑时 |
 | 文件包版本历史 | 教师直接覆盖上传满足当前需求 | 多教师协作编辑同一文件包产生冲突时 |
 | 启动脚本审计与沙箱 | 教师角色受信任，无需审计 | 引入不受信助教角色时 |
 | 大文件分片上传 | 200MB 上限足够教学场景 | 仿真数据集 > 500MB 成为常态时 |
@@ -835,11 +848,19 @@ async def create_container(
 3. `startup_script_path`：如果非空，将该文件路径（`{env_bundle.storage_root}/startup.sh`）挂载到容器 `/tmp/startup.sh`，在 entrypoint 中先执行此脚本。注意：启动脚本以文件形式存储在环境包根目录，不存数据库。
 4. `env_volumes`：额外的 Volume 挂载映射（`{host_path: container_path}`），用于环境文件。
 
+**参数分层约束**：实现时即便暂不引入完整 `ContainerSpec` 类型，也必须在 `container_manager` 内部按以下四组数据结构分层，禁止继续把新参数平铺堆入一段长函数：
+- 镜像 / 端口：`image`、`student_id`、`gz_port`、`ros_port`
+- 启动配置：`launch_file_path`、`launch_args`、`startup_script_path`
+- 文件挂载：`env_volumes`
+- 运行模式：正式仿真 / Dry Run 的差异标记与清理策略
+
 **向后兼容**：所有新增参数有默认值，现有调用方无需修改即可继续工作。
 
 ### 14.7 系统常驻启动脚本（system_entrypoint.sh）
 
 每个容器固定挂载一个系统级启动脚本，负责启动 rosbridge_server 和 gzweb 服务。该脚本由平台维护，教师不可修改。
+
+**统一前台守护约束**：容器启动链不再允许“教师脚本后台启动 + 系统脚本再各自拉起服务”的松耦合模式。最终 entrypoint 必须由一个统一前台守护入口负责拉起教师 `startup.sh`、rosbridge、gzweb，并定义任一关键进程退出时的失败语义、退出码和清理动作，避免容器存活但关键服务半故障的静默失败。
 
 **脚本模板**（参考 `/home/ubuntu20/gzweb/dev_entrypoint.sh`）：
 
@@ -878,7 +899,7 @@ environment = {
 }
 ```
 
-**执行链**：教师自定义 `startup.sh`（source 环境 + `roslaunch ... $LAUNCH_ARGS &`）→ 系统 `system_entrypoint.sh`（rosbridge + gzweb）。
+**执行链**：统一前台守护入口拉起教师自定义 `startup.sh`（source 环境 + `roslaunch ... $LAUNCH_ARGS &`）与系统 `system_entrypoint.sh`（rosbridge + gzweb）。任一关键进程退出时，守护入口必须将容器状态显式标记为失败并触发清理路径。
 
 ### 14.4 readiness_checker 设计
 
@@ -994,6 +1015,8 @@ mark_stage(CHECKING_ROSBRIDGE, SUCCEEDED, ros_ms)
 
 **保存后自动验证**：点击"保存配置"成功后，自动调用 `POST /validate`，若 `valid=false` 则在表单上方显示黄色警告条展示 issues。
 
+**结构化验证结果约束**：`issues` 不再只是一组自由文本，至少包含 `field`、`code`、`severity`、`message` 四个字段。当前强制支持以下阻断类问题：`missing_image`、`missing_bundle`、`empty_bundle`、`missing_env_bundle`、`missing_startup_script`。其中 `severity=blocking` 的问题必须阻止版本发布。
+
 ### 15.4 实验文件管理页（10-S2 新建）
 
 **路由**：`/teacher/experiments/files`
@@ -1024,6 +1047,7 @@ mark_stage(CHECKING_ROSBRIDGE, SUCCEEDED, ros_ms)
 - **单击**：选中文件包（高亮显示），右侧显示文件包摘要信息。
 - **双击**：进入文件树视图（切换到状态 B）。
 - **右键菜单**：在文件包项上右键弹出上下文菜单，包含「重命名」和「删除」操作。
+- **首屏可发现性约束**：列表空状态必须提供首次使用提示，明确“先新建文件包，再双击进入文件树编辑”；非空列表首屏需有轻提示文案说明“双击可进入文件树”。
 
 **状态 B — 文件树视图（双击进入后）**：
 
@@ -1063,6 +1087,8 @@ mark_stage(CHECKING_ROSBRIDGE, SUCCEEDED, ros_ms)
 - 点击文件树中的文件，在右侧 Monaco Editor 中打开编辑。
 - 复用现有 `MonacoEditor.vue` 组件。
 - 保存操作调用 `/teachers/file-bundles/{id}/files/save` API。
+- **编辑态保护约束**：存在未保存变更时，切换文件、返回列表、离开当前路由、进入 Dry Run 前都必须弹出确认框，选项至少包含“保存后继续”和“放弃修改”。
+- **保存冲突约束**：保存接口按 `modified_at` 或等价版本戳检测覆盖风险；若文件已被其他操作更新，后端返回 `409 FILE_SAVE_CONFLICT`，前端禁止静默覆盖。
 
 ### 15.5 实验环境管理页（10-S2 新建）
 
@@ -1092,6 +1118,7 @@ mark_stage(CHECKING_ROSBRIDGE, SUCCEEDED, ros_ms)
 - **单击**：选中环境包（高亮显示），右侧显示环境包摘要信息。
 - **双击**：进入文件树+设置视图（切换到状态 B）。
 - **右键菜单**：在环境包项上右键弹出上下文菜单，包含「重命名」和「删除」操作。
+- **首屏可发现性约束**：空状态必须提示“先新建环境包，再双击进入文件树编辑 `startup.sh`”；列表存在数据时仍需保留“双击进入”的轻提示。
 
 **状态 B — 文件树+基本设置视图（双击进入后）**：
 
@@ -1136,6 +1163,8 @@ mark_stage(CHECKING_ROSBRIDGE, SUCCEEDED, ros_ms)
 - 点击文件树中的**任意文件**，在右侧 Monaco Editor 中打开编辑（包括 `startup.sh`、`.launch`、`.yaml` 等）。
 - Monaco 编辑器根据文件后缀自动切换语言模式（`.sh` → shell, `.launch` → xml, `.yaml` → yaml 等）。
 - 保存操作调用 `/teachers/env-bundles/{id}/files/save` API。
+- **编辑态保护约束**：存在未保存变更时，切换文件、返回列表、离开当前路由、点击试运行前都必须弹出确认框，教师必须显式选择“保存后继续”或“放弃修改”。
+- **保存冲突约束**：`startup.sh` 与普通文件均适用覆盖冲突检测，禁止因多窗口编辑造成静默覆盖。
 
 **启动脚本模板与注释提醒**：
 
@@ -1193,8 +1222,10 @@ source "$WORKSPACE/devel/setup.bash"
 - 点击后弹出确认对话框："将为您创建一个临时测试容器，验证启动脚本和 Launch 文件是否能正常运行。容器停止后将立即自动清理。"
 - 需要选择关联的 `version_id`（指定镜像和 launch 配置来源）。
 - 调用 `POST /teachers/env-bundles/{id}/dry-run {version_id}`。
+- 若当前存在未保存修改，必须先完成保存或明确放弃，才允许进入 Dry Run。
 - 成功后**跳转到学生仿真页面**（复用 `Simulation.vue` 工作台），教师可完整体验仿真环境。
-- 仿真页顶部显示橙色提示条："试运行模式 — 该容器将在结束后立即清理"。
+- Dry Run 直接复用学生仿真页既有心跳机制；关闭页签、刷新页面或路由离开时执行 best-effort 清理，服务端继续以容器退出事件兜底。
+- 仿真页顶部显示橙色提示条："试运行模式 — 该容器将在结束后立即自动清理"。
 - 失败时展示容器日志摘要。
 
 ### 15.6 交互与文案矩阵（新增场景）
@@ -1206,6 +1237,7 @@ source "$WORKSPACE/devel/setup.bash"
 | Gazebo 超时 | `GZWEB_NOT_READY` | Gazebo 启动超时，请检查环境配置或重试 | 重试/返回首页 |
 | ROS 超时 | `ROSBRIDGE_NOT_READY` | ROS 通信桥启动超时，请检查环境配置或重试 | 重试/返回首页 |
 | 文件包上传成功 | 200 | 文件上传成功，共 {count} 个文件 | 文件树刷新 |
+| 文件保存冲突 | 409 FILE_SAVE_CONFLICT | 文件已被其他操作更新，请刷新后重试 | 保留当前编辑内容，不做静默覆盖 |
 | 文件包被引用不可删 | 409 BUNDLE_IN_USE | 该文件包被以下版本引用，请先解除关联：... | 展示版本列表 |
 | startup.sh 禁止删除 | 403 | 启动脚本不可删除 | 弹出提示 |
 | Dry Run 启动成功 | 200 | 测试容器已就绪，正在打开仿真工作台... | 跳转仿真页面 |
@@ -1221,13 +1253,14 @@ source "$WORKSPACE/devel/setup.bash"
 
 ### 16.1 文件包/环境包 API 复用策略
 
-文件包和环境包的文件操作 API（upload/list/read/save/delete）逻辑高度相似，建议后端抽取一个 `BundleFileService` 通用服务类：
+文件包和环境包的文件操作 API（upload/list/read/save/delete）逻辑高度相似，本期**强制**后端抽取一个 `BundleFileService` 通用服务类：
 
 - 参数化 `storage_root`（文件包用 `/data/file_bundles/{id}`，环境包用 `/data/env_bundles/{id}`）。
-- 统一路径安全校验、文件大小限制、编码检测逻辑。
+- 统一路径安全校验、文件大小限制、编码检测、`modified_at`/版本戳冲突检测逻辑。
 - 教师端文件操作 API 端点仅做鉴权和参数解析，实际文件操作委托给 `BundleFileService`。
 - 避免在 `file_bundles.py` 和 `env_bundles.py` 中重复实现相同逻辑（消除冗余坏味道）。
 - 环境包的 `BundleFileService` 需增加 `protected_paths` 参数（如 `["startup.sh"]`），对受保护文件的删除操作返回 403。
+- 上传与保存的幂等 / 冲突语义也必须统一由 `BundleFileService` 落地，禁止两套 bundle 各自定义不同规则。
 
 ### 16.2 前端文件树组件复用策略
 
@@ -1269,7 +1302,20 @@ export function useFileOperations(apiPrefix: Ref<string>) {
 
 建议在 `init_db.py` 中增加迁移函数，检测表结构版本后执行迁移。
 
-### 16.4 Dry Run 容器与正式容器隔离
+### 16.4 长期演进边界与技术债清单
+
+**统一资源域升级触发条件**：满足以下任一条件时，当前 `file bundle` / `env bundle` 双实体方案必须升级为统一资源域（如 AssetLibrary），而不是继续在现有模型上叠补丁：
+1. 资源类型扩展到 3 种及以上。
+2. 文件包与环境包出现重复的权限、版本、审计、分享治理逻辑。
+3. 教师协作编辑或跨课程共享成为常态需求。
+
+**本期有意保留的技术债**：
+- Dry Run 仍采用内存态记录，不做持久化表。
+- readiness 错误码保持粗粒度，不细分检测器内部错误类别。
+- `container_target_dir` 继续信任教师输入，不做危险目录白名单。
+- 发布阶段保持基础回滚，不补零停机兼容窗口策略。
+
+### 16.5 Dry Run 容器与正式容器隔离
 
 Dry Run 容器使用独立标签 `edubot.type: dry-run`（正式容器为 `simulation`），便于：
 - 运维识别和批量清理。
