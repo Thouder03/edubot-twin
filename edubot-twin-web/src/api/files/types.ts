@@ -73,6 +73,17 @@ export interface ExtractData {
   target_dir: string
 }
 
+export interface CompressRequest {
+  paths: string[]
+  archive_name: string
+  format: 'zip' | 'tar.gz'
+  target_dir?: string
+}
+
+export interface CompressData {
+  archive_path: string
+}
+
 // Tree Node（用于前端展示与组件交互）
 export interface TreeNode {
   key: string

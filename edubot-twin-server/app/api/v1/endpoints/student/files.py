@@ -16,13 +16,16 @@
 """
 
 import os
+import io
 import shutil
+import tempfile
 import zipfile
 import tarfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.schemas.common import ApiResponse
 
@@ -149,6 +152,12 @@ class BatchDeleteRequest(BaseModel):
 class ExtractRequest(BaseModel):
     path: str           # 压缩文件的相对路径
     target_dir: Optional[str] = None  # 解压目标目录，默认为压缩文件所在目录
+
+class CompressRequest(BaseModel):
+    paths: list[str]                     # 要压缩的文件/目录相对路径列表
+    archive_name: str                    # 输出压缩包文件名（含扩展名）
+    format: Literal['zip', 'tar.gz'] = 'zip'  # 压缩格式
+    target_dir: Optional[str] = None     # 输出目录，默认为第一个路径的父目录
 
 # 支持的压缩格式
 SUPPORTED_ARCHIVES = {".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz"}
@@ -648,3 +657,129 @@ async def extract_archive(
             "target_dir": str(target_dir.relative_to(workspace))
         }
     )
+
+
+@router.post("/compress")
+async def compress_files(
+    request: CompressRequest,
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    压缩文件/目录到指定压缩包
+
+    支持格式: zip / tar.gz
+    - archive_name: 输出文件名（如 output.zip 或 output.tar.gz）
+    - target_dir: 输出目录，默认为第一个源路径的父目录
+    """
+    if not request.paths:
+        raise HTTPException(status_code=400, detail="至少需要一个源路径")
+
+    workspace = get_workspace(student_id)
+
+    # 验证所有源路径
+    sources: list[Path] = []
+    for path in request.paths:
+        src = validate_path(workspace, path)
+        if not src.exists():
+            raise HTTPException(status_code=404, detail=f"路径不存在: {path}")
+        sources.append(src)
+
+    # 确定输出目录
+    if request.target_dir:
+        out_dir = validate_path(workspace, request.target_dir)
+    else:
+        out_dir = validate_path(workspace, request.paths[0]).parent
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 验证输出文件名安全性
+    if "/" in request.archive_name or "\\" in request.archive_name:
+        raise HTTPException(status_code=400, detail="压缩包名称不能包含路径分隔符")
+
+    out_path = out_dir / request.archive_name
+    if out_path.exists():
+        raise HTTPException(status_code=400, detail=f"目标文件已存在: {request.archive_name}")
+
+    try:
+        if request.format == "zip":
+            with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                for src in sources:
+                    if src.is_file():
+                        zf.write(src, src.name)
+                    elif src.is_dir():
+                        for file in src.rglob("*"):
+                            if file.is_file():
+                                zf.write(file, src.name + "/" + str(file.relative_to(src)))
+        else:  # tar.gz
+            with tarfile.open(out_path, "w:gz") as tf:
+                for src in sources:
+                    tf.add(src, arcname=src.name)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"压缩失败: {e}")
+
+    check_disk_quota(student_id, 0)
+
+    rel_path = str(out_path.relative_to(workspace))
+    return ApiResponse(
+        code=0,
+        message="压缩成功",
+        data={"archive_path": rel_path}
+    )
+
+
+@router.get("/download")
+async def download_file(
+    path: str = Query(..., description="文件或目录的相对路径"),
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    下载文件或目录
+
+    - 单文件：直接以流式返回文件内容
+    - 目录：即时打包成 zip 以流式返回（不写入磁盘）
+    """
+    workspace = get_workspace(student_id)
+    target = validate_path(workspace, path)
+
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="文件或目录不存在")
+
+    if target.is_file():
+        # 单文件：流式返回
+        file_size = target.stat().st_size
+        filename = target.name
+
+        def file_generator():
+            with open(target, "rb") as f:
+                while chunk := f.read(65536):
+                    yield chunk
+
+        return StreamingResponse(
+            file_generator(),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(file_size),
+            }
+        )
+    else:
+        # 目录：内存中打 zip 后流式返回
+        zip_name = target.name + ".zip"
+
+        def zip_generator():
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                for file in target.rglob("*"):
+                    if file.is_file():
+                        zf.write(file, target.name + "/" + str(file.relative_to(target)))
+            buf.seek(0)
+            while chunk := buf.read(65536):
+                yield chunk
+
+        return StreamingResponse(
+            zip_generator(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{zip_name}"',
+            }
+        )

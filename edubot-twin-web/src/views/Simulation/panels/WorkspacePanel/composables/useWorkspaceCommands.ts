@@ -6,8 +6,11 @@ import {
   renameFile,
   moveFiles,
   copyFiles,
-  extractFile
+  extractFile,
+  compressFiles,
+  downloadFile
 } from '@/api/files'
+import { useUserStoreWithOut } from '@/store/modules/user'
 // 导入其他组合式函数状态（由调用方注入或者这里直接构建命令工厂）
 
 function getParentDir(path: string): string {
@@ -311,7 +314,86 @@ export function useWorkspaceCommands(
     }
   }
 
-  // 更多命令...（移动等留在后续实施）
+  // 压缩文件/目录（两步弹框：Step1 选格式，Step2 输文件名）
+  async function compressCommand(paths: string[]) {
+    if (!paths.length) return
+
+    // Step 1: 选择格式
+    let format: 'zip' | 'tar.gz' = 'zip'
+    try {
+      const { value: selectedFormat } = await ElMessageBox.prompt(
+        '请选择压缩格式（zip 或 tar.gz）',
+        '压缩文件',
+        {
+          confirmButtonText: '下一步',
+          cancelButtonText: '取消',
+          inputValue: 'zip',
+          inputPlaceholder: '输入 zip 或 tar.gz',
+          inputValidator: (val: string) => {
+            if (val !== 'zip' && val !== 'tar.gz') return '请输入 zip 或 tar.gz'
+            return true
+          }
+        }
+      )
+      format = selectedFormat === 'tar.gz' ? 'tar.gz' : 'zip'
+    } catch {
+      return
+    }
+
+    // Step 2: 输入文件名
+    const firstName = paths[0].split('/').pop() ?? 'archive'
+    const ext = format === 'zip' ? '.zip' : '.tar.gz'
+    const defaultName = paths.length === 1 ? `${firstName}${ext}` : `archive${ext}`
+
+    let archiveName: string
+    try {
+      const { value } = await ElMessageBox.prompt('输入压缩包文件名', '压缩文件', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputValue: defaultName,
+        inputValidator: (val: string) => {
+          if (!val.trim()) return '文件名不能为空'
+          return true
+        }
+      })
+      archiveName = value.trim()
+    } catch {
+      return
+    }
+
+    // 确保扩展名正确
+    if (format === 'zip' && !archiveName.endsWith('.zip')) archiveName += '.zip'
+    if (format === 'tar.gz' && !archiveName.endsWith('.tar.gz')) archiveName += '.tar.gz'
+
+    try {
+      const res = await compressFiles({ paths, archive_name: archiveName, format })
+      if (res.code === 0) {
+        ElMessage.success('压缩成功')
+        const archivePath = res.data?.archive_path ?? '.'
+        const targetDir = getParentDir(archivePath)
+        if (targetDir && targetDir !== '.') {
+          await treeState.refreshNode(targetDir)
+        } else {
+          await treeState.refreshExpandedDirectories()
+        }
+      }
+    } catch (e: any) {
+      ElMessage.error(`压缩失败: ${e.response?.data?.detail ?? e.message ?? e}`)
+    }
+  }
+
+  // 下载文件或目录
+  async function downloadCommand(path: string) {
+    if (!path) return
+    const userStore = useUserStoreWithOut()
+    const tokenKey = userStore.getTokenKey ?? 'Authorization'
+    const token = userStore.getToken ?? ''
+    try {
+      await downloadFile(path, token, tokenKey)
+    } catch (e: any) {
+      ElMessage.error(`下载失败: ${e.message ?? e}`)
+    }
+  }
 
   return {
     deleteCommand,
@@ -324,6 +406,8 @@ export function useWorkspaceCommands(
     cutCommand,
     pasteCommand,
     moveCommand,
-    extractCommand
+    extractCommand,
+    compressCommand,
+    downloadCommand
   }
 }

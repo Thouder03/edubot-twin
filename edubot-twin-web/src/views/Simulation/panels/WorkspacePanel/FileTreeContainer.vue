@@ -140,17 +140,21 @@ async function loadAndInsert(node: any, stat: any) {
   }
 }
 
-// ─── 节点点击事件（携带原始 MouseEvent，用于 Ctrl/Shift 多选）
-function onNodeClick(node: any, stat: any, event: MouseEvent) {
-  if (node.type === 'directory') {
-    const nextOpen = !node.isExpanded
-    node.isExpanded = nextOpen
-    stat.open = nextOpen
-    if (nextOpen && !node.childrenLoaded) {
-      loadAndInsert(node, stat)
-    }
-  } else {
-    emit('select-file', node.path, event)
+// ─── 节点点击：只负责将节点路径和 MouseEvent 上报交父组件处理选区
+function onNodeClick(node: any, _stat: any, event: MouseEvent) {
+  // 文件和文件夹都可以被选中，由 FileTree.vue 决定是否打开编辑器
+  emit('select-file', node.path, event)
+}
+
+// ─── he-tree click:node — 只负责目录展开折叠（文件节点不处理）
+function onClickNode(stat: any) {
+  const node = stat?.data ?? stat
+  if (node.type !== 'directory') return
+  const nextOpen = !node.isExpanded
+  node.isExpanded = nextOpen
+  stat.open = nextOpen
+  if (nextOpen && !node.childrenLoaded) {
+    loadAndInsert(node, stat)
   }
 }
 
@@ -253,6 +257,7 @@ defineExpose({ getFlatVisiblePaths })
       :indent="0"
       :each-droppable="checkDroppable"
       @after-drop="onTreeAfterDrop"
+      @click:node="onClickNode"
       class="he-tree"
     >
       <template #default="{ node, stat }">

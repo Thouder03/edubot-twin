@@ -15,7 +15,9 @@ import type {
   FileCopyRequest,
   BatchDeleteRequest,
   ExtractRequest,
-  ExtractData
+  ExtractData,
+  CompressRequest,
+  CompressData
 } from './types'
 
 const BASE = '/api/v1/students/files'
@@ -103,4 +105,39 @@ export const batchDeleteFiles = (
 /** 解压缩文件 */
 export const extractFile = (data: ExtractRequest): Promise<IResponse<ExtractData>> => {
   return service.post({ url: `${BASE}/extract`, data })
+}
+
+/** 压缩文件/目录 */
+export const compressFiles = (data: CompressRequest): Promise<IResponse<CompressData>> => {
+  return service.post({ url: `${BASE}/compress`, data })
+}
+
+/**
+ * 下载文件或目录（目录自动打包为 zip）
+ * 使用原生 fetch 实现流式下载，触发浏览器下载行为
+ */
+export const downloadFile = async (
+  path: string,
+  token: string,
+  tokenKey = 'Authorization'
+): Promise<void> => {
+  const params = new URLSearchParams({ path })
+  const url = `${import.meta.env.VITE_API_BASE_PATH}${BASE}/download?${params}`
+  const res = await fetch(url, {
+    headers: { [tokenKey]: token ? `Bearer ${token}` : '' }
+  })
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}))
+    throw new Error(json?.detail ?? `下载失败 (${res.status})`)
+  }
+  const blob = await res.blob()
+  // 从 Content-Disposition 取文件名
+  const cd = res.headers.get('Content-Disposition') ?? ''
+  const match = cd.match(/filename="?([^"\s]+)"?/)
+  const filename = match?.[1] ?? path.split('/').pop() ?? 'download'
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(link.href)
 }

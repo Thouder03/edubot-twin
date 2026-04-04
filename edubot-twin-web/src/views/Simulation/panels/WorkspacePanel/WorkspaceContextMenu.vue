@@ -107,6 +107,22 @@ const schema = computed<ContextMenuSchema[]>(() => {
       }
     },
     {
+      icon: 'vi-carbon:folder-move-to',
+      label: '压缩 (Compress)',
+      disabled: paths.length === 0,
+      command: () => {
+        props.commands.compressCommand(paths)
+      }
+    },
+    {
+      icon: 'vi-carbon:download',
+      label: '下载 (Download)',
+      disabled: !singleSelected,
+      command: () => {
+        if (node) props.commands.downloadCommand(node.path)
+      }
+    },
+    {
       divided: true,
       icon: 'vi-carbon:trash-can',
       label: '删除 (Delete)',
