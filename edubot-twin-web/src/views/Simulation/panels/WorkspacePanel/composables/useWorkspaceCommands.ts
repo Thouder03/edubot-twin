@@ -87,12 +87,7 @@ function applyMovedPathUpdates(
   }
 }
 
-export function useWorkspaceCommands(
-  treeState: any,
-  selectionState: any,
-  previewState: any,
-  clipboardState: any
-) {
+export function useWorkspaceCommands(treeState: any, selectionState: any, clipboardState: any) {
   async function deleteCommand(paths: string[]) {
     if (!paths.length) return
 

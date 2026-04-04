@@ -109,6 +109,18 @@ function handleGradientChange(
   newValue[index] = newColor || '#ffffff'
   emit('field-change', path, newValue, 'gradient')
 }
+
+/** ElAutocomplete fetch-suggestions 回调：在候选项中按输入过滤 */
+function makeFetchSuggestions(options: Array<{ value: string }>) {
+  return (query: string, cb: (results: { value: string }[]) => void) => {
+    cb(query ? options.filter((o) => o.value.includes(query)) : options)
+  }
+}
+
+/** ElAutocomplete 选中回调 */
+function handleAutocompleteSelect(path: string[], input: string, item: { value: string }) {
+  handleFieldChange(path, item.value, input)
+}
 </script>
 
 <template>
@@ -375,19 +387,17 @@ function handleGradientChange(
             v-else-if="field.input === 'autocomplete'"
             :model-value="field.value ?? ''"
             :fetch-suggestions="
-              (query: string, cb: (results: { value: string }[]) => void) => {
-                const opts = (field.options ?? []).map((o) => ({ value: String(o.value) }))
-                cb(query ? opts.filter((o) => o.value.includes(query)) : opts)
-              }
+              makeFetchSuggestions((field.options ?? []).map((o) => ({ value: String(o.value) })))
             "
             :placeholder="field.placeholder ?? ''"
             :disabled="field.disabled"
             clearable
             class="autocomplete-input"
             @select="
-              (item: { value: string }) => handleFieldChange(field.path, item.value, field.input)
+              (item: Record<string, any>) =>
+                handleAutocompleteSelect(field.path, field.input, { value: String(item.value) })
             "
-            @change="(val: string) => handleFieldChange(field.path, val, field.input)"
+            @change="(val) => handleFieldChange(field.path, val, field.input)"
           />
 
           <!-- Readonly 只读文本展示 -->

@@ -100,7 +100,7 @@ const rules = reactive({
   real_name: [],
   password: [
     {
-      validator: (rule: any, value: any, callback: any) => {
+      validator: (_rule: any, value: any, callback: any) => {
         if (props.actionType === 'add' && (!value || value.length < 6)) {
           callback(new Error('密码至少需要6个字符'))
         } else if (props.actionType === 'edit' && value && value.length < 6) {
@@ -114,7 +114,7 @@ const rules = reactive({
   ],
   email: [
     {
-      validator: (rule: any, value: any, callback: any) => {
+      validator: (_rule: any, value: any, callback: any) => {
         if (value && value.trim() !== '') {
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
           if (!emailRegex.test(value)) {
