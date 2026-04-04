@@ -14,6 +14,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  click: [event: MouseEvent]
   'toggle-expand': []
   'rename-submit': [newName: string]
   'rename-cancel': []
@@ -107,6 +108,7 @@ function cancelRename() {
     :data-node-path="node.path"
     :data-node-type="node.type"
     :data-node-expanded="node.isExpanded ? 'true' : 'false'"
+    @click="(e) => !node.isRenaming && emit('click', e)"
     @dragenter="allowExternalFileDrop"
     @dragover="allowExternalFileDrop"
   >

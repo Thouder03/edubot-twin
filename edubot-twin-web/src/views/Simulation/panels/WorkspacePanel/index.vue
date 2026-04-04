@@ -204,6 +204,7 @@ onMounted(() => {
   loadTree()
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mouseup', stopResize)
+  document.addEventListener('keydown', handleKeyDown)
   window.addEventListener('beforeunload', onBeforeUnload)
 })
 
@@ -213,17 +214,13 @@ onUnmounted(() => {
   }
   document.removeEventListener('mousemove', onMouseMove)
   document.removeEventListener('mouseup', stopResize)
+  document.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('beforeunload', onBeforeUnload)
 })
 </script>
 
 <template>
-  <div
-    ref="panelRef"
-    :class="[prefixCls, isResizing && `${prefixCls}--resizing`]"
-    tabindex="-1"
-    @keydown="handleKeyDown"
-  >
+  <div ref="panelRef" :class="[prefixCls, isResizing && `${prefixCls}--resizing`]">
     <!-- 隐藏上传 input -->
     <input
       ref="uploaderRef"

@@ -17,6 +17,8 @@
 
 import os
 import shutil
+import zipfile
+import tarfile
 from pathlib import Path
 from typing import Optional
 
@@ -143,6 +145,13 @@ class FileCopyRequest(BaseModel):
 
 class BatchDeleteRequest(BaseModel):
     paths: list[str]
+
+class ExtractRequest(BaseModel):
+    path: str           # 压缩文件的相对路径
+    target_dir: Optional[str] = None  # 解压目标目录，默认为压缩文件所在目录
+
+# 支持的压缩格式
+SUPPORTED_ARCHIVES = {".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz"}
 
 # ─── API 端点 ───────────────────────────────────────────────────────────────
 
@@ -560,4 +569,82 @@ async def batch_delete_files(
         code=0,
         message="批量删除完成",
         data={"deleted": deleted, "failed": failed}
+    )
+
+
+@router.post("/extract")
+async def extract_archive(
+    request: ExtractRequest,
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    解压缩文件到指定目录（默认解压到压缩文件所在目录）
+
+    支持格式: .zip / .tar / .tar.gz / .tgz / .tar.bz2 / .tar.xz
+    """
+    workspace = get_workspace(student_id)
+    archive_path = validate_path(workspace, request.path)
+
+    if not archive_path.exists():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if not archive_path.is_file():
+        raise HTTPException(status_code=400, detail="路径不是文件")
+
+    # 检查格式支持
+    name_lower = archive_path.name.lower()
+    is_zip = name_lower.endswith(".zip")
+    is_tar = (
+        name_lower.endswith(".tar")
+        or name_lower.endswith(".tar.gz")
+        or name_lower.endswith(".tgz")
+        or name_lower.endswith(".tar.bz2")
+        or name_lower.endswith(".tar.xz")
+    )
+    if not is_zip and not is_tar:
+        raise HTTPException(status_code=400, detail="不支持的压缩格式，仅支持 .zip / .tar / .tar.gz / .tgz / .tar.bz2 / .tar.xz")
+
+    # 确定解压目标目录
+    if request.target_dir:
+        target_dir = validate_path(workspace, request.target_dir)
+    else:
+        target_dir = archive_path.parent
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # 安全解压：防止路径穿越（Zip Slip）
+    try:
+        if is_zip:
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                for member in zf.namelist():
+                    # 检查 Zip Slip
+                    member_path = (target_dir / member).resolve()
+                    try:
+                        member_path.relative_to(target_dir.resolve())
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail=f"压缩包含危险路径: {member}")
+                zf.extractall(target_dir)
+        else:  # tar 系
+            with tarfile.open(archive_path, "r:*") as tf:
+                for member in tf.getmembers():
+                    member_path = (target_dir / member.name).resolve()
+                    try:
+                        member_path.relative_to(target_dir.resolve())
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail=f"压缩包含危险路径: {member.name}")
+                tf.extractall(target_dir)
+    except (zipfile.BadZipFile, tarfile.TarError) as e:
+        raise HTTPException(status_code=400, detail=f"解压失败：文件可能已损坏: {e}")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"解压失败: {e}")
+
+    # 解压后检查配额
+    check_disk_quota(student_id, 0)
+
+    return ApiResponse(
+        code=0,
+        message="解压成功",
+        data={
+            "source": request.path,
+            "target_dir": str(target_dir.relative_to(workspace))
+        }
     )

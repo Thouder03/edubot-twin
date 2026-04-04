@@ -140,9 +140,8 @@ async function loadAndInsert(node: any, stat: any) {
   }
 }
 
-// ─── he-tree: click:node — stat.open 控制子节点可见性
-function onClickNode(stat: any) {
-  const node = stat?.data ?? stat
+// ─── 节点点击事件（携带原始 MouseEvent，用于 Ctrl/Shift 多选）
+function onNodeClick(node: any, stat: any, event: MouseEvent) {
   if (node.type === 'directory') {
     const nextOpen = !node.isExpanded
     node.isExpanded = nextOpen
@@ -151,7 +150,7 @@ function onClickNode(stat: any) {
       loadAndInsert(node, stat)
     }
   } else {
-    emit('select-file', node.path, new MouseEvent('click'))
+    emit('select-file', node.path, event)
   }
 }
 
@@ -217,6 +216,23 @@ function onDrop(e: DragEvent) {
     emit('drop-external', files, hoveredTarget.resolvedTargetPath)
   }
 }
+
+// ─── 获取当前可见的扁平节点路径列表（用于 Shift 范围选择）
+function getFlatVisiblePaths(): string[] {
+  const result: string[] = []
+  function walk(nodes: any[]) {
+    for (const node of nodes) {
+      result.push(node.path)
+      if (node.type === 'directory' && node.isExpanded && Array.isArray(node.children)) {
+        walk(node.children)
+      }
+    }
+  }
+  walk(props.treeData)
+  return result
+}
+
+defineExpose({ getFlatVisiblePaths })
 </script>
 
 <template>
@@ -237,7 +253,6 @@ function onDrop(e: DragEvent) {
       :indent="0"
       :each-droppable="checkDroppable"
       @after-drop="onTreeAfterDrop"
-      @click:node="onClickNode"
       class="he-tree"
     >
       <template #default="{ node, stat }">
@@ -250,6 +265,7 @@ function onDrop(e: DragEvent) {
           :node="node"
           :stat="stat"
           :is-selected="selectedPaths.has(node.path)"
+          @click="(e) => onNodeClick(node, stat, e)"
           @dblclick="emit('open-file-pinned', node.path)"
           @contextmenu.prevent="emit('node-contextmenu', node, $event)"
           @toggle-expand="onToggleExpandFromArrow(node, stat)"

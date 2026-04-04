@@ -1,5 +1,13 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { batchDeleteFiles, mkdir, uploadFile, renameFile, moveFiles, copyFiles } from '@/api/files'
+import {
+  batchDeleteFiles,
+  mkdir,
+  uploadFile,
+  renameFile,
+  moveFiles,
+  copyFiles,
+  extractFile
+} from '@/api/files'
 // 导入其他组合式函数状态（由调用方注入或者这里直接构建命令工厂）
 
 function getParentDir(path: string): string {
@@ -283,6 +291,26 @@ export function useWorkspaceCommands(
     }
   }
 
+  // 解压缩文件
+  async function extractCommand(path: string) {
+    if (!path) return
+    try {
+      const res = await extractFile({ path })
+      if (res.code === 0) {
+        ElMessage.success('解压成功')
+        // 刷新解压目标目录（也就是压缩文件的父目录）
+        const targetDir = res.data?.target_dir ?? getParentDir(path)
+        if (targetDir && targetDir !== '.') {
+          await treeState.refreshNode(targetDir)
+        } else {
+          await treeState.refreshExpandedDirectories()
+        }
+      }
+    } catch (e: any) {
+      ElMessage.error(`解压失败: ${e.response?.data?.detail ?? e.message ?? e}`)
+    }
+  }
+
   // 更多命令...（移动等留在后续实施）
 
   return {
@@ -295,6 +323,7 @@ export function useWorkspaceCommands(
     copyCommand,
     cutCommand,
     pasteCommand,
-    moveCommand
+    moveCommand,
+    extractCommand
   }
 }

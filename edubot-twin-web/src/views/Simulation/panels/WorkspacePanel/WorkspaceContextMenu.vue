@@ -37,10 +37,23 @@ async function createFolder() {
   }
 }
 
+const ARCHIVE_EXTENSIONS = new Set(['.zip', '.tar', '.gz', '.tgz', '.bz2', '.xz'])
+
+function isArchiveFile(node: any): boolean {
+  if (!node || node.type !== 'file') return false
+  const name: string = (node.name || node.path || '').toLowerCase()
+  // 支持 .tar.gz, .tar.bz2, .tar.xz 等多后缀
+  if (name.endsWith('.tar.gz') || name.endsWith('.tar.bz2') || name.endsWith('.tar.xz')) return true
+  const dotIndex = name.lastIndexOf('.')
+  if (dotIndex === -1) return false
+  return ARCHIVE_EXTENSIONS.has(name.slice(dotIndex))
+}
+
 const schema = computed<ContextMenuSchema[]>(() => {
   const node = currentNode.value
   const singleSelected = props.commands.selectedPaths.value.size === 1
   const paths = Array.from(props.commands.selectedPaths.value) as string[]
+  const canExtract = singleSelected && isArchiveFile(node)
 
   return [
     {
@@ -82,6 +95,15 @@ const schema = computed<ContextMenuSchema[]>(() => {
         // 如果点的是文件，贴到父级；点的是目录，贴到该目录
         const targetDir = node?.type === 'directory' ? node.path : (node?.parentPath ?? '.')
         props.commands.pasteCommand(targetDir)
+      }
+    },
+    {
+      divided: true,
+      icon: 'vi-carbon:archive',
+      label: '解压缩 (Extract)',
+      disabled: !canExtract,
+      command: () => {
+        if (node) props.commands.extractCommand(node.path)
       }
     },
     {

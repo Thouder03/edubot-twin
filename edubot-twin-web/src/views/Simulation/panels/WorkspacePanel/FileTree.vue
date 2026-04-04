@@ -5,8 +5,8 @@
  * 现已降阶为展示与事件转发层：
  * 内部将复杂拖拽、树形选区与右键交给子组件和 Composables 处理。
  */
-import { ref } from 'vue'
-import { ElIcon } from 'element-plus'
+import { ref, computed } from 'vue'
+import { ElIcon, ElTooltip } from 'element-plus'
 import FileTreeContainer from './FileTreeContainer.vue'
 import WorkspaceContextMenu from './WorkspaceContextMenu.vue'
 import { Icon } from '@/components/Icon'
@@ -34,8 +34,17 @@ const emit = defineEmits<{
 // 右键菜单组件引用
 const contextMenuRef = ref<InstanceType<typeof WorkspaceContextMenu> | null>(null)
 
+// FileTreeContainer 组件引用，用于获取扁平可见节点列表（Shift 范围选）
+const containerRef = ref<InstanceType<typeof FileTreeContainer> | null>(null)
+
+// 多选模式快捷访问
+const isMultiSelectMode = computed(() => props.workspace.multiSelectMode?.value ?? false)
+
 function onSelectFile(path: string, event: MouseEvent) {
-  props.workspace.toggleSelection(path, event.metaKey || event.ctrlKey || event.shiftKey)
+  const isMulti = event.metaKey || event.ctrlKey
+  const isShift = event.shiftKey
+  const flatPaths = isShift ? (containerRef.value?.getFlatVisiblePaths() ?? []) : []
+  props.workspace.toggleSelection(path, isMulti, isShift, flatPaths)
   const node = props.workspace.findNodeByPath(props.treeData, path)
   // 目录展开由 FileTreeContainer 内部通过 he-tree addMulti API 处理
   if (!node || node.type === 'file') {
@@ -77,14 +86,31 @@ async function onManualRefresh() {
     <div :class="`${prefixCls}__toolbar`">
       <span :class="`${prefixCls}__title`">WORKSPACE</span>
       <div :class="`${prefixCls}__toolbar-actions`">
-        <el-icon :class="`${prefixCls}__action`" title="刷新文件树" @click.stop="onManualRefresh">
-          <Icon icon="vi-ep:refresh" />
-        </el-icon>
+        <!-- 多选模式切换 -->
+        <el-tooltip
+          :content="isMultiSelectMode ? '关闭多选模式' : '开启多选模式（可用快捷键）'"
+          placement="top"
+        >
+          <el-icon
+            :class="[`${prefixCls}__action`, isMultiSelectMode && `${prefixCls}__action--active`]"
+            @click.stop="props.workspace.toggleMultiSelectMode?.()"
+          >
+            <Icon icon="vi-carbon:list-checked" />
+          </el-icon>
+        </el-tooltip>
+
+        <!-- 刷新 -->
+        <el-tooltip content="刷新文件树" placement="top">
+          <el-icon :class="`${prefixCls}__action`" @click.stop="onManualRefresh">
+            <Icon icon="vi-ep:refresh" />
+          </el-icon>
+        </el-tooltip>
       </div>
     </div>
 
     <!-- 树主体容器 -->
     <FileTreeContainer
+      ref="containerRef"
       :tree-data="treeData"
       :loading="loading"
       :selected-paths="props.workspace.selectedPaths.value"
@@ -141,6 +167,12 @@ async function onManualRefresh() {
 
     &:hover {
       color: var(--el-color-primary);
+    }
+
+    &--active {
+      color: var(--el-color-primary) !important;
+      background-color: var(--el-color-primary-light-9);
+      border-radius: 3px;
     }
   }
 }

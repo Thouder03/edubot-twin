@@ -13,7 +13,9 @@ import type {
   FileRenameRequest,
   FileMoveRequest,
   FileCopyRequest,
-  BatchDeleteRequest
+  BatchDeleteRequest,
+  ExtractRequest,
+  ExtractData
 } from './types'
 
 const BASE = '/api/v1/students/files'
@@ -96,4 +98,9 @@ export const batchDeleteFiles = (
   data: BatchDeleteRequest
 ): Promise<IResponse<{ deleted: string[]; failed: any[] }>> => {
   return service.delete({ url: `${BASE}/batch-delete`, data })
+}
+
+/** 解压缩文件 */
+export const extractFile = (data: ExtractRequest): Promise<IResponse<ExtractData>> => {
+  return service.post({ url: `${BASE}/extract`, data })
 }

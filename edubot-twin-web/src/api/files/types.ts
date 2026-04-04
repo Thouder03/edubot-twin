@@ -63,6 +63,16 @@ export interface BatchDeleteRequest {
   paths: string[]
 }
 
+export interface ExtractRequest {
+  path: string
+  target_dir?: string
+}
+
+export interface ExtractData {
+  source: string
+  target_dir: string
+}
+
 // Tree Node（用于前端展示与组件交互）
 export interface TreeNode {
   key: string
