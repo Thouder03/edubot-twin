@@ -123,10 +123,10 @@
 
 **现状**：`container_manager.py` 硬编码 `launch_file` 和 `entrypoint_cmd`。
 
-**方案 B1（本期采用）**：`create_container()` 新增参数 `launch_file_path`、`launch_args`、`startup_script`，在函数内部拼装 Docker 启动命令。
+**方案 B1（本期采用）**：[`create_container()`](edubot-twin-server/app/core/container_manager.py:131) 新增 `launch_file_path`、`launch_args`、`startup_script_path` 等参数，但容器最终入口必须收敛为**统一前台守护入口**。该入口负责拉起教师 [`startup.sh`](docs/第10期/SDD-第10期补充：实验管理增强与资源管理体系.md:503)、rosbridge、gzweb，并定义任一关键进程退出时的失败语义和清理动作。
 
-- **优点**：改动最小，仅扩展函数签名。
-- **风险**：教师角色视为受信任用户，无需参数审计。
+- **优点**：保留最小 diff，同时避免容器 running 但关键服务半故障的静默失败。
+- **风险**：入口脚本职责更集中，需要把日志和退出码语义一次定义清楚。
 
 **方案 B2**：引入 ContainerSpec 配置对象，将所有容器参数封装为结构化对象。
 
@@ -136,19 +136,26 @@
 
 **决策**：采用 B1。扩展函数参数，教师为受信任角色，launch_args 直接注入为环境变量。
 
-**补充：常驻系统启动脚本（System Entrypoint）**
+**补充：统一前台守护入口（System Entrypoint）**
 
-除教师自定义的启动脚本外，每个容器还挂载一个**系统级常驻启动脚本** `system_entrypoint.sh`，负责启动 rosbridge_server 和 gzweb 服务。容器启动时通过环境变量将以下信息注入：
+除教师自定义启动脚本外，每个容器还挂载一个**系统级前台守护入口** [`system_entrypoint.sh`](docs/第10期/SDD-第10期补充：实验管理增强与资源管理体系.md:859)。它不是“再起一个后台脚本”，而是容器唯一前台入口，负责统一拉起并监管：
 
-- `ROSBRIDGE_PORT` / `GZWEB_PORT`：宿主机映射端口 → 注入到系统常驻脚本
+- 教师自定义 [`startup.sh`](docs/第10期/SDD-第10期补充：实验管理增强与资源管理体系.md:503)
+- `rosbridge_server`
+- `gzweb`
+
+容器启动时通过环境变量注入：
+
+- `ROSBRIDGE_PORT` / `GZWEB_PORT`：宿主机映射端口 → 注入到统一前台守护入口
 - `LAUNCH_ARGS`：版本配置中的 `launch_args_template` 格式化后的 roslaunch 参数字符串 → 注入到教师自定义脚本
 
-执行顺序：
+执行语义：
 
-1. 教师自定义启动脚本（`startup.sh`）：source ROS 环境、通过 `$LAUNCH_ARGS` 启动仿真节点等。
-2. 系统常驻启动脚本（`system_entrypoint.sh`）：启动 rosbridge_server（使用 `$ROSBRIDGE_PORT`）和 gzweb（使用 `$GZWEB_PORT`）。
+1. 统一前台守护入口启动教师 [`startup.sh`](docs/第10期/SDD-第10期补充：实验管理增强与资源管理体系.md:503)，用于 source ROS 环境、拉起仿真节点。
+2. 同一入口继续启动 `rosbridge_server` 与 `gzweb`。
+3. 任一关键进程退出时，统一前台守护入口必须让容器进入失败态，并把错误暴露给上层任务流和清理路径。
 
-参考 `/home/ubuntu20/gzweb/dev_entrypoint.sh` 的模式。
+参考 `/home/ubuntu20/gzweb/dev_entrypoint.sh` 的模式，但不接受“教师脚本后台运行，系统脚本再各自后台拉服务”的松耦合实现。
 
 ### 3.3 挑战 C：容器就绪检测策略
 
@@ -420,7 +427,7 @@ flowchart TD
 | `/api/v1/teachers/experiments/{id}` | DELETE | Bearer(teacher) | 路径参数 | `204 No Content` | 204/404/409(有非 draft 版本时) |
 | `/api/v1/teachers/experiments/{id}/status` | PATCH | Bearer(teacher) | `{status: "draft"\|"active"\|"archived"}` | `{experiment_id, status, updated_at}` | 200/400/404 |
 | `/api/v1/teachers/experiments/{eid}/versions/{vid}` | DELETE | Bearer(teacher) | 路径参数 | `204 No Content` | 204/404/409(非 draft 不可删) |
-| `/api/v1/teachers/experiments/{eid}/versions/{vid}/publish-status` | PATCH | Bearer(teacher) | `{publish_status: "published"\|"deprecated", publish_note?: str}` | `{version_id, publish_status, updated_at}` | 200/400/404/409 |
+| `/api/v1/teachers/experiments/{eid}/versions/{vid}/publish-status` | PATCH | Bearer(teacher) | `{publish_status: "published"\|"deprecated", publish_note?: str}` | `{version_id, publish_status, updated_at}` | 200/400/404/409；当目标为 `published` 且存在 blocking issues 时返回 `409 VALIDATION_BLOCKING_ISSUE` |
 | `/api/v1/teachers/experiments/{eid}/versions/{vid}/validate` | POST | Bearer(teacher) | 路径参数 | `{valid: bool, issues: [{field, code, severity, message}]}` | 200/404 |
 
 ### 6.4 学生端修改（10-S1）
@@ -447,7 +454,7 @@ flowchart TD
 | `FILE_UPLOAD_CONFLICT` | 同一路径重复上传且客户端声明禁止覆盖 | 提示选择覆盖或更名 |
 | `FILE_SAVE_CONFLICT` | 保存时文件已被其他操作更新 | 提示刷新后重试，避免静默覆盖 |
 | `VALIDATION_FAILED` | 版本配置验证失败 | 展示结构化 issues 列表 |
-| `VALIDATION_BLOCKING_ISSUE` | 验证存在阻断项 | 阻止发布并高亮问题字段 |
+| `VALIDATION_BLOCKING_ISSUE` | 验证存在阻断项 | 阻止发布并高亮问题字段；发布接口必须复用 validate 的 blocking 结果 |
 
 ---
 
@@ -640,6 +647,7 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 | 版本验证 Happy Path | 集成 | 所有配置项正确 | `{valid: true, issues: []}` |
 | 版本验证 — 镜像不存在 | 集成 | image_name 无效 | `{valid: false, issues: [{field: "image_name", code: "missing_image", severity: "blocking"}]}` |
 | 版本验证 — startup.sh 缺失 | 集成 | 删除或重命名启动脚本后执行 validate | 返回 `missing_startup_script` 阻断项 |
+| 发布硬拦截 | 集成 | validate 返回 blocking issue 后继续调用 publish-status=published | 返回 `409 VALIDATION_BLOCKING_ISSUE`，版本状态保持不变 |
 | Dry Run 全流程 | 集成 | 创建→就绪→访问仿真页→结束清理 | 容器创建成功，复用仿真页面，停止后立即清理 |
 | Dry Run 离开页面回收 | 集成 | 关闭页签/路由离开后触发学生页心跳终止 | 触发 best-effort 清理，请求失败时仍由容器退出事件兜底 |
 | startup.sh 禁删 | 业务 | 尝试通过 files/delete 删除 startup.sh | 返回 403，文件仍存在 |
@@ -682,16 +690,17 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 |---|---|
 | `app/models/experiment.py` | 删除 `is_visible`、`startup_script_ref`、`experiment_id`(FileBundle)、`checksum`；新增 `env_bundle_id`、`name`(FileBundle)、`storage_root`、`file_count`、`total_size_bytes`；新增 `ExperimentEnvBundle` 模型（无 `startup_script` 字段，脚本存文件） |
 | `app/schemas/experiment.py` | 同步更新所有 Schema；新增 FileBundleCreate/Response/ListItem、EnvBundleCreate/Response/ListItem、VersionValidateResponse |
-| `app/crud/experiment.py` | 新增 bundle CRUD（create/get/list/rename/delete）、环境包 CRUD、实验删除、状态切换、版本删除、版本发布状态切换、版本验证 |
-| `app/api/v1/endpoints/teacher/file_bundles.py` | 文件包管理 API 全部端点 |
-| `app/api/v1/endpoints/teacher/env_bundles.py` | 环境包管理 API 全部端点 |
+| `app/crud/experiment.py` | 新增 bundle CRUD、环境包 CRUD、实验删除、状态切换、版本删除、版本发布状态切换、版本验证，并复用统一文件服务提供的文件读写能力 |
+| `app/services/bundle_file_service.py` | 新建：统一文件服务 `BundleFileService`，集中处理 upload、list、read、save、delete、路径安全、冲突检测、保护路径 |
+| `app/api/v1/endpoints/teacher/file_bundles.py` | 文件包管理 API 全部端点，仅做鉴权、资源查找和参数转换，实际文件操作委托 `BundleFileService` |
+| `app/api/v1/endpoints/teacher/env_bundles.py` | 环境包管理 API 全部端点，仅做鉴权、资源查找和参数转换，实际文件操作委托 `BundleFileService` |
 | `app/api/v1/endpoints/teacher/experiments.py` | 新增 DELETE、PATCH /status、DELETE /versions/{vid}、PATCH /publish-status、POST /validate |
 | `app/api/v1/endpoints/student/simulation.py` | `_run_rebuild_task` 注入 launch 配置；健康检查拆分为 CHECKING_GZWEB + CHECKING_ROSBRIDGE |
 | `app/api/v1/endpoints/student/experiments.py` | 可见性过滤条件修改 |
-| `app/core/container_manager.py` | `create_container()` 新增 `launch_file_path`、`launch_args`、`startup_script`、`env_volumes` 参数，并按“镜像/端口、启动配置、文件挂载、运行模式”四组在内部数据结构中分层实现 |
+| `app/core/container_manager.py` | [`create_container()`](edubot-twin-server/app/core/container_manager.py:131) 新增 `launch_file_path`、`launch_args`、`startup_script_path`、`env_volumes` 参数，并按“镜像/端口、启动配置、文件挂载、运行模式”四组在内部数据结构中分层实现 |
 | `app/core/readiness_checker.py` | 新建：TCP 端口探测工具，支持 gzweb 和 rosbridge 分别检测 |
 | `app/core/dry_run_manager.py` | 新建：Dry Run 容器生命周期管理（内存存储 + 停止即清理 + Docker event 监听兜底） |
-| `app/core/system_entrypoint.py` | 新建：系统常驻启动脚本管理，负责生成和挂载 `system_entrypoint.sh` |
+| `app/core/system_entrypoint.py` | 新建：统一前台守护入口脚本管理，负责生成和挂载 [`system_entrypoint.sh`](docs/第10期/SDD-第10期补充：实验管理增强与资源管理体系.md:859) |
 | `app/models/simulation_task.py` | `SimulationTaskStage` 枚举新增 `CHECKING_GZWEB`、`CHECKING_ROSBRIDGE` |
 | `app/api/v1/endpoints/common/auth.py` | `get_user_routes()` 新增教师端二级路由路径 |
 | `init_db.py` | 更新种子数据以适配新模型 |
@@ -893,8 +902,8 @@ GZWEB_PORT=${GZWEB_PORT} npm start
 launch_args_str = " ".join(f"{k}:={v}" for k, v in launch_args.items()) if launch_args else ""
 
 environment = {
-    "ROSBRIDGE_PORT": str(ros_port),      # → system_entrypoint.sh
-    "GZWEB_PORT": str(gz_port),           # → system_entrypoint.sh
+    "ROSBRIDGE_PORT": str(ros_port),      # → 统一前台守护入口
+    "GZWEB_PORT": str(gz_port),           # → 统一前台守护入口
     "LAUNCH_ARGS": launch_args_str,       # → 教师 startup.sh
 }
 ```
@@ -957,6 +966,7 @@ mark_stage(CHECKING_ROSBRIDGE, SUCCEEDED, ros_ms)
 |---|---|---|
 | v1.0 | 2026-04-04 | 首版发布：第10期补充 SDD，包含模型修正、核心链路补全、教师资源管理页面三大板块 |
 | v1.1 | 2026-04-04 | 六项重要修改：(1) Dry Run 复用学生仿真页面，容器停止后立即清理；(2) 新增系统常驻启动脚本，自动启动 rosbridge/gzweb 并注入端口；(3) 教师启动脚本模板与注释提醒；(4) 文件管理页改为左侧列表→双击进入文件树，右侧 Monaco 编辑器，移除 extract_zip；(5) 环境管理页同样双击进入文件树，启动脚本改为文件存储（不存 DB），基本设置移至左下方可调占比；(6) 文件包/环境包重命名和删除改为右键菜单 |
+| v1.3 | 2026-04-04 | 工程审查后补充三项工程约束：(1) 容器启动链采用统一前台守护入口，任一关键进程退出即判失败；(2) 文件包与环境包文件操作统一收敛到 BundleFileService；(3) 版本发布必须复用 validate 的 blocking 校验，存在阻断项时拒绝发布 |
 
 ---
 
@@ -1009,13 +1019,15 @@ mark_stage(CHECKING_ROSBRIDGE, SUCCEEDED, ros_ms)
 | 按钮 | 条件 | 说明 |
 |---|---|---|
 | 废弃版本 | `publish_status=published` | 切换为 deprecated |
-| 重新发布 | `publish_status=deprecated` | 切换为 published |
+| 重新发布 | `publish_status=deprecated` | 切换为 published；发布前必须再次执行 blocking 校验 |
 | 删除版本 | `publish_status=draft` | 二次确认后删除 |
 | 验证配置 | 始终可用 | 调用 validate API，展示 issues 列表 |
 
 **保存后自动验证**：点击"保存配置"成功后，自动调用 `POST /validate`，若 `valid=false` 则在表单上方显示黄色警告条展示 issues。
 
-**结构化验证结果约束**：`issues` 不再只是一组自由文本，至少包含 `field`、`code`、`severity`、`message` 四个字段。当前强制支持以下阻断类问题：`missing_image`、`missing_bundle`、`empty_bundle`、`missing_env_bundle`、`missing_startup_script`。其中 `severity=blocking` 的问题必须阻止版本发布。
+**发布硬拦截约束**：`PATCH publish-status=published` 不是“只改状态”。它必须复用 `POST /validate` 的同一套 blocking 校验逻辑。只要存在 `severity=blocking` 的问题，就必须返回 `409 VALIDATION_BLOCKING_ISSUE`，并保持版本状态不变。
+
+**结构化验证结果约束**：`issues` 不再只是一组自由文本，至少包含 `field`、`code`、`severity`、`message` 四个字段。当前强制支持以下阻断类问题：`missing_image`、`missing_bundle`、`empty_bundle`、`missing_env_bundle`、`missing_startup_script`。其中 `severity=blocking` 的问题必须阻止版本发布，且 validate 与 publish 不能各自实现两套不同规则。
 
 ### 15.4 实验文件管理页（10-S2 新建）
 
@@ -1253,14 +1265,15 @@ source "$WORKSPACE/devel/setup.bash"
 
 ### 16.1 文件包/环境包 API 复用策略
 
-文件包和环境包的文件操作 API（upload/list/read/save/delete）逻辑高度相似，本期**强制**后端抽取一个 `BundleFileService` 通用服务类：
+文件包和环境包的文件操作 API（upload/list/read/save/delete）逻辑高度相似，本期**强制**后端抽取一个 [`BundleFileService`](edubot-twin-server/app/services/bundle_file_service.py) 通用服务类，并将其提升为 10-S1 交付约束：
 
 - 参数化 `storage_root`（文件包用 `/data/file_bundles/{id}`，环境包用 `/data/env_bundles/{id}`）。
 - 统一路径安全校验、文件大小限制、编码检测、`modified_at`/版本戳冲突检测逻辑。
-- 教师端文件操作 API 端点仅做鉴权和参数解析，实际文件操作委托给 `BundleFileService`。
-- 避免在 `file_bundles.py` 和 `env_bundles.py` 中重复实现相同逻辑（消除冗余坏味道）。
-- 环境包的 `BundleFileService` 需增加 `protected_paths` 参数（如 `["startup.sh"]`），对受保护文件的删除操作返回 403。
-- 上传与保存的幂等 / 冲突语义也必须统一由 `BundleFileService` 落地，禁止两套 bundle 各自定义不同规则。
+- 教师端文件操作 API 端点仅做鉴权和参数解析，实际文件操作委托给 [`BundleFileService`](edubot-twin-server/app/services/bundle_file_service.py)。
+- 避免在 [`file_bundles.py`](edubot-twin-server/app/api/v1/endpoints/teacher/file_bundles.py) 和 [`env_bundles.py`](edubot-twin-server/app/api/v1/endpoints/teacher/env_bundles.py) 中重复实现相同逻辑。
+- 环境包场景通过 `protected_paths` 参数约束（如 `startup.sh`），对受保护文件的删除操作返回 403。
+- 上传与保存的幂等、覆盖冲突、错误码语义统一由 [`BundleFileService`](edubot-twin-server/app/services/bundle_file_service.py) 落地，禁止文件包与环境包各自定义不同规则。
+- `file bundle` 与 `env bundle` 的文件操作测试也必须围绕同一服务编排，至少覆盖普通路径、越权路径、冲突保存、保护路径四类分支。
 
 ### 16.2 前端文件树组件复用策略
 
