@@ -56,14 +56,43 @@ async def check_port_ready(
                 asyncio.open_connection(host, port),
                 timeout=3.0,  # 单次连接超时 3s
             )
+            
+            # 发送一个极简的 HTTP GET 请求，以验证内部是否存活。
+            # 这是为了防止被 docker-proxy 欺骗：如果内部进程未启动，
+            # docker-proxy 会接受 TCP 握手但随后立刻断开连接 (返回 EOF)。
+            writer.write(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            try:
+                await writer.drain()
+            except Exception:
+                pass
+
+            is_alive = False
+            try:
+                # 尝试读取至少1字节数据，0.5秒超时。
+                # 由于 GzWeb 和 ROSBridge 都会响应正常的 HTTP/WS 请求，
+                # 他们要么返回数据（如 HTTP 头），要么保持连接不放。
+                # 唯独 docker-proxy 在后方不通的情况下会立刻发回 b'' (EOF) 并切断连接。
+                data = await asyncio.wait_for(reader.read(1), timeout=0.5)
+                is_alive = bool(data) 
+            except asyncio.TimeoutError:
+                # 如果 0.5s 后没有被切断，说明连接被真实进程维持，视为就绪
+                is_alive = True
+            except Exception:
+                is_alive = False
+
             writer.close()
             try:
                 await writer.wait_closed()
             except Exception:
                 pass
-            elapsed_ms = (time.perf_counter() - start_time) * 1000
-            logger.info(f"端口就绪: {host}:{port}，elapsed={elapsed_ms:.0f}ms")
-            return True, elapsed_ms
+
+            if is_alive:
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                logger.info(f"端口真实就绪: {host}:{port}，elapsed={elapsed_ms:.0f}ms")
+                return True, elapsed_ms
+            else:
+                logger.debug(f"受到 docker-proxy 阻断或未响应 {host}:{port}，继续等待...")
+                await asyncio.sleep(interval_s)
 
         except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
             await asyncio.sleep(interval_s)

@@ -50,6 +50,14 @@ async def allocate_ports(db: AsyncSession) -> tuple[int, int]:
     used_gz_ports = {row[0] for row in rows if row[0] is not None}
     used_ros_ports = {row[1] for row in rows if row[1] is not None}
 
+    # 读取内存中目前正在占用的 Dry Run 端口池
+    from app.core.dry_run_manager import dry_run_manager
+    for container_id in dry_run_manager.list_container_ids():
+        session = dry_run_manager.get(container_id)
+        if session:
+            used_gz_ports.add(session.gzbridge_port)
+            used_ros_ports.add(session.rosbridge_port)
+
     # 找第一个可用的 gzbridge 端口
     gz_port: Optional[int] = None
     for port in range(GZBRIDGE_PORT_RANGE[0], GZBRIDGE_PORT_RANGE[1] + 1):
