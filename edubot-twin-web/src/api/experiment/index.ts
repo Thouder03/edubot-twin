@@ -2,6 +2,7 @@ import request from '@/axios'
 import type {
   BundleFileListResponse,
   BundleFileReadResponse,
+  BundleFileSaveResponse,
   BundleFileUploadResponse,
   DryRunStartResponse,
   EnvBundleCreateRequest,
@@ -196,7 +197,7 @@ export const saveFileBundleFileApi = (
   path: string,
   content: string,
   modifiedAt?: number
-): Promise<IResponse<null>> => {
+): Promise<IResponse<BundleFileSaveResponse>> => {
   return request.post({
     url: `/api/v1/teachers/file-bundles/${bundleId}/files/save`,
     data: { path, content, ...(modifiedAt !== undefined ? { modified_at: modifiedAt } : {}) }
@@ -280,7 +281,7 @@ export const saveEnvBundleFileApi = (
   path: string,
   content: string,
   modifiedAt?: number
-): Promise<IResponse<null>> => {
+): Promise<IResponse<BundleFileSaveResponse>> => {
   return request.post({
     url: `/api/v1/teachers/env-bundles/${envBundleId}/files/save`,
     data: { path, content, ...(modifiedAt !== undefined ? { modified_at: modifiedAt } : {}) }

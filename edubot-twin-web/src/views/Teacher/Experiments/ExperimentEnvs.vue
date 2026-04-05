@@ -98,8 +98,13 @@ const editor = useBundleEditorState(
     }
   },
   async (path: string, content: string, modifiedAt?: number) => {
-    await saveEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path, content, modifiedAt)
-    return {}
+    const res = await saveEnvBundleFileApi(
+      selectedEnvBundle.value!.env_bundle_id,
+      path,
+      content,
+      modifiedAt
+    )
+    return { newModifiedAt: res.data?.modified_at }
   }
 )
 

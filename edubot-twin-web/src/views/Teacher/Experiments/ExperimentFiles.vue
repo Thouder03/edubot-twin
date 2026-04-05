@@ -95,8 +95,13 @@ const editor = useBundleEditorState(
   },
   // saveFn：保存文件内容（transparently pass modifiedAt for conflict detection）
   async (path: string, content: string, modifiedAt?: number) => {
-    await saveFileBundleFileApi(selectedBundle.value!.bundle_id, path, content, modifiedAt)
-    return {}
+    const res = await saveFileBundleFileApi(
+      selectedBundle.value!.bundle_id,
+      path,
+      content,
+      modifiedAt
+    )
+    return { newModifiedAt: res.data?.modified_at }
   }
 )
 

@@ -188,6 +188,10 @@ export interface BundleFileReadResponse {
   modified_at?: number // 文件修改时间戳（Unix timestamp，用于冲突检测）
 }
 
+export interface BundleFileSaveResponse {
+  modified_at: number // 保存后的新 mtime，用于后续冲突检测
+}
+
 export interface BundleFileUploadResponse {
   file_count: number
   total_size_bytes: number
