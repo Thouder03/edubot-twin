@@ -8,13 +8,13 @@ DATABASE_URL = "sqlite+aiosqlite:///./edubot.db"
 if "sqlite" in DATABASE_URL:
     engine = create_async_engine(
         DATABASE_URL,
-        echo=True,
+        echo=False,
         future=True,
     )
 else:
     engine = create_async_engine(
         DATABASE_URL,
-        echo=True,
+        echo=False,
         future=True,
         pool_size=20,
         max_overflow=10,
