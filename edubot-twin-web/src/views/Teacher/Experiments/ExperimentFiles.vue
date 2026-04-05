@@ -309,6 +309,17 @@ const formatSize = (bytes: number) => {
     <!-- 页面标题栏 -->
     <div class="mb-16px flex items-center justify-between">
       <div class="text-18px font-600">实验文件管理</div>
+      <div class="flex items-center gap-8px">
+        <ElButton
+          v-if="viewMode === 'tree' && editor.activePath.value"
+          type="primary"
+          size="small"
+          :disabled="!editor.dirtyMap[editor.activePath.value]"
+          @click="editor.saveCurrentFile()"
+        >
+          保存 (Ctrl+S)
+        </ElButton>
+      </div>
       <ElButton v-if="viewMode === 'list'" type="primary" @click="openCreateDialog">
         + 新建文件包
       </ElButton>

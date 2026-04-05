@@ -67,6 +67,8 @@ export function useBundleEditorState(
   >({})
 
   const loading = ref(false)
+  // 追踪 Monaco 编辑器当前显示的内容（可能未保存）
+  const currentEditorContent = ref<string>('')
 
   // ── 打开文件（单击 = preview，双击 = pinned）────────────────────────────────
 
@@ -186,11 +188,17 @@ export function useBundleEditorState(
 
   function handleContentChange(content: string) {
     if (!activePath.value) return
+    currentEditorContent.value = content
     const cached = fileCache[activePath.value]
     if (cached) {
       const isDirty = content !== cached.content
       markDirty(activePath.value, isDirty)
     }
+  }
+
+  async function saveCurrentFile() {
+    if (!activePath.value) return
+    await saveActiveFile(currentEditorContent.value)
   }
 
   return {
@@ -212,6 +220,7 @@ export function useBundleEditorState(
 
     // 辅助方法
     hasAnyUnsavedChanges,
-    getDirtyPaths
+    getDirtyPaths,
+    saveCurrentFile
   }
 }

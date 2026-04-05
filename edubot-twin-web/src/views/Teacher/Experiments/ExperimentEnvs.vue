@@ -468,6 +468,15 @@ const startDryRun = async () => {
     <div class="mb-16px flex items-center justify-between">
       <div class="text-18px font-600">实验环境管理</div>
       <div class="flex items-center gap-8px">
+        <ElButton
+          v-if="viewMode === 'tree' && editor.activePath.value"
+          type="primary"
+          size="small"
+          :disabled="!editor.dirtyMap[editor.activePath.value]"
+          @click="editor.saveCurrentFile()"
+        >
+          保存 (Ctrl+S)
+        </ElButton>
         <ElButton v-if="viewMode === 'tree'" type="warning" size="small" @click="openDryRunDialog">
           🧪 试运行
         </ElButton>
