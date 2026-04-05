@@ -86,6 +86,10 @@ SYSTEM_ENTRYPOINT_TEMPLATE = """\
 ROSBRIDGE_PORT=${ROSBRIDGE_PORT:-9090}
 GZWEB_PORT=${GZWEB_PORT:-8080}
 GZWEB_DIR=${GZWEB_DIR:-/home/ubuntu20/gzweb}
+WORKSPACE=/home/ubuntu20/catkin_ws
+
+source "/opt/ros/noetic/setup.bash"
+source "$WORKSPACE/devel/setup.bash"
 
 # ── 1. 执行教师自定义启动脚本（source 环境 + roslaunch）────────
 if [ -f "/tmp/startup.sh" ]; then

@@ -239,7 +239,7 @@ async def create_container(
             command=["-c", f"bash {CONTAINER_SYSTEM_ENTRYPOINT}"],
             ports={
                 "8080/tcp": gz_port,
-                "9090/tcp": ros_port,
+                f"{ros_port}/tcp": ros_port, # 同端口映射，避免 rosbridge Host header 检查失败
             },
             volumes=volumes,
             mem_limit="2g",
