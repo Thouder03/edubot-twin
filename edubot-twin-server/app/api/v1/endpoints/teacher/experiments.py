@@ -85,18 +85,29 @@ def _to_publish_log_item(obj) -> ExperimentPublishLogItem:
 
 # ─── 实验 CRUD ─────────────────────────────────────────────────────────────────
 
+_VALID_SORT_FIELDS = {"id", "name", "code", "status", "created_at", "updated_at"}
+_VALID_SORT_ORDERS = {"asc", "desc"}
+
+
 @router.get("", response_model=ApiResponse[ExperimentListResponse], summary="实验列表")
 async def list_experiments(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
     keyword: Optional[str] = Query(default=None, description="按名称或编码搜索"),
     status_filter: Optional[str] = Query(default=None, alias="status", description="按状态过滤"),
+    sort_by: str = Query(default="id", description="排序字段"),
+    sort_order: str = Query(default="asc", description="排序方向 asc/desc"),
     db: AsyncSession = Depends(get_db),
     _: int = Depends(get_current_teacher),
 ):
     """分页查询所有实验列表"""
+    if sort_by not in _VALID_SORT_FIELDS:
+        sort_by = "id"
+    if sort_order not in _VALID_SORT_ORDERS:
+        sort_order = "asc"
     experiments, total = await crud_experiment.list_experiments(
         db, page=page, page_size=page_size, keyword=keyword, status=status_filter,
+        sort_by=sort_by, sort_order=sort_order,
     )
     items: list[ExperimentListItem] = []
     for exp in experiments:

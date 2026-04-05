@@ -18,7 +18,7 @@ import {
   ElSwitch,
   ElTag
 } from 'element-plus'
-import { reactive, ref, unref } from 'vue'
+import { computed, reactive, ref, unref } from 'vue'
 import { useRouter } from 'vue-router'
 import request from '@/axios'
 
@@ -26,7 +26,34 @@ const router = useRouter()
 
 const searchForm = reactive({
   keyword: '',
-  status: ''
+  status: '',
+  sort_by: 'id',
+  sort_order: 'asc' as 'asc' | 'desc'
+})
+
+const sortOptions = [
+  { label: 'ID 升序（默认）', sort_by: 'id', sort_order: 'asc' },
+  { label: 'ID 降序', sort_by: 'id', sort_order: 'desc' },
+  { label: '名称 A→Z', sort_by: 'name', sort_order: 'asc' },
+  { label: '名称 Z→A', sort_by: 'name', sort_order: 'desc' },
+  { label: '最近更新', sort_by: 'updated_at', sort_order: 'desc' },
+  { label: '最早更新', sort_by: 'updated_at', sort_order: 'asc' },
+  { label: '最新创建', sort_by: 'created_at', sort_order: 'desc' },
+  { label: '最早创建', sort_by: 'created_at', sort_order: 'asc' },
+  { label: '状态 A→Z', sort_by: 'status', sort_order: 'asc' },
+  { label: '状态 Z→A', sort_by: 'status', sort_order: 'desc' },
+]
+
+// 用于下拉框的合并 key
+const sortKey = computed({
+  get: () => `${searchForm.sort_by}:${searchForm.sort_order}`,
+  set: (val: string) => {
+    const opt = sortOptions.find((o) => `${o.sort_by}:${o.sort_order}` === val)
+    if (opt) {
+      searchForm.sort_by = opt.sort_by
+      searchForm.sort_order = opt.sort_order as 'asc' | 'desc'
+    }
+  }
 })
 
 const { tableRegister, tableState, tableMethods } = useTable({
@@ -36,7 +63,9 @@ const { tableRegister, tableState, tableMethods } = useTable({
       page: unref(currentPage),
       page_size: unref(pageSize),
       keyword: searchForm.keyword || undefined,
-      status: searchForm.status || undefined
+      status: searchForm.status || undefined,
+      sort_by: searchForm.sort_by,
+      sort_order: searchForm.sort_order
     })
 
     return {
@@ -228,6 +257,8 @@ const handleSearch = () => {
 const handleReset = () => {
   searchForm.keyword = ''
   searchForm.status = ''
+  searchForm.sort_by = 'id'
+  searchForm.sort_order = 'asc'
   currentPage.value = 1
   getList()
 }
@@ -278,6 +309,16 @@ const submitCreateExperiment = async () => {
           <ElOption label="草稿" value="draft" />
           <ElOption label="启用" value="active" />
           <ElOption label="归档" value="archived" />
+        </ElSelect>
+      </ElFormItem>
+      <ElFormItem label="排序">
+        <ElSelect v-model="sortKey" style="width: 160px">
+          <ElOption
+            v-for="opt in sortOptions"
+            :key="`${opt.sort_by}:${opt.sort_order}`"
+            :label="opt.label"
+            :value="`${opt.sort_by}:${opt.sort_order}`"
+          />
         </ElSelect>
       </ElFormItem>
       <ElFormItem>

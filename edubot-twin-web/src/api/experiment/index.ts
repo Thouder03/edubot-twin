@@ -36,6 +36,8 @@ export const getExperimentListApi = (params?: {
   page_size?: number
   keyword?: string
   status?: string
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
 }): Promise<IResponse<ExperimentListResponse>> => {
   return request.get({ url: '/api/v1/teachers/experiments', params })
 }

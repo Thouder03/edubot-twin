@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional
 import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,6 +72,16 @@ async def get_experiment_by_code(db: AsyncSession, code: str) -> Optional[Experi
     return result.scalar_one_or_none()
 
 
+_EXPERIMENT_SORT_FIELDS = {
+    "id": Experiment.id,
+    "name": Experiment.name,
+    "code": Experiment.code,
+    "status": Experiment.status,
+    "created_at": Experiment.created_at,
+    "updated_at": Experiment.updated_at,
+}
+
+
 async def list_experiments(
     db: AsyncSession,
     *,
@@ -79,6 +89,8 @@ async def list_experiments(
     page_size: int,
     keyword: Optional[str],
     status: Optional[str],
+    sort_by: str = "id",
+    sort_order: str = "asc",
 ):
     """分页查询实验列表"""
     query = select(Experiment)
@@ -93,10 +105,13 @@ async def list_experiments(
         query = query.where(Experiment.status == status)
         count_query = count_query.where(Experiment.status == status)
 
+    sort_col = _EXPERIMENT_SORT_FIELDS.get(sort_by, Experiment.id)
+    order_fn = desc if sort_order == "desc" else asc
+
     total = (await db.execute(count_query)).scalar_one()
     rows = (
         await db.execute(
-            query.order_by(Experiment.updated_at.desc())
+            query.order_by(order_fn(sort_col))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
