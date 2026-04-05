@@ -227,11 +227,13 @@ async def read_bundle_file(
     svc = _get_service(bundle)
     try:
         content, encoding = svc.read_file(path)
+        abs_path = svc._safe_path(path)
+        mtime = abs_path.stat().st_mtime if abs_path.exists() else None
     except BundleFileNotFoundError as e:
         _handle_bundle_error(e)
     except PathTraversalError as e:
         _handle_bundle_error(e)
-    return ApiResponse(data=FileReadResponse(content=content, encoding=encoding))
+    return ApiResponse(data=FileReadResponse(content=content, encoding=encoding, modified_at=mtime))
 
 
 @router.post("/{bundle_id}/files/save", response_model=ApiResponse[dict], summary="保存文件内容")

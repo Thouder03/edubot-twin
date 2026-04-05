@@ -19,7 +19,7 @@ import {
   readEnvBundleFileApi,
   saveEnvBundleFileApi
 } from '@/api/experiment'
-import type { EnvBundleListItem } from '@/api/experiment/types'
+import type { EnvBundleListItem, ExperimentVersionResponse } from '@/api/experiment/types'
 import { useBundleWorkspace } from './composables/useBundleWorkspace'
 import { useBundleEditorState } from './composables/useBundleEditorState'
 import { useWorkspaceSettings } from '@/composables/useWorkspaceSettings'
@@ -92,10 +92,14 @@ const { settings } = useWorkspaceSettings()
 const editor = useBundleEditorState(
   async (path: string) => {
     const res = await readEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path)
-    return res.data?.content ?? ''
+    return {
+      content: res.data?.content ?? '',
+      modifiedAt: res.data?.modified_at !== undefined ? Number(res.data.modified_at) : undefined
+    }
   },
-  async (path: string, content: string) => {
-    await saveEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path, content)
+  async (path: string, content: string, modifiedAt?: number) => {
+    await saveEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path, content, modifiedAt)
+    return {}
   }
 )
 
@@ -170,8 +174,14 @@ const confirmLeave = async (): Promise<boolean> => {
       }
     )
     for (const path of dirtyPaths) {
-      const content = editor.fileCache[path]?.content ?? ''
-      await saveEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path, content)
+      const cached = editor.fileCache[path]
+      const content = cached?.content ?? ''
+      await saveEnvBundleFileApi(
+        selectedEnvBundle.value!.env_bundle_id,
+        path,
+        content,
+        cached?.modifiedAt
+      )
     }
     return true
   } catch (action) {
@@ -356,31 +366,72 @@ const submitCreateBundle = async () => {
 
 // ─── Dry Run 试运行 ───────────────────────────────────────────────────────────
 
+// 实验 + 版本两级联动（Dry Run 版本选择）
+interface DryRunExperimentItem {
+  experiment_id: number
+  name: string
+}
+const dryRunExperiments = ref<DryRunExperimentItem[]>([])
+const dryRunVersions = ref<ExperimentVersionResponse[]>([])
+const dryRunSelectedExperimentId = ref<number | undefined>(undefined)
+const dryRunSelectedVersionId = ref<number | undefined>(undefined)
 const dryRunDialogVisible = ref(false)
-const dryRunVersionId = ref('')
 const dryRunLoading = ref(false)
+const dryRunExperimentsLoading = ref(false)
+
+const loadExperimentsForDryRun = async () => {
+  dryRunExperimentsLoading.value = true
+  try {
+    const { getExperimentListApi } = await import('@/api/experiment')
+    const res = await getExperimentListApi({ page: 1, page_size: 200 })
+    dryRunExperiments.value = (res.data?.list ?? []).map((e) => ({
+      experiment_id: e.experiment_id,
+      name: e.name
+    }))
+  } finally {
+    dryRunExperimentsLoading.value = false
+  }
+}
 
 const openDryRunDialog = async () => {
   if (editor.hasAnyUnsavedChanges()) {
     const ok = await confirmLeave()
     if (!ok) return
   }
-  dryRunVersionId.value = ''
+  dryRunSelectedExperimentId.value = undefined
+  dryRunSelectedVersionId.value = undefined
+  dryRunVersions.value = []
   dryRunDialogVisible.value = true
+  await loadExperimentsForDryRun()
+}
+
+const handleDryRunExperimentChange = async (experimentId: number | undefined) => {
+  dryRunSelectedVersionId.value = undefined
+  dryRunVersions.value = []
+  if (!experimentId) return
+  try {
+    const { getExperimentDetailApi } = await import('@/api/experiment')
+    const res = await getExperimentDetailApi(experimentId)
+    dryRunVersions.value = res.data?.versions ?? []
+  } catch (e: any) {
+    ElMessage.error('加载版本列表失败：' + (e?.response?.data?.detail || ''))
+  }
 }
 
 const startDryRun = async () => {
   if (!selectedEnvBundle.value) return
-  const vid = Number(dryRunVersionId.value)
-  if (!vid) {
-    ElMessage.warning('请输入关联的实验版本 ID')
+  if (!dryRunSelectedVersionId.value) {
+    ElMessage.warning('请选择关联的实验版本')
     return
   }
   dryRunLoading.value = true
   try {
-    const res = await startDryRunApi(selectedEnvBundle.value.env_bundle_id, vid)
+    const res = await startDryRunApi(
+      selectedEnvBundle.value.env_bundle_id,
+      dryRunSelectedVersionId.value
+    )
     dryRunDialogVisible.value = false
-    const { simulation_url, container_id } = res.data
+    const { simulation_url, container_id, rosbridge_url } = res.data
     ElMessage.success('测试容器已就绪，正在跳转仿真工作台...')
     const url = router.resolve({
       name: 'Simulation',
@@ -388,6 +439,7 @@ const startDryRun = async () => {
         dry_run: '1',
         container_id,
         simulation_url,
+        rosbridge_url,
         env_bundle_name: selectedEnvBundle.value.name
       }
     }).href
@@ -628,14 +680,45 @@ const startDryRun = async () => {
   </ElDialog>
 
   <!-- Dry Run 对话框 -->
-  <ElDialog v-model="dryRunDialogVisible" title="试运行" width="460px">
+  <ElDialog v-model="dryRunDialogVisible" title="试运行" width="480px">
     <div class="mb-12px text-14px color-#606266">
       创建临时测试容器，验证 startup.sh 和 launch 文件能否正常运行。<br />
       容器结束后立即自动清理。
     </div>
-    <ElForm label-width="130px">
-      <ElFormItem label="关联实验版本 ID" required>
-        <ElInput v-model="dryRunVersionId" placeholder="输入实验版本 ID" type="number" />
+    <ElForm label-width="100px">
+      <ElFormItem label="选择实验" required>
+        <ElSelect
+          v-model="dryRunSelectedExperimentId"
+          :loading="dryRunExperimentsLoading"
+          placeholder="请选择实验"
+          style="width: 100%"
+          clearable
+          filterable
+          @change="handleDryRunExperimentChange"
+        >
+          <ElOption
+            v-for="exp in dryRunExperiments"
+            :key="exp.experiment_id"
+            :label="exp.name"
+            :value="exp.experiment_id"
+          />
+        </ElSelect>
+      </ElFormItem>
+      <ElFormItem label="选择版本" required>
+        <ElSelect
+          v-model="dryRunSelectedVersionId"
+          :disabled="!dryRunSelectedExperimentId || dryRunVersions.length === 0"
+          placeholder="请选择实验版本"
+          style="width: 100%"
+          clearable
+        >
+          <ElOption
+            v-for="v in dryRunVersions"
+            :key="v.version_id"
+            :label="`${v.version_name}（${v.publish_status}）`"
+            :value="v.version_id"
+          />
+        </ElSelect>
       </ElFormItem>
     </ElForm>
     <template #footer>

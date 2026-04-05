@@ -350,36 +350,59 @@ onMounted(async () => {
   }
 
   // ── 页面级 GzWeb 通信初始化 ──
-  try {
-    const res = await getMyContainerApi()
-    const data = res?.data
-    const gzUrl = data?.gzbridge_url
-    const rosUrl = data?.rosbridge_url
-
-    // 同步初始容器状态
-    if (data?.status) {
-      containerStatus.value = data.status
-    }
-
-    if (gzUrl) {
-      console.info('[Simulation] 从 API 获取 gzbridge URL:', gzUrl)
-      initGzBridge(gzUrl)
+  if (isDryRun.value) {
+    // Dry Run 模式：直接从 URL 参数获取 simulation_url（即 gzbridge_url），不调用学生容器 API
+    const simUrl =
+      typeof route.query.simulation_url === 'string' ? route.query.simulation_url : null
+    const rosUrl = typeof route.query.rosbridge_url === 'string' ? route.query.rosbridge_url : null
+    if (simUrl) {
+      console.info('[Simulation][DryRun] 从 query 获取 gzbridge URL:', simUrl)
+      initGzBridge(simUrl)
     } else {
-      console.warn('[Simulation] API 未返回 gzbridge_url，使用 fallback:', gzDefaultConfig.gzwebUrl)
+      console.warn(
+        '[Simulation][DryRun] simulation_url 未传入，使用 fallback:',
+        gzDefaultConfig.gzwebUrl
+      )
       initGzBridge(gzDefaultConfig.gzwebUrl)
     }
-
     if (rosUrl) {
       containerRosUrl.value = rosUrl
-      console.info('[Simulation] 已 provide 容器 rosbridge_url:', rosUrl)
     }
-  } catch (err) {
-    console.warn(
-      '[Simulation] 页面级初始化: 获取容器 API 失败, 使用 fallback:',
-      err,
-      gzDefaultConfig.gzwebUrl
-    )
-    initGzBridge(gzDefaultConfig.gzwebUrl)
+  } else {
+    try {
+      const res = await getMyContainerApi()
+      const data = res?.data
+      const gzUrl = data?.gzbridge_url
+      const rosUrl = data?.rosbridge_url
+
+      // 同步初始容器状态
+      if (data?.status) {
+        containerStatus.value = data.status
+      }
+
+      if (gzUrl) {
+        console.info('[Simulation] 从 API 获取 gzbridge URL:', gzUrl)
+        initGzBridge(gzUrl)
+      } else {
+        console.warn(
+          '[Simulation] API 未返回 gzbridge_url，使用 fallback:',
+          gzDefaultConfig.gzwebUrl
+        )
+        initGzBridge(gzDefaultConfig.gzwebUrl)
+      }
+
+      if (rosUrl) {
+        containerRosUrl.value = rosUrl
+        console.info('[Simulation] 已 provide 容器 rosbridge_url:', rosUrl)
+      }
+    } catch (err) {
+      console.warn(
+        '[Simulation] 页面级初始化: 获取容器 API 失败, 使用 fallback:',
+        err,
+        gzDefaultConfig.gzwebUrl
+      )
+      initGzBridge(gzDefaultConfig.gzwebUrl)
+    }
   }
 
   // ── 启动心跳 ──

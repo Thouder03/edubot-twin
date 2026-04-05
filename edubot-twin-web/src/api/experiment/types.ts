@@ -185,7 +185,7 @@ export interface BundleFileListResponse {
 export interface BundleFileReadResponse {
   content: string
   encoding: string
-  modified_at?: string
+  modified_at?: number // 文件修改时间戳（Unix timestamp，用于冲突检测）
 }
 
 export interface BundleFileUploadResponse {
@@ -223,6 +223,7 @@ export interface EnvBundleDetail extends EnvBundleListItem {
 export interface DryRunStartResponse {
   container_id: string
   simulation_url: string
+  rosbridge_url: string
 }
 
 // ─── 版本验证相关类型（SDD §6.3 / §15.3）────────────────────────────────────

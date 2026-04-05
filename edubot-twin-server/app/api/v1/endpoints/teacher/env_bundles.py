@@ -23,8 +23,8 @@ from app.db.database import get_db
 from app.schemas.common import ApiResponse
 from app.schemas.experiment import (
     EnvBundleCreate,
-    EnvBundleDryRunRequest,
-    EnvBundleDryRunResponse,
+    EnvBundleDryRunByVersionRequest,
+    EnvBundleDryRunByVersionResponse,
     EnvBundleListItem,
     EnvBundleListResponse,
     EnvBundleResponse,
@@ -184,36 +184,55 @@ async def delete_env_bundle(
 
 @router.post(
     "/{env_bundle_id}/dry-run",
-    response_model=ApiResponse[EnvBundleDryRunResponse],
-    summary="环境包 Dry Run 试运行",
+    response_model=ApiResponse[EnvBundleDryRunByVersionResponse],
+    summary="环境包 Dry Run 试运行（SDD §6.2）",
 )
 async def dry_run_env_bundle(
     env_bundle_id: int,
-    data: EnvBundleDryRunRequest,
+    data: EnvBundleDryRunByVersionRequest,
     db: AsyncSession = Depends(get_db),
     teacher_id: int = Depends(get_current_teacher),
 ):
-    """启动 Dry Run 容器并执行就绪检测。"""
+    """
+    启动 Dry Run 容器并执行就绪检测。
+
+    从 version_id 对应的版本配置读取 image_name、launch_file_path、launch_args_template。
+    返回 {container_id, simulation_url}，前端直接跳转复用学生仿真页面。
+    """
     env_bundle = await _get_env_bundle_or_404(db, env_bundle_id, teacher_id)
 
     startup_script_path = str(Path(env_bundle.storage_root) / "startup.sh")
     if not Path(startup_script_path).exists():
         raise HTTPException(status_code=409, detail="MISSING_STARTUP_SCRIPT")
 
+    # 从 version 读取启动配置
+    version = await crud_experiment.get_version(db, data.version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="VERSION_NOT_FOUND")
+
+    image_name = version.image_name or "gzweb_sim:v1"
+    launch_file_path = version.launch_file_path
+    launch_args = dict(version.launch_args_template) if version.launch_args_template else {}
+    readiness_timeout_seconds = 60.0
+
+    # 配额检查（单教师最多 3 个 Dry Run 容器）
+    if dry_run_manager.count_for_teacher(teacher_id) >= 3:
+        raise HTTPException(status_code=429, detail="DRY_RUN_RESOURCE_EXHAUSTED")
+
     gz_port, ros_port = await allocate_ports(db)
     env_volumes = {env_bundle.storage_root: env_bundle.container_target_dir}
 
     try:
         container_id = await create_docker_container(
-            image=data.image_name,
+            image=image_name,
             student_id=teacher_id,
             gz_port=gz_port,
             ros_port=ros_port,
             launch_file_path=(
-                data.launch_file_path
+                launch_file_path
                 or "/home/ubuntu20/catkin_ws/src/bingda_tutorials/launch/simulation_robot.launch"
             ),
-            launch_args=data.launch_args,
+            launch_args=launch_args,
             startup_script_path=startup_script_path,
             env_volumes=env_volumes,
             is_dry_run=True,
@@ -230,8 +249,8 @@ async def dry_run_env_bundle(
             )
         )
 
-        gz_ok, _ = await check_gzweb_ready(gz_port, timeout_s=data.readiness_timeout_seconds)
-        ros_ok, _ = await check_rosbridge_ready(ros_port, timeout_s=data.readiness_timeout_seconds)
+        gz_ok, _ = await check_gzweb_ready(gz_port, timeout_s=readiness_timeout_seconds)
+        ros_ok, _ = await check_rosbridge_ready(ros_port, timeout_s=readiness_timeout_seconds)
         if not gz_ok or not ros_ok:
             await remove_container(container_id)
             dry_run_manager.unregister(container_id)
@@ -243,12 +262,12 @@ async def dry_run_env_bundle(
         raise HTTPException(status_code=500, detail=f"DRY_RUN_START_FAILED: {e}")
 
     host = os.getenv("SERVER_HOST", "localhost")
-    return ApiResponse(data=EnvBundleDryRunResponse(
+    gzbridge_url = f"http://{host}:{gz_port}"
+    rosbridge_url = f"ws://{host}:{ros_port}"
+    return ApiResponse(data=EnvBundleDryRunByVersionResponse(
         container_id=container_id,
-        gzbridge_port=gz_port,
-        rosbridge_port=ros_port,
-        gzbridge_url=f"http://{host}:{gz_port}",
-        rosbridge_url=f"ws://{host}:{ros_port}",
+        simulation_url=gzbridge_url,
+        rosbridge_url=rosbridge_url,
     ))
 
 
@@ -344,11 +363,13 @@ async def read_env_bundle_file(
     svc = _get_service(env_bundle)
     try:
         content, encoding = svc.read_file(path)
+        abs_path = svc._safe_path(path)
+        mtime = abs_path.stat().st_mtime if abs_path.exists() else None
     except BundleFileNotFoundError as e:
         _handle_bundle_error(e)
     except PathTraversalError as e:
         _handle_bundle_error(e)
-    return ApiResponse(data=FileReadResponse(content=content, encoding=encoding))
+    return ApiResponse(data=FileReadResponse(content=content, encoding=encoding, modified_at=mtime))
 
 
 @router.post("/{env_bundle_id}/files/save", response_model=ApiResponse[dict], summary="保存文件内容")

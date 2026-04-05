@@ -231,6 +231,7 @@ class FileReadResponse(BaseModel):
     """文件内容读取响应体"""
     content: str
     encoding: str
+    modified_at: Optional[float] = None  # 文件修改时间戳（用于客户端冲突检测）
 
 
 class FileSaveRequest(BaseModel):
@@ -293,8 +294,21 @@ class EnvBundleUpdateRequest(BaseModel):
     access_level: Optional[Literal["readonly", "readwrite", "hidden"]] = None
 
 
+class EnvBundleDryRunByVersionRequest(BaseModel):
+    """环境包 Dry Run 请求体（SDD §6.2，按 version_id 读取启动配置）"""
+    version_id: int = Field(..., description="关联的实验版本 ID，从中读取 image_name、launch_args 等配置")
+
+
+class EnvBundleDryRunByVersionResponse(BaseModel):
+    """环境包 Dry Run 响应体（SDD §6.2）"""
+    container_id: str = Field(..., description="Dry Run 容器 ID（用于停止时传入 DELETE 端点）")
+    simulation_url: str = Field(..., description="GzWeb 仿真地址，前端直接跳转复用学生仿真页面")
+    rosbridge_url: str = Field(..., description="ROS bridge WebSocket 地址，供仿真页面 ROS3D 接入")
+
+
+# ── 兼容旧实现（内部使用，后续清理） ─────────────────────────────────────────
 class EnvBundleDryRunRequest(BaseModel):
-    """环境包 Dry Run 请求体"""
+    """环境包 Dry Run 请求体（旧版，已被 EnvBundleDryRunByVersionRequest 替代）"""
     image_name: str = Field(default="gzweb_sim:v1", min_length=1, max_length=200)
     launch_file_path: Optional[str] = Field(default=None, max_length=255)
     launch_args: dict[str, str] = Field(default_factory=dict)
@@ -302,7 +316,7 @@ class EnvBundleDryRunRequest(BaseModel):
 
 
 class EnvBundleDryRunResponse(BaseModel):
-    """环境包 Dry Run 响应体"""
+    """环境包 Dry Run 响应体（旧版，已被 EnvBundleDryRunByVersionResponse 替代）"""
     container_id: str
     gzbridge_port: int
     rosbridge_port: int

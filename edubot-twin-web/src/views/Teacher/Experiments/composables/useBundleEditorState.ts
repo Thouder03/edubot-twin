@@ -49,8 +49,12 @@ function detectLanguage(path: string): string {
 // ─── 主 Composable ────────────────────────────────────────────────────────────
 
 export function useBundleEditorState(
-  readFn: (path: string) => Promise<string>,
-  saveFn: (path: string, content: string) => Promise<void>
+  readFn: (path: string) => Promise<{ content: string; modifiedAt?: number }>,
+  saveFn: (
+    path: string,
+    content: string,
+    modifiedAt?: number
+  ) => Promise<{ newModifiedAt?: number }>
 ) {
   const previewPath = ref<string | null>(null)
   const activePath = ref<string | null>(null)
@@ -58,9 +62,9 @@ export function useBundleEditorState(
 
   // reactive 确保 Vue 能追踪属性增删
   const dirtyMap = reactive<Record<string, boolean>>({})
-  const fileCache = reactive<Record<string, { content: string; extension: string; path: string }>>(
-    {}
-  )
+  const fileCache = reactive<
+    Record<string, { content: string; extension: string; path: string; modifiedAt?: number }>
+  >({})
 
   const loading = ref(false)
 
@@ -71,10 +75,11 @@ export function useBundleEditorState(
     if (!fileCache[path]) {
       loading.value = true
       try {
-        const content = await readFn(path)
+        const { content, modifiedAt } = await readFn(path)
         fileCache[path] = {
           path,
           content,
+          modifiedAt,
           extension: detectLanguage(path)
         }
       } catch (e: any) {
@@ -105,8 +110,9 @@ export function useBundleEditorState(
     if (!cached) return
 
     try {
-      await saveFn(path, content)
+      const result = await saveFn(path, content, cached.modifiedAt)
       cached.content = content
+      cached.modifiedAt = result?.newModifiedAt ?? cached.modifiedAt
       dirtyMap[path] = false
       ElMessage.success('保存成功')
     } catch (e: any) {

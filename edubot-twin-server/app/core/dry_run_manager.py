@@ -60,6 +60,10 @@ class DryRunManager:
     def list_container_ids(self) -> list[str]:
         return list(self._sessions.keys())
 
+    def count_for_teacher(self, teacher_id: int) -> int:
+        """统计指定教师当前活跃的 Dry Run 容器数量（SDD §8 资源限制）。"""
+        return sum(1 for s in self._sessions.values() if s.teacher_id == teacher_id)
+
     async def cleanup_all(
         self,
         remover: Callable[[str], Awaitable[None]],

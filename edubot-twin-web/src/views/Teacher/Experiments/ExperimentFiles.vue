@@ -88,11 +88,15 @@ const editor = useBundleEditorState(
   // readFn：读取文件内容
   async (path: string) => {
     const res = await readFileBundleFileApi(selectedBundle.value!.bundle_id, path)
-    return res.data?.content ?? ''
+    return {
+      content: res.data?.content ?? '',
+      modifiedAt: res.data?.modified_at !== undefined ? Number(res.data.modified_at) : undefined
+    }
   },
-  // saveFn：保存文件内容
-  async (path: string, content: string) => {
-    await saveFileBundleFileApi(selectedBundle.value!.bundle_id, path, content)
+  // saveFn：保存文件内容（transparently pass modifiedAt for conflict detection）
+  async (path: string, content: string, modifiedAt?: number) => {
+    await saveFileBundleFileApi(selectedBundle.value!.bundle_id, path, content, modifiedAt)
+    return {}
   }
 )
 
@@ -159,8 +163,14 @@ const confirmLeave = async (): Promise<boolean> => {
     )
     if (action === 'confirm') {
       for (const path of dirtyPaths) {
-        const content = editor.fileCache[path]?.content ?? ''
-        await saveFileBundleFileApi(selectedBundle.value!.bundle_id, path, content)
+        const cached = editor.fileCache[path]
+        const content = cached?.content ?? ''
+        await saveFileBundleFileApi(
+          selectedBundle.value!.bundle_id,
+          path,
+          content,
+          cached?.modifiedAt
+        )
       }
     }
     return true

@@ -194,11 +194,12 @@ export const readFileBundleFileApi = (
 export const saveFileBundleFileApi = (
   bundleId: number,
   path: string,
-  content: string
+  content: string,
+  modifiedAt?: number
 ): Promise<IResponse<null>> => {
   return request.post({
     url: `/api/v1/teachers/file-bundles/${bundleId}/files/save`,
-    data: { path, content }
+    data: { path, content, ...(modifiedAt !== undefined ? { modified_at: modifiedAt } : {}) }
   })
 }
 
@@ -277,11 +278,12 @@ export const readEnvBundleFileApi = (
 export const saveEnvBundleFileApi = (
   envBundleId: number,
   path: string,
-  content: string
+  content: string,
+  modifiedAt?: number
 ): Promise<IResponse<null>> => {
   return request.post({
     url: `/api/v1/teachers/env-bundles/${envBundleId}/files/save`,
-    data: { path, content }
+    data: { path, content, ...(modifiedAt !== undefined ? { modified_at: modifiedAt } : {}) }
   })
 }
 
@@ -293,6 +295,14 @@ export const deleteEnvBundleFileApi = (
     url: `/api/v1/teachers/env-bundles/${envBundleId}/files/delete`,
     params: { path }
   })
+}
+
+export const getExperimentVersionsForDryRunApi = (): Promise<
+  IResponse<
+    { experiment_id: number; experiment_name: string; versions: ExperimentVersionResponse[] }[]
+  >
+> => {
+  return request.get({ url: '/api/v1/teachers/experiments/versions-for-dry-run' })
 }
 
 export const startDryRunApi = (

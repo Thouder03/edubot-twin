@@ -1,56 +1,52 @@
 # 当前任务状态
 
-## 任务：第10期补充SDD（S2 + S1前端补全） 
+## 任务：第10期补充SDD（S2 偏差修复）
 
-### 状态：✅ S2 全部完成
+### 状态：✅ 所有 SDD 偏差已修复完毕
 
 ---
 
-## S2 最终完成清单
+## 偏差修复完成清单
 
-| 工作项 | SDD 来源 | 状态 |
+| 偏差 | 描述 | 状态 |
 |---|---|---|
-| 教师端路由重构（二级菜单） | §12.2/§S2-1 | ✅ |
-| ExperimentList.vue（实验列表+状态切换+删除） | §12.2/§15.2 | ✅ |
-| ExperimentFiles.vue（文件包管理） | §12.2/§15.4 | ✅ |
-| ExperimentEnvs.vue（环境包管理+Dry Run） | §12.2/§15.5 | ✅ |
-| useFileOperations.ts composable | §12.2/§16.2 | ✅ |
-| auth.py 路由权限更新 | §12.2 | ✅ |
-| ExperimentDetail.vue 字段清理（移除 is_visible/startup_script_ref） | §15.3 | ✅ |
-| ExperimentDetail.vue 版本操作按钮（废弃/重新发布/删除/验证） | §15.3 | ✅ |
-| ExperimentDetail.vue env_bundle_id 改为下拉选择 | §15.3 | ✅ |
-| ExperimentDetail.vue 保存后自动验证+黄色警告条 | §15.3 | ✅ |
-| Student/Home.vue 分阶段进度显示（CHECKING_GZWEB等） | §15.1 | ✅ |
-| Student/Home.vue FAILED 时弹出错误弹窗含重试按钮 | §15.1 | ✅ |
-| Student/Home.vue SUCCEEDED 时延迟500ms跳转 | §15.1 | ✅ |
-| Simulation.vue Dry Run 橙色提示条 | §15.5 | ✅ |
-| Simulation.vue Dry Run best-effort 容器清理 | §15.5 | ✅ |
-
-## 新增 API
-
-| 函数 | 端点 | SDD |
-|---|---|---|
-| `deleteExperimentVersionApi` | DELETE /experiments/{eid}/versions/{vid} | §6.3 |
-| `updateExperimentVersionPublishStatusApi` | PATCH .../{vid}/publish-status | §6.3 |
-| `validateExperimentVersionApi` | POST .../{vid}/validate | §6.3 |
-
-## 新增 Types
-
-- `ExperimentVersionIssue`
-- `ExperimentVersionValidateResponse`
-- `ExperimentVersionPublishStatusRequest`
-- `ExperimentVersionPublishStatusResponse`
-- `SimulationTaskStage`（枚举）
+| 偏差1 | Dry Run 后端端点按 SDD 重构（接受 version_id，返回 simulation_url） | ✅ |
+| 偏差2 | Dry Run 版本选择改为两级联动下拉（实验→版本） | ✅ |
+| 偏差3 | 保存冲突检测协议完整透传（modified_at） | ✅ |
+| 偏差4 | 删除旧 Experiments.vue | ✅ |
 
 ---
 
-## 剩余 Lint（纯格式，不影响运行）
+## 偏差1：Dry Run 后端端点按 SDD 重建（最复杂）
 
-ExperimentDetail.vue 中有若干 ESLint 行宽格式换行警告，可用 `npx eslint --fix` 统一处理。
+**SDD 要求**（§6.2）：
+```
+POST /api/v1/teachers/env-bundles/{id}/dry-run
+Request:  { version_id: int }
+Response: { container_id: str, simulation_url: str }
+```
+
+### 修改文件清单
+
+| 文件 | 变更内容 |
+|---|---|
+| `schemas/experiment.py` | 新增 `EnvBundleDryRunByVersionRequest`（接受 `version_id`）和 `EnvBundleDryRunByVersionResponse`（`container_id + simulation_url + rosbridge_url`）；旧 Schema 保留带废弃注释 |
+| `core/dry_run_manager.py` | 新增 `count_for_teacher(teacher_id)` 方法，用于配额检查（SDD §8：每教师最多3个） |
+| `api/v1/endpoints/teacher/env_bundles.py` | Dry Run 路由完全重写：接受 `version_id`，查版本读取 `image_name/launch_file_path/launch_args_template`，检查配额，启动容器并返回 `{container_id, simulation_url, rosbridge_url}` |
+| `src/api/experiment/types.ts` | `DryRunStartResponse` 增加 `rosbridge_url` 字段 |
+| `src/views/Teacher/Experiments/ExperimentEnvs.vue` | 跳转时传入 `rosbridge_url` query 参数 |
+| `src/views/Simulation/Simulation.vue` | Dry Run 模式下从 `route.query.simulation_url` / `rosbridge_url` 获取 GzBridge 初始化地址，跳过调用学生容器 API |
+
+### 技术决策
+- response 在 SDD 基础上额外增加 `rosbridge_url`（SDD 仅定义 `simulation_url`），因为 Simulation.vue 需要用它初始化 ROS3D 连接，SDD 未覆盖此细节但从完整性考虑是必要的。
 
 ---
 
-## 下一步建议（非S2范围）
+## 偏差2/3/4 已在上一轮会话完成（见 0_archive_context.md）
 
-- 后端实现 S1 所有 Endpoints（前端已完全准备就绪）
-- 验收测试：按 SDD §11.2/11.3 场景逐一测试
+---
+
+## 下一步建议（验收阶段）
+- 按 SDD §11.2/11.3 进行功能验收测试
+- 特别验证 Dry Run 全流程：选择版本 → 启动容器 → 跳转仿真页 → 结束清理
+- 验证文件保存冲突检测：双浏览器同时编辑同一文件，后保存者应收到 409 提示
