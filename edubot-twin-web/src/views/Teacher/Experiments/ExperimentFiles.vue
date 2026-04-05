@@ -2,22 +2,25 @@
 /**
  * 实验文件管理页 — /teacher/experiments/files
  *
- * 左侧：文件包列表（单击选中 / 双击进入文件树）+ 右键菜单 重命名/删除
- * 右侧：Monaco 编辑器（点击文件树中的文件打开编辑）
- *
  * 状态 A：文件包列表视图（初始状态）
- * 状态 B：文件树视图（双击进入后，顶部有「← 返回列表」）
+ * 状态 B：文件树视图（双击进入后，完整复用学生端 FileTree.vue 右键菜单）
+ *
+ * SDD §15.4：文件树完全复用 WorkspacePanel 的文件树组件（FileTree.vue），
+ * 通过 useBundleWorkspace 适配不同 API 后端地址。
  */
 import { ContentWrap } from '@/components/ContentWrap'
 import MonacoEditor from '@/components/Monaco/MonacoEditor.vue'
+import FileTree from '@/views/Simulation/panels/WorkspacePanel/FileTree.vue'
 import {
   createFileBundleApi,
   deleteFileBundleApi,
   getFileBundleListApi,
-  patchFileBundleApi
+  patchFileBundleApi,
+  readFileBundleFileApi,
+  saveFileBundleFileApi
 } from '@/api/experiment'
-import type { BundleFileItem, FileBundleListItem } from '@/api/experiment/types'
-import { useFileOperations } from '@/composables/useFileOperations'
+import type { FileBundleListItem } from '@/api/experiment/types'
+import { useBundleWorkspace } from './composables/useBundleWorkspace'
 import {
   ElButton,
   ElDialog,
@@ -32,7 +35,7 @@ import {
   ElTag,
   ElTooltip
 } from 'element-plus'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch, onBeforeUnmount, nextTick } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 
 // ─── 视图状态 ─────────────────────────────────────────────────────────────────
@@ -58,6 +61,25 @@ const fetchBundles = async () => {
 
 fetchBundles()
 
+// ─── 文件包 API 前缀 ──────────────────────────────────────────────────────────
+
+const fileApiPrefix = computed(() =>
+  selectedBundle.value
+    ? `/api/v1/teachers/file-bundles/${selectedBundle.value.bundle_id}/files`
+    : ''
+)
+
+// ─── useBundleWorkspace（完全兼容 FileTree.vue 接口）─────────────────────────
+
+const workspace = useBundleWorkspace(fileApiPrefix)
+
+// 当切换文件包时重载树
+watch(fileApiPrefix, async (newPrefix) => {
+  if (newPrefix && viewMode.value === 'tree') {
+    await workspace.loadTree()
+  }
+})
+
 // ─── 单击选中 ─────────────────────────────────────────────────────────────────
 
 const handleBundleClick = (bundle: FileBundleListItem) => {
@@ -66,29 +88,18 @@ const handleBundleClick = (bundle: FileBundleListItem) => {
 
 // ─── 双击进入文件树 ───────────────────────────────────────────────────────────
 
-const fileApiPrefix = computed(() =>
-  selectedBundle.value
-    ? `/api/v1/teachers/file-bundles/${selectedBundle.value.bundle_id}/files`
-    : ''
-)
-
-const {
-  fileList,
-  loading: fileLoading,
-  fileContent,
-  openedFilePath,
-  hasUnsavedChanges,
-  listFiles,
-  readFile,
-  saveFile,
-  deleteFile,
-  confirmLeave
-} = useFileOperations(fileApiPrefix)
-
 const handleBundleDblClick = async (bundle: FileBundleListItem) => {
+  if (hasUnsavedChanges.value) {
+    const ok = await confirmLeave()
+    if (!ok) return
+  }
   selectedBundle.value = bundle
   viewMode.value = 'tree'
-  await listFiles()
+  workspace.clearSelection()
+  openedFilePath.value = ''
+  fileContent.value = ''
+  hasUnsavedChanges.value = false
+  await workspace.loadTree()
 }
 
 // ─── 返回文件包列表 ──────────────────────────────────────────────────────────
@@ -97,31 +108,16 @@ const handleBackToList = async () => {
   const ok = await confirmLeave()
   if (!ok) return
   viewMode.value = 'list'
-  openedFilePath.value = undefined
+  openedFilePath.value = ''
   fileContent.value = ''
+  hasUnsavedChanges.value = false
 }
 
-// ─── 文件树交互 ───────────────────────────────────────────────────────────────
+// ─── 编辑器状态 ───────────────────────────────────────────────────────────────
 
-const treeFileList = ref<BundleFileItem[]>([])
-
-watch(fileList, (val) => {
-  treeFileList.value = val
-})
-
-const handleFileClick = async (item: BundleFileItem) => {
-  if (item.type === 'dir') return
-  const ok = await confirmLeave()
-  if (!ok) return
-  const path = item.name
-  await readFile(path)
-}
-
-const handleDeleteFile = (item: BundleFileItem) => {
-  deleteFile(item.name).then(() => listFiles())
-}
-
-// ─── 编辑器 ──────────────────────────────────────────────────────────────────
+const openedFilePath = ref('')
+const fileContent = ref('')
+const hasUnsavedChanges = ref(false)
 
 const editorContent = computed({
   get: () => fileContent.value,
@@ -131,10 +127,73 @@ const editorContent = computed({
   }
 })
 
-const handleSave = async () => {
-  if (!openedFilePath.value) return
-  await saveFile(openedFilePath.value, fileContent.value)
+// ─── 点击文件树节点打开文件 ───────────────────────────────────────────────────
+
+const handleSelectFile = async (path: string) => {
+  // 目录节点不打开编辑器
+  const node = workspace.findNodeByPath(workspace.treeData.value, path)
+  if (!node || node.type === 'directory') return
+
+  if (hasUnsavedChanges.value) {
+    const ok = await confirmLeave()
+    if (!ok) return
+  }
+
+  try {
+    const res = await readFileBundleFileApi(selectedBundle.value!.bundle_id, path)
+    openedFilePath.value = path
+    fileContent.value = res.data?.content ?? ''
+    hasUnsavedChanges.value = false
+  } catch (e: any) {
+    ElMessage.error('打开文件失败：' + (e?.response?.data?.detail ?? e.message ?? ''))
+  }
 }
+
+// ─── 保存文件 ─────────────────────────────────────────────────────────────────
+
+const handleSave = async () => {
+  if (!openedFilePath.value || !selectedBundle.value) return
+  try {
+    await saveFileBundleFileApi(
+      selectedBundle.value.bundle_id,
+      openedFilePath.value,
+      fileContent.value
+    )
+    ElMessage.success('保存成功')
+    hasUnsavedChanges.value = false
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail === 'FILE_SAVE_CONFLICT') {
+      ElMessage.error('文件已被其他操作更新，请刷新后重试')
+    } else {
+      ElMessage.error('保存失败：' + (detail ?? e.message ?? ''))
+    }
+  }
+}
+
+// ─── 离开确认 ─────────────────────────────────────────────────────────────────
+
+const confirmLeave = async (): Promise<boolean> => {
+  if (!hasUnsavedChanges.value) return true
+  try {
+    await ElMessageBox.confirm('当前文件有未保存的修改，是否保存后继续？', '未保存修改', {
+      confirmButtonText: '保存后继续',
+      cancelButtonText: '放弃修改',
+      distinguishCancelAndClose: true,
+      type: 'warning'
+    })
+    await handleSave()
+    return true
+  } catch (action) {
+    if (action === 'cancel') return true // 放弃修改
+    return false // 关闭弹窗（不离开）
+  }
+}
+
+onBeforeRouteLeave(async (_to, _from, next) => {
+  const ok = await confirmLeave()
+  next(ok ? undefined : false)
+})
 
 // ─── 上传 ─────────────────────────────────────────────────────────────────────
 
@@ -148,32 +207,11 @@ const handleFileInputChange = async (e: Event) => {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file || !selectedBundle.value) return
-
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    const res = await fetch(
-      `/api/v1/teachers/file-bundles/${selectedBundle.value.bundle_id}/files/upload`,
-      {
-        method: 'POST',
-        body: formData,
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` }
-      }
-    )
-    if (res.ok) {
-      ElMessage.success(`"${file.name}" 上传成功`)
-      await listFiles()
-    } else {
-      ElMessage.error('上传失败')
-    }
-  } catch {
-    ElMessage.error('上传失败')
-  } finally {
-    target.value = ''
-  }
+  await workspace.uploadExternalCommand(file, '.')
+  target.value = ''
 }
 
-// ─── 右键菜单 ─────────────────────────────────────────────────────────────────
+// ─── 文件包列表右键菜单（重命名/删除） ───────────────────────────────────────
 
 const ctxMenu = ref({ visible: false, x: 0, y: 0, bundle: null as FileBundleListItem | null })
 
@@ -186,11 +224,10 @@ const hideCtxMenu = () => {
   ctxMenu.value.visible = false
 }
 
-// 使用全局点击关闭菜单
 onBeforeUnmount(() => document.removeEventListener('click', hideCtxMenu))
 nextTick(() => document.addEventListener('click', hideCtxMenu))
 
-// ─── 重命名 ──────────────────────────────────────────────────────────────────
+// ─── 重命名文件包 ─────────────────────────────────────────────────────────────
 
 const renameDialogVisible = ref(false)
 const renameBundleId = ref<number | null>(null)
@@ -272,14 +309,7 @@ const submitCreateBundle = async () => {
   }
 }
 
-// ─── 路由离开前确认 ───────────────────────────────────────────────────────────
-
-onBeforeRouteLeave(async (_to, _from, next) => {
-  const ok = await confirmLeave()
-  next(ok ? undefined : false)
-})
-
-// ─── 文件大小格式化 ──────────────────────────────────────────────────────────
+// ─── 工具函数 ─────────────────────────────────────────────────────────────────
 
 const formatSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`
@@ -287,26 +317,16 @@ const formatSize = (bytes: number) => {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-const getFileIcon = (item: BundleFileItem) => {
-  if (item.type === 'dir') return '📁'
-  const ext = item.name.split('.').pop() ?? ''
-  const map: Record<string, string> = {
-    py: '🐍',
-    launch: '🚀',
-    yaml: '📋',
-    yml: '📋',
-    sh: '⚙️',
-    md: '📝',
-    txt: '📄',
-    json: '{}',
-    cpp: '⚡',
-    c: '⚡',
-    h: '📎',
-    zip: '🗜️',
-    tar: '🗜️',
-    gz: '🗜️'
-  }
-  return map[ext] ?? '📄'
+// ─── 语言检测 ─────────────────────────────────────────────────────────────────
+
+const detectLanguage = (path: string) => {
+  if (path.endsWith('.py')) return 'python'
+  if (path.endsWith('.launch')) return 'xml'
+  if (path.endsWith('.yaml') || path.endsWith('.yml')) return 'yaml'
+  if (path.endsWith('.sh')) return 'shell'
+  if (path.endsWith('.json')) return 'json'
+  if (path.endsWith('.cpp') || path.endsWith('.c') || path.endsWith('.h')) return 'cpp'
+  return 'plaintext'
 }
 </script>
 
@@ -326,7 +346,7 @@ const getFileIcon = (item: BundleFileItem) => {
       <div class="exp-files-left">
         <!-- 状态 A：文件包列表视图 -->
         <template v-if="viewMode === 'list'">
-          <ElSkeleton v-if="bundlesLoading" :rows="5" animated />
+          <ElSkeleton v-if="bundlesLoading" :rows="5" animated class="pa-12px" />
           <template v-else>
             <div v-if="bundles.length === 0" class="empty-hint">
               <ElEmpty description="暂无文件包">
@@ -340,7 +360,7 @@ const getFileIcon = (item: BundleFileItem) => {
               </ElEmpty>
             </div>
             <div v-else class="bundle-hint text-12px color-#909399 mb-8px">
-              💡 单击选中，<strong>双击</strong>进入文件树
+              💡 单击选中，<strong>双击</strong>进入文件树 | 右键可重命名/删除
             </div>
             <ElScrollbar class="bundle-list-scroll">
               <div
@@ -366,7 +386,7 @@ const getFileIcon = (item: BundleFileItem) => {
           </template>
         </template>
 
-        <!-- 状态 B：文件树视图 -->
+        <!-- 状态 B：文件树视图 — 完整复用 FileTree.vue（含右键菜单） -->
         <template v-if="viewMode === 'tree'">
           <div class="tree-header">
             <ElButton link @click="handleBackToList">← 返回列表</ElButton>
@@ -381,39 +401,16 @@ const getFileIcon = (item: BundleFileItem) => {
               @change="handleFileInputChange"
             />
           </div>
-          <ElScrollbar class="file-tree-scroll">
-            <div v-if="fileLoading" class="pa-16px">
-              <ElSkeleton :rows="4" animated />
-            </div>
-            <div v-else-if="treeFileList.length === 0" class="pa-16px text-center color-#909399">
-              文件包为空，请上传文件
-            </div>
-            <div v-else>
-              <div
-                v-for="item in treeFileList"
-                :key="item.name"
-                :class="[
-                  'file-tree-item',
-                  openedFilePath === item.name && 'file-tree-item--active',
-                  item.type === 'dir' && 'file-tree-item--dir'
-                ]"
-                @click="handleFileClick(item)"
-              >
-                <span class="file-tree-item__icon">{{ getFileIcon(item) }}</span>
-                <span class="file-tree-item__name">{{ item.name }}</span>
-                <ElButton
-                  v-if="item.type === 'file'"
-                  link
-                  type="danger"
-                  size="small"
-                  class="file-tree-item__del"
-                  @click.stop="handleDeleteFile(item)"
-                >
-                  删除
-                </ElButton>
-              </div>
-            </div>
-          </ElScrollbar>
+          <!-- FileTree.vue：与学生端完全一致，自带右键菜单 -->
+          <div class="file-tree-wrap">
+            <FileTree
+              :tree-data="workspace.treeData.value"
+              :loading="workspace.loading.value"
+              :workspace="workspace"
+              @select-file="handleSelectFile"
+              @upload="(file, targetPath) => workspace.uploadExternalCommand(file, targetPath)"
+            />
+          </div>
         </template>
       </div>
 
@@ -421,16 +418,16 @@ const getFileIcon = (item: BundleFileItem) => {
       <div class="exp-files-right">
         <!-- 未进入文件树时的提示 -->
         <div v-if="viewMode === 'list'" class="right-placeholder">
-          <div v-if="!selectedBundle" class="color-#bbb text-14px"> 请先选择一个文件包 </div>
+          <div v-if="!selectedBundle" class="color-#bbb text-14px">请先选择一个文件包</div>
           <div v-else class="bundle-summary">
             <div class="bundle-summary__name">📦 {{ selectedBundle.name }}</div>
             <div class="bundle-summary__meta">
               <ElTag type="info">{{ selectedBundle.file_count }} 个文件</ElTag>
-              <ElTag type="info" class="ml-8px">
-                {{ formatSize(selectedBundle.total_size_bytes) }}
-              </ElTag>
+              <ElTag type="info" class="ml-8px">{{
+                formatSize(selectedBundle.total_size_bytes)
+              }}</ElTag>
             </div>
-            <div class="mt-16px color-#909399 text-13px"> 双击文件包名称可进入文件树编辑 </div>
+            <div class="mt-16px color-#909399 text-13px">双击文件包名称可进入文件树编辑</div>
           </div>
         </div>
 
@@ -446,22 +443,7 @@ const getFileIcon = (item: BundleFileItem) => {
               <ElButton type="primary" size="small" @click="handleSave">保存</ElButton>
             </div>
             <div class="editor-body">
-              <MonacoEditor
-                v-model="editorContent"
-                :language="
-                  openedFilePath?.endsWith('.py')
-                    ? 'python'
-                    : openedFilePath?.endsWith('.launch')
-                      ? 'xml'
-                      : openedFilePath?.endsWith('.yaml') || openedFilePath?.endsWith('.yml')
-                        ? 'yaml'
-                        : openedFilePath?.endsWith('.sh')
-                          ? 'shell'
-                          : openedFilePath?.endsWith('.json')
-                            ? 'json'
-                            : 'plaintext'
-                "
-              />
+              <MonacoEditor v-model="editorContent" :language="detectLanguage(openedFilePath)" />
             </div>
           </template>
         </div>
@@ -470,15 +452,15 @@ const getFileIcon = (item: BundleFileItem) => {
 
     <!-- 状态栏 -->
     <div class="exp-files-statusbar">
-      <template v-if="viewMode === 'list'"> 共 {{ bundles.length }} 个文件包 </template>
+      <template v-if="viewMode === 'list'">共 {{ bundles.length }} 个文件包</template>
       <template v-else>
-        {{ selectedBundle?.name }} | 文件数：{{ treeFileList.length }}
+        {{ selectedBundle?.name }} | 文件数：{{ workspace.treeData.value.length }}
         <span v-if="openedFilePath"> | 当前文件：{{ openedFilePath }}</span>
       </template>
     </div>
   </ContentWrap>
 
-  <!-- 右键菜单 -->
+  <!-- 文件包列表右键菜单（仅在列表视图显示） -->
   <div
     v-if="ctxMenu.visible"
     class="ctx-menu"
@@ -507,7 +489,7 @@ const getFileIcon = (item: BundleFileItem) => {
     </template>
   </ElDialog>
 
-  <!-- 重命名对话框 -->
+  <!-- 重命名文件包对话框 -->
   <ElDialog v-model="renameDialogVisible" title="重命名文件包" width="420px">
     <ElForm label-width="90px">
       <ElFormItem label="新名称" required>
@@ -524,7 +506,7 @@ const getFileIcon = (item: BundleFileItem) => {
 <style lang="less" scoped>
 .exp-files-layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 280px 1fr;
   gap: 12px;
   height: calc(100vh - 260px);
   min-height: 500px;
@@ -560,6 +542,7 @@ const getFileIcon = (item: BundleFileItem) => {
   cursor: pointer;
   border-bottom: 1px solid var(--el-border-color-lighter);
   transition: background 0.2s;
+  user-select: none;
 
   &:hover {
     background: var(--el-fill-color-light);
@@ -610,6 +593,7 @@ const getFileIcon = (item: BundleFileItem) => {
   padding: 8px 12px;
   border-bottom: 1px solid var(--el-border-color);
   background: var(--el-fill-color-lighter);
+  flex-shrink: 0;
 
   &__name {
     flex: 1;
@@ -621,53 +605,11 @@ const getFileIcon = (item: BundleFileItem) => {
   }
 }
 
-.file-tree-scroll {
+/* FileTree.vue 需要占满剩余高度 */
+.file-tree-wrap {
   flex: 1;
-}
-
-.file-tree-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
-  cursor: pointer;
-  font-size: 13px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  transition: background 0.15s;
-
-  &:hover {
-    background: var(--el-fill-color-light);
-
-    .file-tree-item__del {
-      opacity: 1;
-    }
-  }
-
-  &--active {
-    background: var(--el-color-primary-light-9);
-  }
-
-  &--dir {
-    font-weight: 500;
-    color: var(--el-color-primary);
-  }
-
-  &__icon {
-    font-size: 16px;
-  }
-
-  &__name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__del {
-    opacity: 0;
-    transition: opacity 0.15s;
-    flex-shrink: 0;
-  }
+  overflow: hidden;
+  position: relative;
 }
 
 .right-placeholder {
@@ -735,7 +677,7 @@ const getFileIcon = (item: BundleFileItem) => {
   color: var(--el-text-color-secondary);
 }
 
-// 右键菜单
+// 列表视图右键菜单（文件包重命名/删除）
 .ctx-menu {
   position: fixed;
   z-index: 9999;

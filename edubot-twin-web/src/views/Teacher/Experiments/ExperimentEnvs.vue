@@ -2,23 +2,26 @@
 /**
  * 实验环境管理页 — /teacher/experiments/environments
  *
- * 左侧：环境包列表（单击选中 / 双击进入文件树+基本设置）+ 右键菜单
- * 右侧：Monaco 编辑器（含 startup.sh 及其他文件）
- * 基本设置区：container_target_dir / access_level（可拖拽分隔）
- * 试运行：复用学生仿真页面（Simulation.vue）
+ * 状态 A：环境包列表视图
+ * 状态 B：文件树视图（完整复用学生端 FileTree.vue 右键菜单）
+ *         + 基本设置区（可拖拽分隔）
+ *
+ * startup.sh 在文件树中显示为不可删除（useBundleWorkspace protectedPaths 约束）
  */
 import { ContentWrap } from '@/components/ContentWrap'
 import MonacoEditor from '@/components/Monaco/MonacoEditor.vue'
+import FileTree from '@/views/Simulation/panels/WorkspacePanel/FileTree.vue'
 import {
   createEnvBundleApi,
   deleteEnvBundleApi,
   getEnvBundleListApi,
   patchEnvBundleApi,
   startDryRunApi,
-  getFileBundleListApi
+  readEnvBundleFileApi,
+  saveEnvBundleFileApi
 } from '@/api/experiment'
 import type { EnvBundleListItem } from '@/api/experiment/types'
-import { useFileOperations } from '@/composables/useFileOperations'
+import { useBundleWorkspace } from './composables/useBundleWorkspace'
 import {
   ElButton,
   ElDialog,
@@ -63,7 +66,7 @@ const fetchEnvBundles = async () => {
 
 fetchEnvBundles()
 
-// ─── 文件操作 composable ──────────────────────────────────────────────────────
+// ─── 环境包 API 前缀 ──────────────────────────────────────────────────────────
 
 const fileApiPrefix = computed(() =>
   selectedEnvBundle.value
@@ -71,17 +74,15 @@ const fileApiPrefix = computed(() =>
     : ''
 )
 
-const {
-  fileList,
-  loading: fileLoading,
-  fileContent,
-  openedFilePath,
-  hasUnsavedChanges,
-  listFiles,
-  readFile,
-  saveFile,
-  confirmLeave
-} = useFileOperations(fileApiPrefix, { protectedPaths: ['startup.sh'] })
+// ─── useBundleWorkspace（startup.sh 不可删除）────────────────────────────────
+
+const workspace = useBundleWorkspace(fileApiPrefix, ['startup.sh'])
+
+watch(fileApiPrefix, async (newPrefix) => {
+  if (newPrefix && viewMode.value === 'tree') {
+    await workspace.loadTree()
+  }
+})
 
 // ─── 单击选中 ─────────────────────────────────────────────────────────────────
 
@@ -92,13 +93,24 @@ const handleEnvBundleClick = (bundle: EnvBundleListItem) => {
 // ─── 双击进入文件树 ───────────────────────────────────────────────────────────
 
 const handleEnvBundleDblClick = async (bundle: EnvBundleListItem) => {
+  if (hasUnsavedChanges.value) {
+    const ok = await confirmLeave()
+    if (!ok) return
+  }
   selectedEnvBundle.value = bundle
+  settingsForm.value.container_target_dir =
+    (bundle as any).container_target_dir || '/home/ubuntu20/catkin_ws'
+  settingsForm.value.access_level = (bundle as any).access_level || 'readonly'
   viewMode.value = 'tree'
-  await listFiles()
+  workspace.clearSelection()
+  openedFilePath.value = ''
+  fileContent.value = ''
+  hasUnsavedChanges.value = false
+  await workspace.loadTree()
   // 自动打开 startup.sh
-  const startupFile = fileList.value.find((f) => f.name === 'startup.sh')
-  if (startupFile) {
-    await readFile('startup.sh')
+  const startupNode = workspace.findNodeByPath(workspace.treeData.value, 'startup.sh')
+  if (startupNode) {
+    await handleSelectFile('startup.sh')
   }
 }
 
@@ -108,11 +120,26 @@ const handleBackToList = async () => {
   const ok = await confirmLeave()
   if (!ok) return
   viewMode.value = 'list'
-  openedFilePath.value = undefined
+  openedFilePath.value = ''
   fileContent.value = ''
+  hasUnsavedChanges.value = false
 }
 
-// ─── 文件树 ──────────────────────────────────────────────────────────────────
+// ─── 编辑器状态 ───────────────────────────────────────────────────────────────
+
+const openedFilePath = ref('')
+const fileContent = ref('')
+const hasUnsavedChanges = ref(false)
+
+const editorContent = computed({
+  get: () => fileContent.value,
+  set: (val) => {
+    fileContent.value = val
+    hasUnsavedChanges.value = true
+  }
+})
+
+// ─── 语言检测 ─────────────────────────────────────────────────────────────────
 
 const getFileLanguage = (path: string) => {
   const ext = path.split('.').pop() ?? ''
@@ -131,72 +158,72 @@ const getFileLanguage = (path: string) => {
   return map[ext] ?? 'plaintext'
 }
 
-const getFileIcon = (name: string, type: 'file' | 'dir') => {
-  if (type === 'dir') return '📁'
-  if (name === 'startup.sh') return '🚀'
-  const ext = name.split('.').pop() ?? ''
-  const map: Record<string, string> = {
-    py: '🐍',
-    launch: '⚡',
-    yaml: '📋',
-    yml: '📋',
-    sh: '⚙️',
-    md: '📝',
-    txt: '📄',
-    json: '{}',
-    cpp: '💻',
-    zip: '🗜️'
-  }
-  return map[ext] ?? '📄'
-}
+// ─── 打开文件（点击文件树节点） ───────────────────────────────────────────────
 
-const handleFileItemClick = async (name: string, type: 'file' | 'dir') => {
-  if (type === 'dir') return
-  const ok = await confirmLeave()
-  if (!ok) return
-  await readFile(name)
-}
+const handleSelectFile = async (path: string) => {
+  const node = workspace.findNodeByPath(workspace.treeData.value, path)
+  if (!node || node.type === 'directory') return
 
-const handleDeleteFile = async (name: string) => {
-  if (name === 'startup.sh') {
-    ElMessage.warning('启动脚本不可删除')
-    return
+  if (hasUnsavedChanges.value) {
+    const ok = await confirmLeave()
+    if (!ok) return
   }
-  await ElMessageBox.confirm(`确认删除 "${name}" 吗？`, '删除确认', {
-    confirmButtonText: '确认删除',
-    cancelButtonText: '取消',
-    type: 'warning'
-  })
+
   try {
-    await fetch(`${fileApiPrefix.value}/delete?path=${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` }
-    })
-    ElMessage.success('已删除')
-    if (openedFilePath.value === name) {
-      openedFilePath.value = undefined
-      fileContent.value = ''
-    }
-    await listFiles()
-  } catch {
-    ElMessage.error('删除失败')
+    const res = await readEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path)
+    openedFilePath.value = path
+    fileContent.value = res.data?.content ?? ''
+    hasUnsavedChanges.value = false
+  } catch (e: any) {
+    ElMessage.error('打开文件失败：' + (e?.response?.data?.detail ?? e.message ?? ''))
   }
 }
 
-// ─── 编辑器 ──────────────────────────────────────────────────────────────────
-
-const editorContent = computed({
-  get: () => fileContent.value,
-  set: (val) => {
-    fileContent.value = val
-    hasUnsavedChanges.value = true
-  }
-})
+// ─── 保存文件 ─────────────────────────────────────────────────────────────────
 
 const handleSave = async () => {
-  if (!openedFilePath.value) return
-  await saveFile(openedFilePath.value, fileContent.value)
+  if (!openedFilePath.value || !selectedEnvBundle.value) return
+  try {
+    await saveEnvBundleFileApi(
+      selectedEnvBundle.value.env_bundle_id,
+      openedFilePath.value,
+      fileContent.value
+    )
+    ElMessage.success('保存成功')
+    hasUnsavedChanges.value = false
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail === 'FILE_SAVE_CONFLICT') {
+      ElMessage.error('文件已被其他操作更新，请刷新后重试')
+    } else {
+      ElMessage.error('保存失败：' + (detail ?? e.message ?? ''))
+    }
+  }
 }
+
+// ─── 离开确认 ─────────────────────────────────────────────────────────────────
+
+const confirmLeave = async (): Promise<boolean> => {
+  if (!hasUnsavedChanges.value) return true
+  try {
+    await ElMessageBox.confirm('当前文件有未保存的修改，是否保存后继续？', '未保存修改', {
+      confirmButtonText: '保存后继续',
+      cancelButtonText: '放弃修改',
+      distinguishCancelAndClose: true,
+      type: 'warning'
+    })
+    await handleSave()
+    return true
+  } catch (action) {
+    if (action === 'cancel') return true
+    return false
+  }
+}
+
+onBeforeRouteLeave(async (_to, _from, next) => {
+  const ok = await confirmLeave()
+  next(ok ? undefined : false)
+})
 
 // ─── 基本设置 ─────────────────────────────────────────────────────────────────
 
@@ -205,7 +232,6 @@ const settingsForm = ref({
   access_level: 'readonly' as 'readonly' | 'readwrite' | 'hidden'
 })
 
-// 进入文件树时同步设置
 watch(selectedEnvBundle, (bundle) => {
   if (bundle) {
     settingsForm.value.container_target_dir =
@@ -217,10 +243,6 @@ watch(selectedEnvBundle, (bundle) => {
 const savingSettings = ref(false)
 const handleSaveSettings = async () => {
   if (!selectedEnvBundle.value) return
-  if (hasUnsavedChanges.value) {
-    const ok = await confirmLeave()
-    if (!ok) return
-  }
   savingSettings.value = true
   try {
     await patchEnvBundleApi(selectedEnvBundle.value.env_bundle_id, {
@@ -236,9 +258,9 @@ const handleSaveSettings = async () => {
   }
 }
 
-// ─── 左侧面板可拖拽分隔（文件树 / 基本设置） ─────────────────────────────────
+// ─── 可拖拽分隔 ───────────────────────────────────────────────────────────────
 
-const treeHeightPercent = ref(60) // 百分比
+const treeHeightPercent = ref(60)
 const isDragging = ref(false)
 const leftPanelRef = ref<HTMLElement | null>(null)
 
@@ -246,59 +268,35 @@ const startDrag = (e: MouseEvent) => {
   isDragging.value = true
   const startY = e.clientY
   const startPercent = treeHeightPercent.value
-
   const onMove = (ev: MouseEvent) => {
     if (!leftPanelRef.value) return
     const totalH = leftPanelRef.value.clientHeight
     const delta = ((ev.clientY - startY) / totalH) * 100
     treeHeightPercent.value = Math.max(20, Math.min(80, startPercent + delta))
   }
-
   const onUp = () => {
     isDragging.value = false
     document.removeEventListener('mousemove', onMove)
     document.removeEventListener('mouseup', onUp)
   }
-
   document.addEventListener('mousemove', onMove)
   document.addEventListener('mouseup', onUp)
 }
 
-// ─── 上传文件 ─────────────────────────────────────────────────────────────────
+// ─── 上传 ─────────────────────────────────────────────────────────────────────
 
 const uploadInputRef = ref<HTMLInputElement | null>(null)
-
 const triggerUpload = () => uploadInputRef.value?.click()
 
 const handleUploadChange = async (e: Event) => {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
-  if (!file || !selectedEnvBundle.value) return
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    const res = await fetch(
-      `/api/v1/teachers/env-bundles/${selectedEnvBundle.value.env_bundle_id}/files/upload`,
-      {
-        method: 'POST',
-        body: formData,
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` }
-      }
-    )
-    if (res.ok) {
-      ElMessage.success(`"${file.name}" 上传成功`)
-      await listFiles()
-    } else {
-      ElMessage.error('上传失败')
-    }
-  } catch {
-    ElMessage.error('上传失败')
-  } finally {
-    target.value = ''
-  }
+  if (!file) return
+  await workspace.uploadExternalCommand(file, '.')
+  target.value = ''
 }
 
-// ─── 右键菜单 ─────────────────────────────────────────────────────────────────
+// ─── 文件包列表右键菜单（重命名/删除） ───────────────────────────────────────
 
 const ctxMenu = ref({ visible: false, x: 0, y: 0, bundle: null as EnvBundleListItem | null })
 
@@ -406,23 +404,13 @@ const submitCreateBundle = async () => {
 // ─── Dry Run 试运行 ───────────────────────────────────────────────────────────
 
 const dryRunDialogVisible = ref(false)
-const dryRunVersionId = ref<string>('')
-const dryRunVersions = ref<{ version_id: number; label: string }[]>([])
+const dryRunVersionId = ref('')
 const dryRunLoading = ref(false)
 
 const openDryRunDialog = async () => {
   if (hasUnsavedChanges.value) {
     const ok = await confirmLeave()
     if (!ok) return
-  }
-  // 加载可用版本列表
-  try {
-    await getFileBundleListApi({ page: 1, page_size: 200 })
-    // 实际上试运行需要 experiment versions，这里用 file bundle 作临时 placeholder
-    // TODO: 从 experiments API 获取版本列表
-    dryRunVersions.value = []
-  } catch (_e) {
-    // 加载版本列表失败时静默忽略，用户仍可手动输入版本ID
   }
   dryRunVersionId.value = ''
   dryRunDialogVisible.value = true
@@ -432,17 +420,15 @@ const startDryRun = async () => {
   if (!selectedEnvBundle.value) return
   const vid = Number(dryRunVersionId.value)
   if (!vid) {
-    ElMessage.warning('请选择关联的实验版本')
+    ElMessage.warning('请输入关联的实验版本 ID')
     return
   }
-
   dryRunLoading.value = true
   try {
     const res = await startDryRunApi(selectedEnvBundle.value.env_bundle_id, vid)
     dryRunDialogVisible.value = false
     const { simulation_url, container_id } = res.data
     ElMessage.success('测试容器已就绪，正在跳转仿真工作台...')
-    // 跳转学生仿真页（传 dry_run 标记和 container_id）
     const url = router.resolve({
       name: 'Simulation',
       query: {
@@ -456,7 +442,7 @@ const startDryRun = async () => {
   } catch (e: any) {
     const detail = e?.response?.data?.detail
     if (detail === 'DRY_RUN_RESOURCE_EXHAUSTED') {
-      ElMessage.error('测试容器配额已满（最多 3 个），请先关闭已有的测试容器')
+      ElMessage.error('测试容器配额已满（最多 3 个），请先关闭已有测试容器')
     } else {
       ElMessage.error('启动失败：' + (detail || '未知错误'))
     }
@@ -464,13 +450,6 @@ const startDryRun = async () => {
     dryRunLoading.value = false
   }
 }
-
-// ─── 路由离开前确认 ───────────────────────────────────────────────────────────
-
-onBeforeRouteLeave(async (_to, _from, next) => {
-  const ok = await confirmLeave()
-  next(ok ? undefined : false)
-})
 </script>
 
 <template>
@@ -488,7 +467,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
       <div ref="leftPanelRef" class="exp-envs-left">
         <!-- 状态 A：环境包列表 -->
         <template v-if="viewMode === 'list'">
-          <ElSkeleton v-if="envBundlesLoading" :rows="4" animated />
+          <ElSkeleton v-if="envBundlesLoading" :rows="4" animated class="pa-12px" />
           <template v-else>
             <div v-if="envBundles.length === 0" class="empty-hint">
               <ElEmpty>
@@ -502,7 +481,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
               </ElEmpty>
             </div>
             <div v-else class="bundle-hint text-12px color-#909399 mb-8px">
-              💡 单击选中，<strong>双击</strong>进入文件树
+              💡 单击选中，<strong>双击</strong>进入文件树 | 右键可重命名/删除
             </div>
             <ElScrollbar class="bundle-list-scroll">
               <div
@@ -529,7 +508,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
 
         <!-- 状态 B：文件树 + 基本设置 -->
         <template v-if="viewMode === 'tree'">
-          <!-- 文件树区域 -->
+          <!-- 文件树区域（完整复用 FileTree.vue，含右键菜单） -->
           <div class="file-tree-area" :style="{ height: treeHeightPercent + '%' }">
             <div class="tree-header">
               <ElButton link @click="handleBackToList">← 返回列表</ElButton>
@@ -544,44 +523,16 @@ onBeforeRouteLeave(async (_to, _from, next) => {
                 @change="handleUploadChange"
               />
             </div>
-            <ElScrollbar class="file-tree-scroll">
-              <div v-if="fileLoading" class="pa-12px">
-                <ElSkeleton :rows="3" animated />
-              </div>
-              <div v-else>
-                <div
-                  v-for="item in fileList"
-                  :key="item.name"
-                  :class="[
-                    'file-tree-item',
-                    openedFilePath === item.name && 'file-tree-item--active',
-                    item.name === 'startup.sh' && 'file-tree-item--startup'
-                  ]"
-                  @click="handleFileItemClick(item.name, item.type)"
-                >
-                  <span class="file-tree-item__icon">{{ getFileIcon(item.name, item.type) }}</span>
-                  <span class="file-tree-item__name">{{ item.name }}</span>
-                  <ElTag
-                    v-if="item.name === 'startup.sh'"
-                    type="warning"
-                    size="small"
-                    class="mr-4px"
-                  >
-                    受保护
-                  </ElTag>
-                  <ElButton
-                    v-if="item.type === 'file' && item.name !== 'startup.sh'"
-                    link
-                    type="danger"
-                    size="small"
-                    class="file-tree-item__del"
-                    @click.stop="handleDeleteFile(item.name)"
-                  >
-                    删除
-                  </ElButton>
-                </div>
-              </div>
-            </ElScrollbar>
+            <!-- FileTree.vue：startup.sh 在右键菜单中删除选项被禁用 -->
+            <div class="file-tree-wrap">
+              <FileTree
+                :tree-data="workspace.treeData.value"
+                :loading="workspace.loading.value"
+                :workspace="workspace"
+                @select-file="handleSelectFile"
+                @upload="(file, targetPath) => workspace.uploadExternalCommand(file, targetPath)"
+              />
+            </div>
           </div>
 
           <!-- 拖拽分隔条 -->
@@ -594,7 +545,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
           </div>
 
           <!-- 基本设置区 -->
-          <div class="settings-area" :style="{ flex: 1 }">
+          <div class="settings-area">
             <div class="settings-header">基本设置</div>
             <ElForm :model="settingsForm" label-position="top" class="settings-form pa-12px">
               <ElFormItem label="容器目标目录">
@@ -629,7 +580,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
       <div class="exp-envs-right">
         <!-- 列表视图：摘要信息 -->
         <div v-if="viewMode === 'list'" class="right-placeholder">
-          <div v-if="!selectedEnvBundle" class="color-#bbb text-14px"> 请先选择一个环境包 </div>
+          <div v-if="!selectedEnvBundle" class="color-#bbb text-14px">请先选择一个环境包</div>
           <div v-else class="bundle-summary">
             <div class="bundle-summary__name">🔧 {{ selectedEnvBundle.name }}</div>
             <div class="mt-8px">
@@ -641,7 +592,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
           </div>
         </div>
 
-        <!-- 文件树视图：MonacoEditor + 操作按钮 -->
+        <!-- 文件树视图：Monaco 编辑器 -->
         <div v-else class="editor-area">
           <div v-if="!openedFilePath" class="editor-placeholder">
             点击左侧文件树中的文件以打开编辑（含 startup.sh）
@@ -654,7 +605,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
               </span>
               <ElTag v-if="hasUnsavedChanges" type="warning" size="small">未保存</ElTag>
               <ElButton type="primary" size="small" @click="handleSave">保存</ElButton>
-              <ElButton type="warning" size="small" @click="openDryRunDialog">🧪 试运行</ElButton>
+              <ElButton type="warning" size="small" @click="openDryRunDialog"> 🧪 试运行 </ElButton>
             </div>
             <div class="editor-body">
               <MonacoEditor v-model="editorContent" :language="getFileLanguage(openedFilePath)" />
@@ -666,16 +617,14 @@ onBeforeRouteLeave(async (_to, _from, next) => {
 
     <!-- 状态栏 -->
     <div class="exp-envs-statusbar">
-      <template v-if="viewMode === 'list'"> 共 {{ envBundles.length }} 个环境包 </template>
+      <template v-if="viewMode === 'list'">共 {{ envBundles.length }} 个环境包</template>
       <template v-else>
-        {{ selectedEnvBundle?.name }} | 文件数：{{ fileList.length }} | 访问权限：{{
-          settingsForm.access_level
-        }}
+        {{ selectedEnvBundle?.name }} | 访问权限：{{ settingsForm.access_level }}
       </template>
     </div>
   </ContentWrap>
 
-  <!-- 右键菜单 -->
+  <!-- 环境包列表右键菜单 -->
   <div
     v-if="ctxMenu.visible"
     class="ctx-menu"
@@ -723,24 +672,26 @@ onBeforeRouteLeave(async (_to, _from, next) => {
     </template>
   </ElDialog>
 
-  <!-- 试运行对话框 -->
-  <ElDialog v-model="dryRunDialogVisible" title="🧪 试运行" width="480px">
-    <div class="mb-12px text-13px color-#606266">
-      将为您创建一个临时测试容器，验证当前环境包的启动脚本和 launch 文件是否能正常运行。
-      <strong>容器停止后将立即自动清理。</strong>
+  <!-- Dry Run 对话框 -->
+  <ElDialog v-model="dryRunDialogVisible" title="试运行" width="460px">
+    <div class="mb-12px text-14px color-#606266">
+      将为您创建一个临时测试容器，验证启动脚本和 Launch 文件是否能正常运行。<br />
+      容器停止后将立即自动清理。
     </div>
     <ElForm label-width="120px">
-      <ElFormItem label="关联实验版本" required>
+      <ElFormItem label="关联实验版本 ID" required>
         <ElInput
           v-model="dryRunVersionId"
-          placeholder="输入版本 ID（提供镜像和 launch 配置）"
+          placeholder="输入实验版本 ID（version_id）"
           type="number"
         />
       </ElFormItem>
     </ElForm>
     <template #footer>
       <ElButton @click="dryRunDialogVisible = false">取消</ElButton>
-      <ElButton type="warning" :loading="dryRunLoading" @click="startDryRun"> 启动试运行 </ElButton>
+      <ElButton type="warning" :loading="dryRunLoading" @click="startDryRun">
+        🧪 开始试运行
+      </ElButton>
     </template>
   </ElDialog>
 </template>
@@ -748,7 +699,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
 <style lang="less" scoped>
 .exp-envs-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 300px 1fr;
   gap: 12px;
   height: calc(100vh - 260px);
   min-height: 500px;
@@ -784,6 +735,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
   cursor: pointer;
   border-bottom: 1px solid var(--el-border-color-lighter);
   transition: background 0.2s;
+  user-select: none;
 
   &:hover {
     background: var(--el-fill-color-light);
@@ -830,13 +782,6 @@ onBeforeRouteLeave(async (_to, _from, next) => {
   text-align: center;
 }
 
-.file-tree-area {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-height: 20%;
-}
-
 .tree-header {
   display: flex;
   align-items: center;
@@ -856,69 +801,31 @@ onBeforeRouteLeave(async (_to, _from, next) => {
   }
 }
 
-.file-tree-scroll {
-  flex: 1;
-  overflow: auto;
+.file-tree-area {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
-.file-tree-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  cursor: pointer;
-  font-size: 13px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  transition: background 0.15s;
-
-  &:hover {
-    background: var(--el-fill-color-light);
-
-    .file-tree-item__del {
-      opacity: 1;
-    }
-  }
-
-  &--active {
-    background: var(--el-color-primary-light-9);
-  }
-
-  &--startup {
-    font-weight: 600;
-    color: var(--el-color-warning-dark-2);
-    background: var(--el-color-warning-light-9);
-  }
-
-  &__icon {
-    font-size: 15px;
-    flex-shrink: 0;
-  }
-
-  &__name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__del {
-    opacity: 0;
-    transition: opacity 0.15s;
-    flex-shrink: 0;
-  }
+/* FileTree.vue 占满文件树区域剩余高度 */
+.file-tree-wrap {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
 }
 
 .drag-divider {
   height: 8px;
-  cursor: row-resize;
-  background: var(--el-fill-color);
-  border-top: 1px solid var(--el-border-color);
-  border-bottom: 1px solid var(--el-border-color);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s;
+  cursor: row-resize;
+  background: var(--el-fill-color);
+  border-top: 1px solid var(--el-border-color-light);
+  border-bottom: 1px solid var(--el-border-color-light);
   flex-shrink: 0;
+  transition: background 0.2s;
 
   &:hover,
   &--active {
@@ -926,30 +833,32 @@ onBeforeRouteLeave(async (_to, _from, next) => {
   }
 
   &__hint {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--el-text-color-secondary);
-    user-select: none;
+    line-height: 1;
   }
 }
 
 .settings-area {
-  overflow: auto;
-  border-top: 1px solid var(--el-border-color-lighter);
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .settings-header {
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.06em;
   color: var(--el-text-color-secondary);
-  background: var(--el-fill-color-lighter);
+  text-transform: uppercase;
   border-bottom: 1px solid var(--el-border-color-lighter);
+  background: var(--el-fill-color-lighter);
 }
 
 .settings-form {
-  :deep(.el-form-item) {
-    margin-bottom: 12px;
-  }
+  flex: 1;
 }
 
 .right-placeholder {
@@ -1017,6 +926,7 @@ onBeforeRouteLeave(async (_to, _from, next) => {
   color: var(--el-text-color-secondary);
 }
 
+// 环境包列表视图右键菜单
 .ctx-menu {
   position: fixed;
   z-index: 9999;
