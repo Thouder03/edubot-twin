@@ -11,7 +11,7 @@
 """
 
 from fastapi import APIRouter
-from . import containers, students, monitor, experiments
+from . import containers, students, monitor, experiments, file_bundles, env_bundles
 
 # 创建教师路由聚合器
 router = APIRouter()
@@ -21,6 +21,12 @@ router = APIRouter()
 
 # 实验管理（第10期新增）
 router.include_router(experiments.router, prefix="/experiments", tags=["教师-实验管理"])
+
+# 文件包管理（10-S1-6 新增）
+router.include_router(file_bundles.router, prefix="/file-bundles", tags=["教师-文件包管理"])
+
+# 环境包管理（10-S1-4 新增）
+router.include_router(env_bundles.router, prefix="/env-bundles", tags=["教师-环境包管理"])
 
 # 容器监控（第五期）—— 具体路径，优先注册
 router.include_router(monitor.router, prefix="/containers/monitor", tags=["教师-容器监控"])

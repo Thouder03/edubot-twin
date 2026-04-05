@@ -9,6 +9,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_student_id
+from app.core.readiness_checker import (
+    check_gzweb_ready,
+    check_rosbridge_ready,
+    ReadinessTimeout,
+)
 from app.crud import container as crud_container
 from app.crud import experiment as crud_experiment
 from app.crud import simulation_task as crud_task
@@ -77,15 +82,48 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
             )
 
             health_start = time.perf_counter()
-            if container.status.value != "running":
-                raise RuntimeError("container health check failed")
-            await crud_task.mark_stage(
-                db,
-                task=task,
-                stage=SimulationTaskStage.HEALTH_CHECKING,
-                status="SUCCEEDED",
-                elapsed_ms=int((time.perf_counter() - health_start) * 1000),
-            )
+
+            # 10-S1-8: 拆分健康检测为 CHECKING_GZWEB + CHECKING_ROSBRIDGE
+            # 获取容器端口（通过容器记录或端口分配器获取宿主机端口）
+            gz_port = getattr(container, 'gz_port', None)
+            ros_port = getattr(container, 'ros_port', None)
+
+            if gz_port:
+                await crud_task.mark_stage(
+                    db, task=task,
+                    stage=SimulationTaskStage.CHECKING_GZWEB,
+                    status="IN_PROGRESS", elapsed_ms=0,
+                )
+                gzweb_ok, gzweb_ms = await check_gzweb_ready(gz_port)
+                if not gzweb_ok:
+                    raise RuntimeError("GZWEB_NOT_READY")
+                await crud_task.mark_stage(
+                    db, task=task,
+                    stage=SimulationTaskStage.CHECKING_GZWEB,
+                    status="SUCCEEDED",
+                    elapsed_ms=int(gzweb_ms),
+                )
+
+            if ros_port:
+                await crud_task.mark_stage(
+                    db, task=task,
+                    stage=SimulationTaskStage.CHECKING_ROSBRIDGE,
+                    status="IN_PROGRESS", elapsed_ms=0,
+                )
+                ros_ok, ros_ms = await check_rosbridge_ready(ros_port)
+                if not ros_ok:
+                    raise RuntimeError("ROSBRIDGE_NOT_READY")
+                await crud_task.mark_stage(
+                    db, task=task,
+                    stage=SimulationTaskStage.CHECKING_ROSBRIDGE,
+                    status="SUCCEEDED",
+                    elapsed_ms=int(ros_ms),
+                )
+
+            if not gz_port and not ros_port:
+                # 无端口信息时降级为简单状态检查（向后兼容）
+                if container.status.value != "running":
+                    raise RuntimeError("container health check failed")
 
             await crud_task.finish_task(
                 db,
@@ -207,9 +245,15 @@ async def distribute_files(
     db: AsyncSession = Depends(get_db),
     student_id: int = Depends(get_current_student_id),
 ):
+    # 10-S1-12: 可见性过滤同步移除 is_visible 条件
     version = await crud_experiment.get_version(db, data.version_id)
-    if not version or not version.is_visible or version.publish_status.value != "published":
+    if not version or version.publish_status.value != "published":
         raise HTTPException(status_code=404, detail="EXPERIMENT_VERSION_NOT_FOUND")
+    from app.models.experiment import ExperimentStatus
+    exp = await crud_experiment.get_experiment(db, version.experiment_id)
+    if not exp or exp.status != ExperimentStatus.ACTIVE:
+        raise HTTPException(status_code=404, detail="EXPERIMENT_VERSION_NOT_FOUND")
+
 
     if not version.file_bundle_id:
         raise HTTPException(status_code=400, detail="NO_FILE_BUNDLE_ATTACHED")
@@ -257,8 +301,16 @@ async def start_simulation(
     db: AsyncSession = Depends(get_db),
     student_id: int = Depends(get_current_student_id),
 ):
+    # 10-S1-12: 可见性过滤改为 Experiment.status=active + publish_status=published
+    # 移除原 is_visible 条件
     version = await crud_experiment.get_version(db, data.version_id)
-    if not version or not version.is_visible or version.publish_status.value != "published":
+    if not version or version.publish_status.value != "published":
+        raise HTTPException(status_code=404, detail="EXPERIMENT_VERSION_NOT_FOUND")
+
+    # 验证父实验状态为 active
+    from app.models.experiment import ExperimentStatus
+    exp = await crud_experiment.get_experiment(db, version.experiment_id)
+    if not exp or exp.status != ExperimentStatus.ACTIVE:
         raise HTTPException(status_code=404, detail="EXPERIMENT_VERSION_NOT_FOUND")
 
     existing = await crud_container.get_container_by_user(db, student_id)

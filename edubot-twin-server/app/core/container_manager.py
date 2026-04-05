@@ -111,55 +111,114 @@ async def create_container(
     student_id: int,
     gz_port: int,
     ros_port: int,
+    *,
+    # ── 启动配置（10-S1-7）──────────────────────────────────────────
+    launch_file_path: str = "/home/ubuntu20/catkin_ws/src/bingda_tutorials/launch/simulation_robot.launch",
+    launch_args: Optional[dict[str, str]] = None,
+    startup_script_path: Optional[str] = None,
+    # ── 文件挂载（10-S1-7）──────────────────────────────────────────
+    env_volumes: Optional[dict[str, str]] = None,
+    # ── 运行模式（10-S1-7）──────────────────────────────────────────
+    is_dry_run: bool = False,
 ) -> str:
     """
-    创建并启动 Docker 容器
+    创建并启动 Docker 容器（10-S1-7 重构：动态 launch 注入 + 系统常驻入口脚本）
 
-    Args:
-        image: 镜像名 (如 gzweb_sim:v1)
-        student_id: 学生 ID（用于容器命名和标签）
-        gz_port: 宿主机 gzbridge 映射端口
-        ros_port: 宿主机 rosbridge 映射端口
+    按四组数据分层实现：
+    1. 镜像 / 端口：image, student_id, gz_port, ros_port
+    2. 启动配置：launch_file_path, launch_args, startup_script_path
+    3. 文件挂载：env_volumes
+    4. 运行模式：is_dry_run（标签区分正式仿真 vs Dry Run）
 
-    Returns:
-        容器 short_id (12 位 hex)
+    :param image: 镜像名（如 gzweb_sim:v1）
+    :param student_id: 学生 ID（用于容器命名和标签）
+    :param gz_port: 宿主机 gzweb 映射端口
+    :param ros_port: 宿主机 rosbridge 映射端口
+    :param launch_file_path: ROS launch 文件路径（仅在无 startup_script_path 时作为默认 entrypoint）
+    :param launch_args: launch 参数字典（格式化为 LAUNCH_ARGS 环境变量注入容器）
+    :param startup_script_path: 教师自定义启动脚本宿主机路径（来自 env_bundle.storage_root/startup.sh）
+    :param env_volumes: 额外 Volume 挂载映射 {host_path: container_path}（环境文件）
+    :param is_dry_run: True 表示 Dry Run 试运行容器（添加 dry-run 标签，停止后立即清理）
+    :returns: 容器 short_id（12 位 hex）
 
-    Raises:
-        DockerConnectionError: Docker 不可达
-        APIError: 容器创建失败（如端口冲突、镜像不存在）
+    向后兼容：所有新增参数有默认值，现有调用方无需修改即可继续工作。
     """
+    from app.core.system_entrypoint import (
+        ensure_system_entrypoint,
+        CONTAINER_STARTUP_SCRIPT,
+        CONTAINER_SYSTEM_ENTRYPOINT,
+    )
+
     def _sync():
         client = get_docker_client()
+        # ── 1. 镜像 / 端口配置 ─────────────────────────────────────────────────
         container_name = f"edubot-sim-{student_id}"
+        if is_dry_run:
+            # Dry Run 容器使用独立命名，避免与正式仿真容器冲突
+            import time
+            container_name = f"edubot-dryrun-{student_id}-{int(time.time())}"
 
-        # 初始化学生工作区目录（第七期新增）
+        # ── 2. 启动配置：LAUNCH_ARGS 格式化 + 环境变量注入 ──────────────────────
+        # launch_args 格式化为 roslaunch 参数字符串（教师 startup.sh 中通过 $LAUNCH_ARGS 引用）
+        launch_args_str = (
+            " ".join(f"{k}:={v}" for k, v in launch_args.items())
+            if launch_args else ""
+        )
+        environment = {
+            "ROSBRIDGE_PORT": str(ros_port),  # → 系统常驻启动脚本
+            "GZWEB_PORT": str(gz_port),       # → 系统常驻启动脚本
+            "LAUNCH_ARGS": launch_args_str,   # → 教师 startup.sh 中 $LAUNCH_ARGS
+            "DISPLAY": ":0",
+        }
+
+        # ── 3. 文件挂载：工作区 + 系统脚本 + 教师脚本 + 环境文件 ────────────────
+
+        # 初始化学生工作区目录
         try:
             workspace_path = create_student_workspace(student_id)
         except Exception as e:
             logger.error(f"学生工作区初始化失败: {e}")
             workspace_path = None
 
-        # 构建 Volume 挂载配置（第七期新增）
         volumes = {}
-        # X11
-        volumes["/tmp/.X11-unix"]={
-            "bind": "/tmp/.X11-unix",
-            "mode": "rw",
-        }
+        # X11 显示
+        volumes["/tmp/.X11-unix"] = {"bind": "/tmp/.X11-unix", "mode": "rw"}
+        # 学生工作区
         if workspace_path and workspace_path.exists():
             volumes[str(workspace_path)] = {
                 "bind": "/home/student/workspace",
                 "mode": "rw",
             }
-            logger.info(f"工作区 Volume 挂载: {workspace_path} -> /home/student/workspace")
-        
-        # ROS 模板目录（只读挂载）
-        templates_host = str(TEMPLATES_DIR)
+        # ROS 模板目录（只读）
         if TEMPLATES_DIR.exists():
-            volumes[templates_host] = {
-                "bind": "/opt/templates",
+            volumes[str(TEMPLATES_DIR)] = {"bind": "/opt/templates", "mode": "ro"}
+
+        # 系统常驻启动脚本（10-S1-7b）
+        system_entrypoint_host = str(ensure_system_entrypoint())
+        volumes[system_entrypoint_host] = {
+            "bind": CONTAINER_SYSTEM_ENTRYPOINT,
+            "mode": "ro",
+        }
+
+        # 教师自定义启动脚本（来自 env_bundle.storage_root/startup.sh）
+        if startup_script_path and os.path.exists(startup_script_path):
+            volumes[startup_script_path] = {
+                "bind": CONTAINER_STARTUP_SCRIPT,
                 "mode": "ro",
             }
+            logger.info(f"教师启动脚本已挂载: {startup_script_path} → {CONTAINER_STARTUP_SCRIPT}")
+
+        # 额外环境文件 Volume（env_bundle 文件）
+        if env_volumes:
+            for host_path, container_path in env_volumes.items():
+                volumes[host_path] = {"bind": container_path, "mode": "ro"}
+                logger.info(f"环境文件 Volume 挂载: {host_path} → {container_path}")
+
+        # ── 4. 运行模式：标签区分容器类型 ─────────────────────────────────────────
+        labels = {
+            "edubot.student_id": str(student_id),
+            "edubot.type": "dry-run" if is_dry_run else "simulation",
+        }
 
         # 清理同名残留容器（防止 name conflict）
         try:
@@ -169,46 +228,39 @@ async def create_container(
         except NotFound:
             pass
 
-        # 临时方案，TODO: 优化
-        # 准备启动命令：在启动前注入 websocket_external_port 以解决宿主机端口映射导致的 Host header 校验失败问题
-        entrypoint_cmd = "/home/ubuntu20/gzweb/dev_entrypoint.sh"
-        launch_file = "/home/ubuntu20/catkin_ws/src/bingda_tutorials/launch/simulation_robot.launch"
-        # 使用 sed 在 rosbridge_websocket.launch 的 include 块中动态插入 websocket_external_port 参数（幂等处理）
-        patch_cmd = (
-            f"grep -q 'websocket_external_port' {launch_file} || "
-            f"sed -i '/rosbridge_websocket.launch/,/<\/include>/ "
-            f"s|<\/include>|<arg name=\"websocket_external_port\" value=\"{ros_port}\" /><\/include>|' "
-            f"{launch_file}"
-        )
-        
+
+        # 容器入口：统一前台守护入口（system_entrypoint.sh）
+        # 教师自定义 startup.sh 由系统脚本内部调用（10-S1-7b）
         container = client.containers.run(
             image=image,
             detach=True,
             name=container_name,
-            entrypoint="/bin/bash",                             # 临时方案，TODO: 优化
-            command=["-c", f"{patch_cmd} && {entrypoint_cmd}"], # 临时方案，TODO: 优化
+            entrypoint="/bin/bash",
+            command=["-c", f"bash {CONTAINER_SYSTEM_ENTRYPOINT}"],
             ports={
                 "8080/tcp": gz_port,
                 "9090/tcp": ros_port,
             },
-            volumes=volumes,          # 第七期新增：Volume 挂载
+            volumes=volumes,
             mem_limit="2g",
             nano_cpus=2_000_000_000,  # 2 CPU cores
-            labels={
-                "edubot.student_id": str(student_id),
-                "edubot.type": "simulation",
-            },
+            labels=labels,
             remove=False,
             privileged=False,
             security_opt=["no-new-privileges:true"],
             network=EDUBOT_NETWORK,
             shm_size="512m",
-            devices=["/dev/dri:/dev/dri"],#启用显卡
-            environment=["DISPLAY=:0"],#启用显示器
+            devices=["/dev/dri:/dev/dri"],
+            environment=environment,
+        )
+        logger.info(
+            f"容器已创建: {container.short_id} name={container_name} "
+            f"gz_port={gz_port} ros_port={ros_port} dry_run={is_dry_run}"
         )
         return container.short_id
 
     return await _run_in_executor(_sync)
+
 
 
 # ─── 容器启动 ───────────────────────────────────────────────

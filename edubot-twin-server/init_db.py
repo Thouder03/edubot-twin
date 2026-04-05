@@ -22,6 +22,7 @@ from app.models.container import SimContainer  # noqa: F401
 from app.models.container_metrics import ContainerMetrics  # noqa: F401
 from app.models.experiment import (
     Experiment,
+    ExperimentEnvBundle,  # noqa: F401（10-S1-4 新增模型）
     ExperimentFileBundle,  # noqa: F401
     ExperimentPublishLog,
     ExperimentStatus,
@@ -143,6 +144,7 @@ async def _seed_experiments(db: AsyncSession, teacher_id: int) -> None:
 
         for v_spec in spec["versions"]:
             is_published = v_spec["publish_status"] == PublishStatus.PUBLISHED
+            # 10-S1-1: 移除 is_visible 字段（可见性由 publish_status + Experiment.status 决定）
             version = ExperimentVersion(
                 experiment_id=exp.id,
                 version_name=v_spec["version_name"],
@@ -152,7 +154,6 @@ async def _seed_experiments(db: AsyncSession, teacher_id: int) -> None:
                 launch_args_template=v_spec["launch_args_template"],
                 publish_status=v_spec["publish_status"],
                 published_at=now if is_published else None,
-                is_visible=True,
             )
             db.add(version)
             await db.flush()

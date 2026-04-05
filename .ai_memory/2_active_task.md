@@ -1,30 +1,38 @@
 # 当前任务状态
 
-## 最新进展：文件树 Bug 修复 (2026-03-29)
+## 最后完成：10-S1 实验管理增强与资源管理体系（已完成）
+**完成时间**：2026-04-05
 
-### 已修复的三个 Bug
-**文件：** `FileTreeContainer.vue`
+### S1 完成项清单
+- [x] 10-S1-1: 删除 ExperimentVersion.is_visible（可见性改由 Experiment.status+publish_status 决定）
+- [x] 10-S1-2: ExperimentFileBundle 新增 name/storage_root/file_count/total_size_bytes，删除 experiment_id/checksum
+- [x] 10-S1-3: 删除 ExperimentVersion.startup_script_ref（改为 startup.sh 文件存储在环境包中）
+- [x] 10-S1-4: 新增 ExperimentEnvBundle 模型
+- [x] 10-S1-5: ExperimentVersion 新增 env_bundle_id 外键
+- [x] 10-S1-6: 新增文件包 API（/teachers/file-bundles/*）
+- [x] 10-S1-7: container_manager.create_container 新增 launch_args/startup_script_path/env_volumes/is_dry_run 参数
+- [x] 10-S1-7b: system_entrypoint.py（统一前台守护入口，废弃 hardcode patch_cmd）
+- [x] 10-S1-8: SimulationTaskStage 新增 CHECKING_GZWEB + CHECKING_ROSBRIDGE
+- [x] 10-S1-9: 实验状态机 + 删除 API（draft→active→archived→active，active 不可回退）
+- [x] 10-S1-10: 版本发布状态机 + 删除 API
+- [x] 10-S1-11: 版本 validate API + 发布前 blocking 强制校验
+- [x] 10-S1-12: 学生可见性查询重构（JOIN Experiment.status=active）
+- [x] 10-S1 测试：29/29 全部通过
 
-**Bug 1 - 文件打不开**：
-- 根因：旧代码用 `@click` 绑定在 `FileTreeNodeRenderer` 上，但 `@he-tree/vue` 会拦截拖拽相关的鼠标事件，导致 click 不触发
-- 修复：改用 he-tree 官方的 `@click:node` 事件，回调参数是 `stat` 对象（`.data` 包含节点数据）
+### 新增文件列表
+- app/models/experiment.py（重构）
+- app/crud/experiment.py（重构）
+- app/schemas/experiment.py（重构）
+- app/services/bundle_file_service.py（新增）
+- app/core/readiness_checker.py（新增）
+- app/core/system_entrypoint.py（新增）
+- app/api/v1/endpoints/teacher/file_bundles.py（新增）
+- app/api/v1/endpoints/teacher/env_bundles.py（新增）
+- app/api/v1/endpoints/teacher/experiments.py（重构）
+- app/api/v1/endpoints/student/simulation.py（更新）
+- tests/test_s1_integration.py（新增，29 个测试用例）
 
-**Bug 2 - 文件夹打不开**：
-- 根因：同 Bug 1，click 事件被 he-tree 拦截，导致 `onSelectFile` → `toggleNodeExpand` 无法触发
-- 修复：同 Bug 1（`@click:node` 统一处理点击）
-
-**Bug 3 - 拖拽无法移动文件**：
-- 根因：旧代码监听 `@drop` 事件，但 he-tree 实际发出的是 `@after-drop`（无参数）
-- 旧代码的 `stat.dragNode?.data` 等属性路径全部错误
-- 修复：改用 `@after-drop` + 从 `dragContext`（`import { dragContext } from '@he-tree/vue'`）读取拖拽信息
-  - `dragContext.dragNode.data` = 被拖动节点数据
-  - `dragContext.targetInfo.parent?.data?.path` = 目标目录路径
-
-### he-tree v2.10.x API 关键笔记
-- 点击事件：`@click:node` → 回调参数 `(stat: Stat)`, `stat.data` 是节点数据
-- 拖拽完成：`@after-drop` → 无参数，从 `dragContext` 读取
-- `dragContext.targetInfo` 类型是 `StartInfo { parent: Stat | null, dragNode: Stat, ... }`
-- `eachDroppable` 参数是 `Stat`，通过 `stat.data` 访问节点
-
-## 下一步行动
-- [ ] 等待分配新功能
+## 下一步（S2 阶段）
+- 前端：实验管理路由拆分为二级菜单，文件包/环境包管理页 UI
+- 前端：学生端首页就绪检测进度展示（CHECKING_GZWEB/CHECKING_ROSBRIDGE）
+- 后端：Dry Run 触发端点与自动清理逻辑
