@@ -6,6 +6,7 @@ import {
   deleteExperimentVersionApi,
   getEnvBundleListApi,
   getExperimentDetailApi,
+  getFileBundleListApi,
   publishExperimentVersionApi,
   updateExperimentVersionApi,
   updateExperimentVersionPublishStatusApi,
@@ -17,7 +18,8 @@ import type {
   ExperimentVersionCreateRequest,
   ExperimentVersionIssue,
   ExperimentVersionResponse,
-  ExperimentVersionUpdateRequest
+  ExperimentVersionUpdateRequest,
+  FileBundleListItem
 } from '@/api/experiment/types'
 import {
   ElAlert,
@@ -54,7 +56,7 @@ const editForm = reactive({
   environment_key: '',
   image_name: '',
   launch_file_path: '',
-  file_bundle_id: '',
+  file_bundle_id: '' as string | number,
   env_bundle_id: '' as string | number
 })
 const editorText = ref<string>('{}')
@@ -92,9 +94,10 @@ const versionForm = reactive<{
   env_bundle_id: ''
 })
 
-// ─── 环境包下拉列表 ───────────────────────────────────────────────────────────
+// ─── 下拉选项数据 ─────────────────────────────────────────────────────────────
 
 const envBundleOptions = ref<EnvBundleListItem[]>([])
+const fileBundleOptions = ref<FileBundleListItem[]>([])
 
 const loadEnvBundles = async () => {
   try {
@@ -105,7 +108,31 @@ const loadEnvBundles = async () => {
   }
 }
 
-onMounted(loadEnvBundles)
+const loadFileBundles = async () => {
+  try {
+    const res = await getFileBundleListApi({ page: 1, page_size: 200 })
+    fileBundleOptions.value = res.data?.list ?? []
+  } catch {
+    // 静默忽略，不影响主流程
+  }
+}
+
+const imageOptions = computed(() => {
+  const merged = new Set<string>(['gzweb_sim:v1'])
+  currentVersions.value.forEach((v) => {
+    if (v.image_name?.trim()) {
+      merged.add(v.image_name)
+    }
+  })
+  return Array.from(merged).map((value) => ({
+    label: value,
+    value
+  }))
+})
+
+onMounted(async () => {
+  await Promise.all([loadEnvBundles(), loadFileBundles()])
+})
 
 // ─── 状态映射 ─────────────────────────────────────────────────────────────────
 
@@ -153,7 +180,7 @@ const syncEditFormFromSelected = (version: ExperimentVersionResponse | null) => 
   editForm.environment_key = version.environment_key
   editForm.image_name = version.image_name
   editForm.launch_file_path = version.launch_file_path
-  editForm.file_bundle_id = version.file_bundle_id ? String(version.file_bundle_id) : ''
+  editForm.file_bundle_id = version.file_bundle_id ?? ''
   editForm.env_bundle_id = version.env_bundle_id ?? ''
   editorText.value = JSON.stringify(version.launch_args_template || {}, null, 2)
 }
@@ -551,7 +578,7 @@ fetchExperimentDetail()
         <ElCard shadow="never">
           <template #header>
             <div class="flex items-center justify-between">
-              <span class="font-600">配置编辑区（Monaco）</span>
+              <span class="font-600">配置编辑区</span>
               <ElTag :type="isDraftVersion ? 'warning' : 'info'">
                 {{ isDraftVersion ? 'draft 可编辑' : 'published/deprecated 只读' }}
               </ElTag>
@@ -566,13 +593,43 @@ fetchExperimentDetail()
               <ElInput v-model="editForm.environment_key" :disabled="!isDraftVersion" />
             </ElFormItem>
             <ElFormItem label="镜像">
-              <ElInput v-model="editForm.image_name" :disabled="!isDraftVersion" />
+              <ElSelect
+                v-model="editForm.image_name"
+                :disabled="!isDraftVersion"
+                filterable
+                allow-create
+                default-first-option
+                placeholder="请选择或输入镜像"
+                style="width: 100%"
+              >
+                <ElOption
+                  v-for="item in imageOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </ElSelect>
             </ElFormItem>
+            <!--
             <ElFormItem label="启动文件">
               <ElInput v-model="editForm.launch_file_path" :disabled="!isDraftVersion" />
             </ElFormItem>
-            <ElFormItem label="文件包 ID">
-              <ElInput v-model="editForm.file_bundle_id" :disabled="!isDraftVersion" />
+            -->
+            <ElFormItem label="文件包">
+              <ElSelect
+                v-model="editForm.file_bundle_id"
+                :disabled="!isDraftVersion"
+                clearable
+                placeholder="请选择文件包（可选）"
+                style="width: 100%"
+              >
+                <ElOption
+                  v-for="bundle in fileBundleOptions"
+                  :key="bundle.bundle_id"
+                  :label="`${bundle.name}（ID: ${bundle.bundle_id}）`"
+                  :value="bundle.bundle_id"
+                />
+              </ElSelect>
             </ElFormItem>
             <!-- env_bundle_id：下拉选择已创建的环境包（SDD §15.3） -->
             <ElFormItem label="环境包">
