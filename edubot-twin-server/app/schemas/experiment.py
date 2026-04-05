@@ -293,6 +293,23 @@ class EnvBundleUpdateRequest(BaseModel):
     access_level: Optional[Literal["readonly", "readwrite", "hidden"]] = None
 
 
+class EnvBundleDryRunRequest(BaseModel):
+    """环境包 Dry Run 请求体"""
+    image_name: str = Field(default="gzweb_sim:v1", min_length=1, max_length=200)
+    launch_file_path: Optional[str] = Field(default=None, max_length=255)
+    launch_args: dict[str, str] = Field(default_factory=dict)
+    readiness_timeout_seconds: float = Field(default=20.0, ge=3.0, le=120.0)
+
+
+class EnvBundleDryRunResponse(BaseModel):
+    """环境包 Dry Run 响应体"""
+    container_id: str
+    gzbridge_port: int
+    rosbridge_port: int
+    gzbridge_url: str
+    rosbridge_url: str
+
+
 # ─── 学生端 Schema ─────────────────────────────────────────────────────────────
 
 class StudentAvailableVersionItem(BaseModel):

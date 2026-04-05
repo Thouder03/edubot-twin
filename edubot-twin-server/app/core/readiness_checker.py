@@ -69,13 +69,21 @@ async def check_port_ready(
             await asyncio.sleep(interval_s)
 
 
-async def check_gzweb_ready(gz_port: int, host: str = "127.0.0.1") -> tuple[bool, float]:
+async def check_gzweb_ready(
+    gz_port: int,
+    host: str = "127.0.0.1",
+    timeout_s: float = 60.0,
+) -> tuple[bool, float]:
     """检测 gzweb HTTP 端口就绪"""
     logger.info(f"开始检测 gzweb 端口就绪: {host}:{gz_port}")
-    return await check_port_ready(host, gz_port, timeout_s=60.0, interval_s=2.0)
+    return await check_port_ready(host, gz_port, timeout_s=timeout_s, interval_s=2.0)
 
 
-async def check_rosbridge_ready(ros_port: int, host: str = "127.0.0.1") -> tuple[bool, float]:
+async def check_rosbridge_ready(
+    ros_port: int,
+    host: str = "127.0.0.1",
+    timeout_s: float = 60.0,
+) -> tuple[bool, float]:
     """检测 rosbridge WebSocket 端口就绪"""
     logger.info(f"开始检测 rosbridge 端口就绪: {host}:{ros_port}")
-    return await check_port_ready(host, ros_port, timeout_s=60.0, interval_s=2.0)
+    return await check_port_ready(host, ros_port, timeout_s=timeout_s, interval_s=2.0)

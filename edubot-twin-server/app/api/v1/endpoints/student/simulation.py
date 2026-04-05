@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -12,7 +13,6 @@ from app.core.security import get_current_student_id
 from app.core.readiness_checker import (
     check_gzweb_ready,
     check_rosbridge_ready,
-    ReadinessTimeout,
 )
 from app.crud import container as crud_container
 from app.crud import experiment as crud_experiment
@@ -63,12 +63,28 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
             )
 
             create_start = time.perf_counter()
+            startup_script_path = None
+            env_volumes: dict[str, str] = {}
+            if version.env_bundle_id:
+                env_bundle = await crud_experiment.get_env_bundle(db, version.env_bundle_id)
+                if not env_bundle:
+                    raise RuntimeError("MISSING_ENV_BUNDLE")
+                startup_script = Path(env_bundle.storage_root) / "startup.sh"
+                if not startup_script.exists():
+                    raise RuntimeError("MISSING_STARTUP_SCRIPT")
+                startup_script_path = str(startup_script)
+                env_volumes[env_bundle.storage_root] = env_bundle.container_target_dir
+
             container = await crud_container.create_container(
                 db,
                 ContainerCreate(
                     user_id=student_id,
                     image_name=version.image_name,
                     current_version_id=version.id,
+                    launch_file_path=version.launch_file_path,
+                    launch_args=version.launch_args_template or {},
+                    startup_script_path=startup_script_path,
+                    env_volumes=env_volumes,
                 ),
             )
             if container.status.value == "error":
@@ -84,9 +100,9 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
             health_start = time.perf_counter()
 
             # 10-S1-8: 拆分健康检测为 CHECKING_GZWEB + CHECKING_ROSBRIDGE
-            # 获取容器端口（通过容器记录或端口分配器获取宿主机端口）
-            gz_port = getattr(container, 'gz_port', None)
-            ros_port = getattr(container, 'ros_port', None)
+            # 使用模型字段中的宿主机映射端口
+            gz_port = getattr(container, "gzbridge_port", None)
+            ros_port = getattr(container, "rosbridge_port", None)
 
             if gz_port:
                 await crud_task.mark_stage(
@@ -312,6 +328,14 @@ async def start_simulation(
     exp = await crud_experiment.get_experiment(db, version.experiment_id)
     if not exp or exp.status != ExperimentStatus.ACTIVE:
         raise HTTPException(status_code=404, detail="EXPERIMENT_VERSION_NOT_FOUND")
+
+    if version.env_bundle_id:
+        env_bundle = await crud_experiment.get_env_bundle(db, version.env_bundle_id)
+        if not env_bundle:
+            raise HTTPException(status_code=409, detail="MISSING_ENV_BUNDLE")
+        startup_script = Path(env_bundle.storage_root) / "startup.sh"
+        if not startup_script.exists():
+            raise HTTPException(status_code=409, detail="MISSING_STARTUP_SCRIPT")
 
     existing = await crud_container.get_container_by_user(db, student_id)
 

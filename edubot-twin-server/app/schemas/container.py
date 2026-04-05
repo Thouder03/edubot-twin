@@ -16,6 +16,13 @@ class ContainerCreate(BaseModel):
     cpu_limit: float = Field(default=1.0, ge=0.1, le=4.0, description="CPU 配额 (核心数)")
     memory_limit: int = Field(default=2048, ge=256, le=8192, description="内存配额 (MB)")
 
+    # 10-S1 动态注入链路
+    launch_file_path: Optional[str] = Field(default=None, max_length=255)
+    launch_args: dict[str, str] = Field(default_factory=dict)
+    startup_script_path: Optional[str] = Field(default=None, max_length=512)
+    env_volumes: dict[str, str] = Field(default_factory=dict)
+    is_dry_run: bool = False
+
     @property
     def student_id(self) -> int:
         """兼容旧代码中的 student_id 读取。"""

@@ -18,7 +18,13 @@ async def create_container(
     db: AsyncSession, data: ContainerCreate
 ) -> SimContainer:
     """
-    创建仿真容器：先写 DB（status=CREATING），再调 Docker SDK
+    创建仿真容器：先写 DB（status=CREATING），再调 Docker SDK。
+
+    支持 10-S1 动态注入参数链路：
+    - launch_file_path / launch_args
+    - startup_script_path
+    - env_volumes
+    - is_dry_run
 
     若 Docker 操作失败，status 改为 ERROR 并记录 error_message。
     """
@@ -45,6 +51,11 @@ async def create_container(
             student_id=data.user_id,
             gz_port=gz_port,
             ros_port=ros_port,
+            launch_file_path=data.launch_file_path or "/home/ubuntu20/catkin_ws/src/bingda_tutorials/launch/simulation_robot.launch",
+            launch_args=data.launch_args,
+            startup_script_path=data.startup_script_path,
+            env_volumes=data.env_volumes,
+            is_dry_run=data.is_dry_run,
         )
         container.container_id = docker_id
         container.status = ContainerStatus.RUNNING

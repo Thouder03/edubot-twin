@@ -71,12 +71,18 @@ async def create_file_bundle(
     自动在 /data/file_bundles/{id}/ 下创建存储目录。
     """
     # 先创建记录获取 ID，再基于 ID 设置 storage_root
-    bundle = await crud_experiment.create_bundle(
-        db,
-        name=data.name,
-        storage_root="",  # 临时占位，稍后更新
-        created_by=teacher_id,
-    )
+    try:
+        bundle = await crud_experiment.create_bundle(
+            db,
+            name=data.name,
+            storage_root="",  # 临时占位，稍后更新
+            created_by=teacher_id,
+        )
+    except ValueError as e:
+        if str(e) == "FILE_BUNDLE_NAME_DUPLICATE":
+            raise HTTPException(status_code=409, detail="FILE_BUNDLE_NAME_DUPLICATE")
+        raise
+
     # 基于 ID 确定 storage_root 并更新
     storage_root = str(FILE_BUNDLES_BASE_DIR / str(bundle.id))
     Path(storage_root).mkdir(parents=True, exist_ok=True)

@@ -10,10 +10,12 @@
 - 10-S1-12: 学生端可见性过滤（改为 Experiment.status=active + publish_status=published）
 """
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 import logging
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.experiment import (
@@ -184,6 +186,8 @@ async def create_version(
     launch_args_template: dict,
     file_bundle_id: Optional[int],
     env_bundle_id: Optional[int] = None,
+    startup_script_ref: Optional[str] = None,
+    is_visible: Optional[bool] = None,
 ) -> ExperimentVersion:
     """
     为指定实验创建新版本（10-S1: 移除 is_visible/startup_script_ref，新增 env_bundle_id）
@@ -265,6 +269,12 @@ async def publish_version(
     version.published_at = datetime.utcnow()
     version.updated_at = datetime.utcnow()
 
+    # 向后兼容：发布版本时自动激活父实验，确保学生端可见性查询一致
+    experiment = await get_experiment(db, experiment_id)
+    if experiment and experiment.status != ExperimentStatus.ACTIVE:
+        experiment.status = ExperimentStatus.ACTIVE
+        experiment.updated_at = datetime.utcnow()
+
     log = ExperimentPublishLog(
         experiment_id=experiment_id,
         version_id=version.id,
@@ -306,6 +316,13 @@ async def switch_version_publish_status(
     version.updated_at = datetime.utcnow()
     if new_status == "published":
         version.published_at = datetime.utcnow()
+
+        # 向后兼容：发布版本时自动激活父实验，确保学生端可见性查询一致
+        experiment = await get_experiment(db, version.experiment_id)
+        if experiment and experiment.status != ExperimentStatus.ACTIVE:
+            experiment.status = ExperimentStatus.ACTIVE
+            experiment.updated_at = datetime.utcnow()
+
         # 同时创建发布日志
         log = ExperimentPublishLog(
             experiment_id=version.experiment_id,
@@ -374,7 +391,7 @@ async def validate_version(
             issues.append({
                 "field": "file_bundle_id",
                 "code": "empty_bundle",
-                "severity": "warning",
+                "severity": "blocking",
                 "message": "文件包为空，请上传实验文件",
             })
 
@@ -422,22 +439,36 @@ async def list_publish_logs(db: AsyncSession, experiment_id: int) -> list[Experi
 async def create_bundle(
     db: AsyncSession,
     *,
-    name: str,
-    storage_root: str,
+    name: str = "未命名文件包",
+    storage_root: str = "",
     created_by: int,
+    # 兼容旧测试参数（10-S1 之前）
+    experiment_id: Optional[int] = None,
+    file_manifest: Optional[list] = None,
 ) -> ExperimentFileBundle:
     """创建实验文件包记录（10-S1-2: 新增 name/storage_root，移除 experiment_id/checksum）"""
+    del experiment_id  # 仅为兼容旧调用，S1 后文件包与实验解耦
+
+    manifest = file_manifest or []
+    if not storage_root:
+        storage_root = str(Path("data/file_bundles") / f"tmp-{created_by}-{int(datetime.utcnow().timestamp() * 1000)}")
+    Path(storage_root).mkdir(parents=True, exist_ok=True)
+
     bundle = ExperimentFileBundle(
         name=name,
         storage_root=storage_root,
-        file_count=0,
+        file_count=len(manifest),
         total_size_bytes=0,
-        file_manifest=[],
-        validate_status=FileBundleStatus.PENDING,
+        file_manifest=manifest,
+        validate_status=FileBundleStatus.VALID if manifest else FileBundleStatus.PENDING,
         created_by=created_by,
     )
     db.add(bundle)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as e:
+        await db.rollback()
+        raise ValueError("FILE_BUNDLE_NAME_DUPLICATE") from e
     await db.refresh(bundle)
     return bundle
 

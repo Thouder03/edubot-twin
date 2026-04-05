@@ -122,6 +122,9 @@ class ExperimentFileBundle(Base):
     - validate_status: 上传后自动设为 valid；storage_root 为空时设为 invalid
     """
     __tablename__ = "experiment_file_bundles"
+    __table_args__ = (
+        UniqueConstraint("name", "created_by", name="uk_file_bundle_name_created_by"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 10-S1-2: 新增 name（每个教师内唯一，唯一约束 per created_by）

@@ -3,12 +3,19 @@
 
 端点前缀：/api/v1/teachers/env-bundles
 """
+import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.container_manager import create_container as create_docker_container
+from app.core.container_manager import remove_container
+from app.core.dry_run_manager import DryRunSession, dry_run_manager
+from app.core.port_allocator import allocate_ports
+from app.core.readiness_checker import check_gzweb_ready, check_rosbridge_ready
 from app.core.security import get_current_teacher
 from app.core.system_entrypoint import create_env_bundle_startup_script
 from app.crud import experiment as crud_experiment
@@ -16,6 +23,8 @@ from app.db.database import get_db
 from app.schemas.common import ApiResponse
 from app.schemas.experiment import (
     EnvBundleCreate,
+    EnvBundleDryRunRequest,
+    EnvBundleDryRunResponse,
     EnvBundleListItem,
     EnvBundleListResponse,
     EnvBundleResponse,
@@ -171,6 +180,100 @@ async def delete_env_bundle(
         await crud_experiment.delete_env_bundle(db, env_bundle=env_bundle)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post(
+    "/{env_bundle_id}/dry-run",
+    response_model=ApiResponse[EnvBundleDryRunResponse],
+    summary="环境包 Dry Run 试运行",
+)
+async def dry_run_env_bundle(
+    env_bundle_id: int,
+    data: EnvBundleDryRunRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    """启动 Dry Run 容器并执行就绪检测。"""
+    env_bundle = await _get_env_bundle_or_404(db, env_bundle_id, teacher_id)
+
+    startup_script_path = str(Path(env_bundle.storage_root) / "startup.sh")
+    if not Path(startup_script_path).exists():
+        raise HTTPException(status_code=409, detail="MISSING_STARTUP_SCRIPT")
+
+    gz_port, ros_port = await allocate_ports(db)
+    env_volumes = {env_bundle.storage_root: env_bundle.container_target_dir}
+
+    try:
+        container_id = await create_docker_container(
+            image=data.image_name,
+            student_id=teacher_id,
+            gz_port=gz_port,
+            ros_port=ros_port,
+            launch_file_path=(
+                data.launch_file_path
+                or "/home/ubuntu20/catkin_ws/src/bingda_tutorials/launch/simulation_robot.launch"
+            ),
+            launch_args=data.launch_args,
+            startup_script_path=startup_script_path,
+            env_volumes=env_volumes,
+            is_dry_run=True,
+        )
+
+        dry_run_manager.register(
+            DryRunSession(
+                container_id=container_id,
+                env_bundle_id=env_bundle_id,
+                teacher_id=teacher_id,
+                gzbridge_port=gz_port,
+                rosbridge_port=ros_port,
+                created_at=datetime.utcnow(),
+            )
+        )
+
+        gz_ok, _ = await check_gzweb_ready(gz_port, timeout_s=data.readiness_timeout_seconds)
+        ros_ok, _ = await check_rosbridge_ready(ros_port, timeout_s=data.readiness_timeout_seconds)
+        if not gz_ok or not ros_ok:
+            await remove_container(container_id)
+            dry_run_manager.unregister(container_id)
+            raise HTTPException(status_code=504, detail="DRY_RUN_READINESS_TIMEOUT")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DRY_RUN_START_FAILED: {e}")
+
+    host = os.getenv("SERVER_HOST", "localhost")
+    return ApiResponse(data=EnvBundleDryRunResponse(
+        container_id=container_id,
+        gzbridge_port=gz_port,
+        rosbridge_port=ros_port,
+        gzbridge_url=f"http://{host}:{gz_port}",
+        rosbridge_url=f"ws://{host}:{ros_port}",
+    ))
+
+
+@router.delete(
+    "/dry-run/{container_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="停止并清理 Dry Run 容器",
+)
+async def stop_dry_run_container(
+    container_id: str,
+    teacher_id: int = Depends(get_current_teacher),
+):
+    """停止并删除 Dry Run 容器（仅创建者可操作）。"""
+    session = dry_run_manager.get(container_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="DRY_RUN_NOT_FOUND")
+    if session.teacher_id != teacher_id:
+        raise HTTPException(status_code=403, detail="FORBIDDEN")
+
+    try:
+        await remove_container(container_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DRY_RUN_REMOVE_FAILED: {e}")
+    finally:
+        dry_run_manager.unregister(container_id)
 
 
 # ─── 环境包文件操作 ───────────────────────────────────────────────────────────────
