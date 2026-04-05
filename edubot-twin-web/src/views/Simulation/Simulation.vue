@@ -405,8 +405,10 @@ onMounted(async () => {
     }
   }
 
-  // ── 启动心跳 ──
-  startHeartbeat()
+  // ── 启动心跳（Dry Run 模式下教师无学生容器，跳过）──
+  if (!isDryRun.value) {
+    startHeartbeat()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -414,10 +416,12 @@ onBeforeUnmount(() => {
   saveLayoutToStorage()
   disposeGzBridge()
 
-  // 组件卸载时用 sendBeacon 通知后端停止容器
-  const token = userStore.getToken
-  if (token) {
-    stopOnExitApi(token)
+  // 组件卸载时用 sendBeacon 通知后端停止容器（Dry Run 模式由 stopDryRunApi 负责清理）
+  if (!isDryRun.value) {
+    const token = userStore.getToken
+    if (token) {
+      stopOnExitApi(token)
+    }
   }
 
   // 恢复原始暗色模式状态

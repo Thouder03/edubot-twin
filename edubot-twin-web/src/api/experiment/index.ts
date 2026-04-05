@@ -319,5 +319,9 @@ export const startDryRunApi = (
 }
 
 export const stopDryRunApi = (containerId: string): Promise<IResponse<null>> => {
-  return request.delete({ url: `/api/v1/teachers/dry-run/${containerId}` })
+  return request.delete({ url: `/api/v1/teachers/env-bundles/dry-run/${containerId}` })
+}
+
+export const cleanupMyDryRunsApi = (): Promise<IResponse<null>> => {
+  return request.delete({ url: '/api/v1/teachers/env-bundles/dry-run/mine/all' })
 }

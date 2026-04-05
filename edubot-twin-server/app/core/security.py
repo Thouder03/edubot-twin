@@ -56,6 +56,34 @@ def verify_token(token: str) -> Optional[dict]:
         return None
 
 
+async def get_current_user_id(
+    authorization: str = Header(
+        ...,
+        description="Bearer token，格式: Bearer <jwt_token>"
+    ),
+) -> int:
+    """从 Authorization Header 提取 user_id，不限角色（任何已登录用户可用）。"""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header 格式错误，需要 'Bearer <token>'"
+        )
+    token = authorization[7:]
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Token 无效或已过期"
+        )
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Token 中缺少 user_id"
+        )
+    return user_id
+
+
 async def get_current_student_id(
     authorization: str = Header(
         ...,

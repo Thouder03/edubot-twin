@@ -16,6 +16,7 @@ import {
   getEnvBundleListApi,
   patchEnvBundleApi,
   startDryRunApi,
+  cleanupMyDryRunsApi,
   readEnvBundleFileApi,
   saveEnvBundleFileApi
 } from '@/api/experiment'
@@ -451,11 +452,34 @@ const startDryRun = async () => {
     window.open(url, '_blank')
   } catch (e: any) {
     const detail = e?.response?.data?.detail
-    ElMessage.error(
-      detail === 'DRY_RUN_RESOURCE_EXHAUSTED'
-        ? '测试容器配额已满（最多 3 个），请先关闭已有测试容器'
-        : '启动失败：' + (detail || '未知错误')
-    )
+    if (detail === 'DRY_RUN_RESOURCE_EXHAUSTED') {
+      // 残留会话（通常因页面异常退出导致清理未执行），自动清理后重试一次
+      try {
+        await cleanupMyDryRunsApi()
+        const res = await startDryRunApi(
+          selectedEnvBundle.value!.env_bundle_id,
+          dryRunSelectedVersionId.value!
+        )
+        dryRunDialogVisible.value = false
+        const { simulation_url, container_id, rosbridge_url } = res.data
+        ElMessage.success('测试容器已就绪，正在跳转仿真工作台...')
+        const url = router.resolve({
+          name: 'Simulation',
+          query: {
+            dry_run: '1',
+            container_id,
+            simulation_url,
+            rosbridge_url,
+            env_bundle_name: selectedEnvBundle.value!.name
+          }
+        }).href
+        window.open(url, '_blank')
+      } catch {
+        ElMessage.error('残留容器清理失败，请刷新页面后重试')
+      }
+    } else {
+      ElMessage.error('启动失败：' + (detail || '未知错误'))
+    }
   } finally {
     dryRunLoading.value = false
   }

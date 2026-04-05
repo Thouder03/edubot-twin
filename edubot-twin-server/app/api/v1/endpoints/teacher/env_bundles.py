@@ -272,6 +272,29 @@ async def dry_run_env_bundle(
 
 
 @router.delete(
+    "/dry-run/mine/all",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="清理当前教师的所有 Dry Run 容器（解除资源配额阻塞）",
+)
+async def cleanup_my_dry_runs(
+    teacher_id: int = Depends(get_current_teacher),
+):
+    """清理当前教师名下所有残留的 Dry Run 会话，用于解除 429 配额阻塞。"""
+    container_ids = [
+        s.container_id
+        for s in list(dry_run_manager._sessions.values())
+        if s.teacher_id == teacher_id
+    ]
+    for container_id in container_ids:
+        try:
+            await remove_container(container_id)
+        except Exception:
+            pass
+        finally:
+            dry_run_manager.unregister(container_id)
+
+
+@router.delete(
     "/dry-run/{container_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="停止并清理 Dry Run 容器",
