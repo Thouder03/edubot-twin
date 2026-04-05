@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -12,6 +13,7 @@ from app.schemas.common import ApiResponse
 from app.schemas.experiment import SimulationTaskStageStatusItem, StudentSimulationTaskResponse
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/{task_id}", response_model=ApiResponse[StudentSimulationTaskResponse], summary="查询仿真任务")
@@ -27,10 +29,18 @@ async def get_task(
         raise HTTPException(status_code=403, detail="FORBIDDEN")
 
     stages = [SimulationTaskStageStatusItem(**item) for item in (task.stage_statuses or [])]
+    logger.info(
+        "simulation task poll: task_id=%s status=%s current_stage=%s stage_count=%s",
+        task.task_id,
+        task.status.value,
+        task.current_stage.value if task.current_stage else None,
+        len(stages),
+    )
     return ApiResponse(
         data=StudentSimulationTaskResponse(
             task_id=task.task_id,
             task_status=task.status.value,
+            current_stage=task.current_stage.value if task.current_stage else None,
             elapsed_ms=task.elapsed_ms,
             retryable=task.retryable,
             error_code=task.error_code,
