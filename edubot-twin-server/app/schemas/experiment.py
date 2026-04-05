@@ -59,8 +59,8 @@ class ExperimentVersionUpdate(ExperimentVersionBase):
 
 class ExperimentVersionPublishStatusRequest(BaseModel):
     """切换版本发布状态请求体（10-S1-10）"""
-    publish_status: Literal["published", "deprecated"] = Field(..., description="目标发布状态")
-    publish_note: Optional[str] = Field(default=None, max_length=512, description="发布/废弃备注")
+    publish_status: Literal["draft", "published", "deprecated"] = Field(..., description="目标发布状态")
+    publish_note: Optional[str] = Field(default=None, max_length=512, description="状态变更备注")
 
 
 class ExperimentVersionResponse(BaseModel):

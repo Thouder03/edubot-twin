@@ -298,22 +298,20 @@ async def switch_version_publish_status(
     """
     切换版本发布状态（10-S1-10）
 
-    状态机规则（SDD §5.5）：
-        draft → published（需先 validate 无 blocking issue）
-        published → deprecated
-        deprecated → published
+    当前策略：支持 draft/published/deprecated 三态任意切换。
+    - 目标为 published 时会写入发布时间并记录发布日志
+    - 目标为 published 时若父实验非 active，会自动激活
     """
-    valid_transitions = {
-        "draft": {"published"},
-        "published": {"deprecated"},
-        "deprecated": {"published"},
-    }
+    if new_status not in {"draft", "published", "deprecated"}:
+        raise ValueError(f"INVALID_STATUS: {new_status}")
+
     current = version.publish_status.value
-    if new_status not in valid_transitions.get(current, set()):
-        raise ValueError(f"INVALID_STATUS_TRANSITION: {current} → {new_status}")
+    if current == new_status:
+        return version
 
     version.publish_status = PublishStatus(new_status)
     version.updated_at = datetime.utcnow()
+
     if new_status == "published":
         version.published_at = datetime.utcnow()
 

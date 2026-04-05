@@ -67,11 +67,9 @@ const validateValid = ref<boolean | null>(null)
 // ─── 各版本操作的 loading 状态 ─────────────────────────────────────────────────
 
 const savingVersion = ref(false)
-const publishingVersion = ref(false)
-const deprecatingVersion = ref(false)
-const republishingVersion = ref(false)
 const deletingVersion = ref(false)
 const validatingVersion = ref(false)
+const changingStatusVersionId = ref<number | null>(null)
 
 // ─── 新建版本对话框 ───────────────────────────────────────────────────────────
 
@@ -109,19 +107,20 @@ const loadEnvBundles = async () => {
 
 onMounted(loadEnvBundles)
 
-// ─── 状态 Tag 映射 ────────────────────────────────────────────────────────────
-
-const versionStatusTagTypeMap: Record<string, '' | 'success' | 'warning' | 'info' | 'danger'> = {
-  draft: 'warning',
-  published: 'success',
-  deprecated: 'info'
-}
+// ─── 状态映射 ─────────────────────────────────────────────────────────────────
 
 const versionStatusLabelMap: Record<string, string> = {
   draft: '草稿',
   published: '已发布',
   deprecated: '已废弃'
 }
+
+const versionStatusOptions: Array<{ label: string; value: 'draft' | 'published' | 'deprecated' }> =
+  [
+    { label: '草稿', value: 'draft' },
+    { label: '已发布', value: 'published' },
+    { label: '已废弃', value: 'deprecated' }
+  ]
 
 // ─── 计算属性 ─────────────────────────────────────────────────────────────────
 
@@ -134,8 +133,6 @@ const selectedVersion = computed<ExperimentVersionResponse | null>(() => {
 })
 
 const isDraftVersion = computed(() => selectedVersion.value?.publish_status === 'draft')
-const isPublishedVersion = computed(() => selectedVersion.value?.publish_status === 'published')
-const isDeprecatedVersion = computed(() => selectedVersion.value?.publish_status === 'deprecated')
 
 // ─── 同步编辑表单 ─────────────────────────────────────────────────────────────
 
@@ -275,97 +272,73 @@ const saveVersion = async () => {
   }
 }
 
-// ─── 发布版本（草稿→发布，后端会 blocking 检验） ──────────────────────────────
+const handleVersionStatusChange = async (
+  row: ExperimentVersionResponse,
+  targetStatus: 'draft' | 'published' | 'deprecated'
+) => {
+  if (row.publish_status === targetStatus) return
 
-const publishVersion = async () => {
-  if (!selectedVersion.value || !isDraftVersion.value) {
-    ElMessage.warning('仅草稿版本可发布')
-    return
-  }
-  await ElMessageBox.confirm('确认发布该版本吗？发布后学生端将可见。', '发布确认', {
-    confirmButtonText: '确认发布',
-    cancelButtonText: '取消',
-    type: 'warning'
-  })
-  publishingVersion.value = true
+  changingStatusVersionId.value = row.version_id
   try {
-    await publishExperimentVersionApi(experimentId.value, selectedVersion.value.version_id, {
-      publish_note: '教师端手动发布'
-    })
-    ElMessage.success('发布成功')
+    if (row.publish_status === 'draft' && targetStatus === 'published') {
+      await ElMessageBox.confirm('确认发布该版本吗？发布后学生端将可见。', '发布确认', {
+        confirmButtonText: '确认发布',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+      await publishExperimentVersionApi(experimentId.value, row.version_id, {
+        publish_note: '教师端手动发布'
+      })
+    } else if (row.publish_status === 'published' && targetStatus === 'deprecated') {
+      await ElMessageBox.confirm(
+        '确认废弃该版本吗？废弃后学生不可见，但可重新发布恢复。',
+        '废弃版本',
+        {
+          confirmButtonText: '确认废弃',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
+      await updateExperimentVersionPublishStatusApi(experimentId.value, row.version_id, {
+        publish_status: 'deprecated',
+        publish_note: '教师手动废弃'
+      })
+    } else if (row.publish_status === 'deprecated' && targetStatus === 'published') {
+      await ElMessageBox.confirm(
+        '重新发布前将自动执行配置校验，存在阻断性问题时将拒绝发布。',
+        '重新发布',
+        { confirmButtonText: '确认重新发布', cancelButtonText: '取消', type: 'warning' }
+      )
+      await updateExperimentVersionPublishStatusApi(experimentId.value, row.version_id, {
+        publish_status: 'published',
+        publish_note: '教师重新发布'
+      })
+    } else {
+      await updateExperimentVersionPublishStatusApi(experimentId.value, row.version_id, {
+        publish_status: targetStatus,
+        publish_note: `教师在版本列表中切换为${versionStatusLabelMap[targetStatus]}`
+      })
+    }
+
+    ElMessage.success(`状态已切换为${versionStatusLabelMap[targetStatus]}`)
     await fetchExperimentDetail()
   } catch (e: any) {
+    if (e === 'cancel' || e === 'close') {
+      return
+    }
+
     const detail = e?.response?.data?.detail
     if (detail === 'VALIDATION_BLOCKING_ISSUE') {
-      ElMessage.error('配置存在阻断性问题，请先修复后再发布（点击「验证配置」查看详情）')
-      await validateVersion()
+      ElMessage.error('配置存在阻断性问题，无法切换为已发布（已自动执行验证）')
+      if (selectedVersion.value?.version_id === row.version_id) {
+        await validateVersion()
+      }
     } else {
-      ElMessage.error('发布失败：' + (detail || '未知错误'))
+      ElMessage.error('状态切换失败：' + (detail || '未知错误'))
     }
-  } finally {
-    publishingVersion.value = false
-  }
-}
-
-// ─── 废弃版本（published→deprecated，SDD §15.3） ──────────────────────────────
-
-const deprecateVersion = async () => {
-  if (!selectedVersion.value || !isPublishedVersion.value) {
-    ElMessage.warning('仅已发布版本可废弃')
-    return
-  }
-  await ElMessageBox.confirm('确认废弃该版本吗？废弃后学生不可见，但可重新发布恢复。', '废弃版本', {
-    confirmButtonText: '确认废弃',
-    cancelButtonText: '取消',
-    type: 'warning'
-  })
-  deprecatingVersion.value = true
-  try {
-    await updateExperimentVersionPublishStatusApi(
-      experimentId.value,
-      selectedVersion.value.version_id,
-      { publish_status: 'deprecated', publish_note: '教师手动废弃' }
-    )
-    ElMessage.success('已废弃')
     await fetchExperimentDetail()
-  } catch (e: any) {
-    ElMessage.error('废弃失败：' + (e?.response?.data?.detail || ''))
   } finally {
-    deprecatingVersion.value = false
-  }
-}
-
-// ─── 重新发布（deprecated→published，SDD §15.3） ──────────────────────────────
-
-const republishVersion = async () => {
-  if (!selectedVersion.value || !isDeprecatedVersion.value) {
-    ElMessage.warning('仅已废弃版本可重新发布')
-    return
-  }
-  await ElMessageBox.confirm(
-    '重新发布前将自动执行配置校验，存在阻断性问题时将拒绝发布。',
-    '重新发布',
-    { confirmButtonText: '确认重新发布', cancelButtonText: '取消', type: 'warning' }
-  )
-  republishingVersion.value = true
-  try {
-    await updateExperimentVersionPublishStatusApi(
-      experimentId.value,
-      selectedVersion.value.version_id,
-      { publish_status: 'published', publish_note: '教师重新发布' }
-    )
-    ElMessage.success('重新发布成功')
-    await fetchExperimentDetail()
-  } catch (e: any) {
-    const detail = e?.response?.data?.detail
-    if (detail === 'VALIDATION_BLOCKING_ISSUE') {
-      ElMessage.error('配置存在阻断性问题，无法重新发布（已自动执行验证，请查看下方警告条）')
-      await validateVersion()
-    } else {
-      ElMessage.error('重新发布失败：' + (detail || ''))
-    }
-  } finally {
-    republishingVersion.value = false
+    changingStatusVersionId.value = null
   }
 }
 
@@ -510,14 +483,28 @@ fetchExperimentDetail()
         >
           <ElTableColumn prop="version_name" label="版本" min-width="120" />
           <ElTableColumn prop="environment_key" label="环境标识" min-width="140" />
-          <ElTableColumn label="状态" width="90">
+          <ElTableColumn label="状态" width="130">
             <template #default="scope">
-              <ElTag
-                :type="versionStatusTagTypeMap[scope.row.publish_status] || 'info'"
+              <ElSelect
+                :model-value="scope.row.publish_status"
                 size="small"
+                style="width: 110px"
+                :disabled="changingStatusVersionId === scope.row.version_id"
+                @change="
+                  (val) =>
+                    handleVersionStatusChange(
+                      scope.row,
+                      val as 'draft' | 'published' | 'deprecated'
+                    )
+                "
               >
-                {{ versionStatusLabelMap[scope.row.publish_status] || scope.row.publish_status }}
-              </ElTag>
+                <ElOption
+                  v-for="item in versionStatusOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </ElSelect>
             </template>
           </ElTableColumn>
         </ElTable>
@@ -544,39 +531,6 @@ fetchExperimentDetail()
             @click="validateVersion"
           >
             验证配置
-          </ElButton>
-
-          <!-- 发布版本：仅 draft -->
-          <ElButton
-            type="success"
-            size="small"
-            :disabled="!isDraftVersion"
-            :loading="publishingVersion"
-            @click="publishVersion"
-          >
-            发布版本
-          </ElButton>
-
-          <!-- 废弃版本：仅 published -->
-          <ElButton
-            type="warning"
-            size="small"
-            :disabled="!isPublishedVersion"
-            :loading="deprecatingVersion"
-            @click="deprecateVersion"
-          >
-            废弃版本
-          </ElButton>
-
-          <!-- 重新发布：仅 deprecated -->
-          <ElButton
-            type="success"
-            size="small"
-            :disabled="!isDeprecatedVersion"
-            :loading="republishingVersion"
-            @click="republishVersion"
-          >
-            重新发布
           </ElButton>
 
           <!-- 删除版本：仅 draft -->

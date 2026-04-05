@@ -243,13 +243,13 @@ export interface ExperimentVersionValidateResponse {
 // ─── 版本发布状态变更请求（SDD §6.3）─────────────────────────────────────────
 
 export interface ExperimentVersionPublishStatusRequest {
-  publish_status: 'published' | 'deprecated'
+  publish_status: 'draft' | 'published' | 'deprecated'
   publish_note?: string
 }
 
 export interface ExperimentVersionPublishStatusResponse {
   version_id: number
-  publish_status: 'published' | 'deprecated'
+  publish_status: 'draft' | 'published' | 'deprecated'
   updated_at: string
 }
 
