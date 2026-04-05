@@ -190,7 +190,7 @@ async def switch_experiment_status(
 ):
     """
     切换实验状态（10-S1-9）。
-    状态机：draft → active → archived → active；draft 可删除。
+    状态机：draft ↔ active → archived → active；draft 可删除。
     非法转换返回 400 INVALID_STATUS_TRANSITION。
     """
     exp = await crud_experiment.get_experiment(db, experiment_id)

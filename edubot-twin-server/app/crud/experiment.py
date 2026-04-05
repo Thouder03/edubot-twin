@@ -11,6 +11,7 @@
 """
 from datetime import datetime
 from typing import Optional
+import logging
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,9 @@ from app.models.experiment import (
     FileBundleStatus,
     PublishStatus,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Experiment CRUD ───────────────────────────────────────────────────────────
@@ -113,17 +117,37 @@ async def switch_experiment_status(
     """
     valid_transitions = {
         "draft": {"active"},
-        "active": {"archived"},    # 10-S1-9: active 不可回退至 draft（SDD §5.4）
+        "active": {"draft", "archived"},
         "archived": {"active"},
     }
     current = experiment.status.value
-    if new_status not in valid_transitions.get(current, set()):
+    allowed = valid_transitions.get(current, set())
+    logger.info(
+        "[experiment_status_switch] experiment_id=%s current=%s target=%s allowed=%s",
+        experiment.id,
+        current,
+        new_status,
+        sorted(list(allowed)),
+    )
+    if new_status not in allowed:
+        logger.warning(
+            "[experiment_status_switch_invalid] experiment_id=%s current=%s target=%s allowed=%s",
+            experiment.id,
+            current,
+            new_status,
+            sorted(list(allowed)),
+        )
         raise ValueError(f"INVALID_STATUS_TRANSITION: {current} → {new_status}")
 
     experiment.status = ExperimentStatus(new_status)
     experiment.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(experiment)
+    logger.info(
+        "[experiment_status_switch_done] experiment_id=%s new_status=%s",
+        experiment.id,
+        experiment.status.value,
+    )
     return experiment
 
 
