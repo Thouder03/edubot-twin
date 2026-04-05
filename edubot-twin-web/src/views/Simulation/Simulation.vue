@@ -32,6 +32,7 @@ import {
   startMyContainerApi,
   stopOnExitApi
 } from '@/api/container'
+import { stopDryRunApi } from '@/api/experiment'
 import type { ContainerStatus } from '@/api/container/types'
 import { useUserStore } from '@/store/modules/user'
 
@@ -45,6 +46,10 @@ const experimentContext = ref<{
   version_name?: string
   environment_key?: string
 } | null>(null)
+
+// ---------- Dry Run 模式（SDD §15.5）----------
+const isDryRun = ref(false)
+const dryRunContainerId = ref<string | null>(null)
 
 // ---------- GzWeb 通信（页面级初始化）----------
 const { initialize: initGzBridge, dispose: disposeGzBridge } = useGzBridge()
@@ -337,6 +342,13 @@ onMounted(async () => {
     environment_key: environmentKey
   }
 
+  // Dry Run 模式检测（SDD §15.5）
+  isDryRun.value = route.query.dry_run === '1'
+  if (isDryRun.value) {
+    const cid = route.query.container_id
+    dryRunContainerId.value = typeof cid === 'string' ? cid : null
+  }
+
   // ── 页面级 GzWeb 通信初始化 ──
   try {
     const res = await getMyContainerApi()
@@ -395,6 +407,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', saveLayoutToStorage)
   window.removeEventListener('beforeunload', handleBeforeUnload)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+
+  // Dry Run：best-effort 清理测试容器（SDD §15.5）
+  if (isDryRun.value && dryRunContainerId.value) {
+    stopDryRunApi(dryRunContainerId.value).catch(() => {})
+  }
 })
 
 // ---------- 退出（来自 SimulationHeader 的 back 事件）----------
@@ -409,6 +426,8 @@ async function handleBack() {
 
 <template>
   <div class="simulation-page">
+    <!-- Dry Run 橙色提示条（SDD §15.5）-->
+    <div v-if="isDryRun" class="dry-run-banner"> 🧪 试运行模式 — 该容器将在结束后立即自动清理 </div>
     <SimulationHeader
       :experiment-context="experimentContext"
       @layout-change="handleLayoutChange"
@@ -435,6 +454,18 @@ async function handleBack() {
   overflow: hidden;
   background: #11111b;
   flex-direction: column;
+}
+
+.dry-run-banner {
+  background: #e6790c;
+  color: #fff;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 16px;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  z-index: 100;
 }
 
 .simulation-content {

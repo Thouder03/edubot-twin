@@ -709,25 +709,56 @@ const adminList = [
       },
       {
         path: 'experiments',
-        component: 'views/Teacher/Experiments/Experiments',
+        component: '##',
+        redirect: '/teacher/experiments/list',
         name: 'TeacherExperiments',
         meta: {
           title: 'router.teacherExperiments',
-          icon: 'vi-carbon:chemistry'
-        }
-      },
-      {
-        path: 'experiments/:id',
-        component: 'views/Teacher/Experiments/ExperimentDetail',
-        name: 'TeacherExperimentDetail',
-        meta: {
-          title: 'router.teacherExperiments',
-          noTagsView: true,
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          activeMenu: '/teacher/experiments'
-        }
+          icon: 'vi-carbon:chemistry',
+          alwaysShow: true
+        },
+        children: [
+          {
+            path: 'list',
+            component: 'views/Teacher/Experiments/ExperimentList',
+            name: 'TeacherExperimentList',
+            meta: {
+              title: '实验列表',
+              icon: 'vi-carbon:list'
+            }
+          },
+          {
+            path: ':id/detail',
+            component: 'views/Teacher/Experiments/ExperimentDetail',
+            name: 'TeacherExperimentDetail',
+            meta: {
+              title: '版本管理',
+              noTagsView: true,
+              noCache: true,
+              hidden: true,
+              canTo: true,
+              activeMenu: '/teacher/experiments/list'
+            }
+          },
+          {
+            path: 'files',
+            component: 'views/Teacher/Experiments/ExperimentFiles',
+            name: 'TeacherExperimentFiles',
+            meta: {
+              title: '实验文件',
+              icon: 'vi-carbon:folder'
+            }
+          },
+          {
+            path: 'environments',
+            component: 'views/Teacher/Experiments/ExperimentEnvs',
+            name: 'TeacherExperimentEnvs',
+            meta: {
+              title: '实验环境',
+              icon: 'vi-carbon:settings'
+            }
+          }
+        ]
       },
       {
         path: 'containers',

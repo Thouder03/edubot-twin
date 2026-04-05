@@ -3,31 +3,39 @@ import { ContentWrap } from '@/components/ContentWrap'
 import MonacoEditor from '@/components/Monaco/MonacoEditor.vue'
 import {
   createExperimentVersionApi,
+  deleteExperimentVersionApi,
+  getEnvBundleListApi,
   getExperimentDetailApi,
   publishExperimentVersionApi,
-  updateExperimentVersionApi
+  updateExperimentVersionApi,
+  updateExperimentVersionPublishStatusApi,
+  validateExperimentVersionApi
 } from '@/api/experiment'
 import type {
+  EnvBundleListItem,
   ExperimentDetailResponse,
   ExperimentVersionCreateRequest,
+  ExperimentVersionIssue,
   ExperimentVersionResponse,
   ExperimentVersionUpdateRequest
 } from '@/api/experiment/types'
 import {
+  ElAlert,
   ElButton,
   ElCard,
-  ElCheckbox,
   ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
   ElMessage,
   ElMessageBox,
+  ElOption,
+  ElSelect,
   ElTable,
   ElTableColumn,
   ElTag
 } from 'element-plus'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
@@ -39,16 +47,33 @@ const detailLoading = ref(false)
 const detailData = ref<ExperimentDetailResponse | null>(null)
 const selectedVersionId = ref<number | null>(null)
 
+// ─── 编辑表单 ─────────────────────────────────────────────────────────────────
+
 const editForm = reactive({
   version_name: '',
   environment_key: '',
   image_name: '',
   launch_file_path: '',
-  startup_script_ref: '',
   file_bundle_id: '',
-  is_visible: true
+  env_bundle_id: '' as string | number
 })
 const editorText = ref<string>('{}')
+
+// ─── 验证结果（保存后自动执行，展示黄色警告条） ──────────────────────────────
+
+const validateIssues = ref<ExperimentVersionIssue[]>([])
+const validateValid = ref<boolean | null>(null)
+
+// ─── 各版本操作的 loading 状态 ─────────────────────────────────────────────────
+
+const savingVersion = ref(false)
+const publishingVersion = ref(false)
+const deprecatingVersion = ref(false)
+const republishingVersion = ref(false)
+const deletingVersion = ref(false)
+const validatingVersion = ref(false)
+
+// ─── 新建版本对话框 ───────────────────────────────────────────────────────────
 
 const versionDialogVisible = ref(false)
 const versionForm = reactive<{
@@ -57,19 +82,34 @@ const versionForm = reactive<{
   image_name: string
   launch_file_path: string
   launch_args_template_text: string
-  startup_script_ref: string
   file_bundle_id: string
-  is_visible: boolean
+  env_bundle_id: string | number
 }>({
   version_name: '',
   environment_key: '',
   image_name: 'gzweb_sim:v1',
   launch_file_path: '/launch/main.launch',
   launch_args_template_text: '{}',
-  startup_script_ref: '',
   file_bundle_id: '',
-  is_visible: true
+  env_bundle_id: ''
 })
+
+// ─── 环境包下拉列表 ───────────────────────────────────────────────────────────
+
+const envBundleOptions = ref<EnvBundleListItem[]>([])
+
+const loadEnvBundles = async () => {
+  try {
+    const res = await getEnvBundleListApi({ page: 1, page_size: 200 })
+    envBundleOptions.value = res.data?.list ?? []
+  } catch {
+    // 静默忽略，不影响主流程
+  }
+}
+
+onMounted(loadEnvBundles)
+
+// ─── 状态 Tag 映射 ────────────────────────────────────────────────────────────
 
 const versionStatusTagTypeMap: Record<string, '' | 'success' | 'warning' | 'info' | 'danger'> = {
   draft: 'warning',
@@ -83,6 +123,8 @@ const versionStatusLabelMap: Record<string, string> = {
   deprecated: '已废弃'
 }
 
+// ─── 计算属性 ─────────────────────────────────────────────────────────────────
+
 const currentVersions = computed(() => detailData.value?.versions || [])
 const currentPublishLogs = computed(() => detailData.value?.publish_logs || [])
 
@@ -92,51 +134,51 @@ const selectedVersion = computed<ExperimentVersionResponse | null>(() => {
 })
 
 const isDraftVersion = computed(() => selectedVersion.value?.publish_status === 'draft')
+const isPublishedVersion = computed(() => selectedVersion.value?.publish_status === 'published')
+const isDeprecatedVersion = computed(() => selectedVersion.value?.publish_status === 'deprecated')
+
+// ─── 同步编辑表单 ─────────────────────────────────────────────────────────────
 
 const syncEditFormFromSelected = (version: ExperimentVersionResponse | null) => {
+  validateIssues.value = []
+  validateValid.value = null
   if (!version) {
     editForm.version_name = ''
     editForm.environment_key = ''
     editForm.image_name = ''
     editForm.launch_file_path = ''
-    editForm.startup_script_ref = ''
     editForm.file_bundle_id = ''
-    editForm.is_visible = true
+    editForm.env_bundle_id = ''
     editorText.value = '{}'
     return
   }
-
   editForm.version_name = version.version_name
   editForm.environment_key = version.environment_key
   editForm.image_name = version.image_name
   editForm.launch_file_path = version.launch_file_path
-  editForm.startup_script_ref = version.startup_script_ref || ''
   editForm.file_bundle_id = version.file_bundle_id ? String(version.file_bundle_id) : ''
-  editForm.is_visible = version.is_visible
+  editForm.env_bundle_id = version.env_bundle_id ?? ''
   editorText.value = JSON.stringify(version.launch_args_template || {}, null, 2)
 }
 
-watch(
-  selectedVersion,
-  (version) => {
-    syncEditFormFromSelected(version)
-  },
-  { immediate: true }
-)
+watch(selectedVersion, syncEditFormFromSelected, { immediate: true })
+
+// ─── 加载实验详情 ─────────────────────────────────────────────────────────────
 
 const fetchExperimentDetail = async () => {
   if (!experimentId.value || Number.isNaN(experimentId.value)) {
     ElMessage.error('实验ID无效')
-    router.replace('/teacher/experiments')
+    router.replace('/teacher/experiments/list')
     return
   }
-
   detailLoading.value = true
   try {
     const res = await getExperimentDetailApi(experimentId.value)
     detailData.value = res.data || null
-
-    if (!selectedVersionId.value || !currentVersions.value.some((v) => v.version_id === selectedVersionId.value)) {
+    if (
+      !selectedVersionId.value ||
+      !currentVersions.value.some((v) => v.version_id === selectedVersionId.value)
+    ) {
       selectedVersionId.value = currentVersions.value[0]?.version_id ?? null
     }
   } finally {
@@ -144,21 +186,7 @@ const fetchExperimentDetail = async () => {
   }
 }
 
-const resetVersionForm = () => {
-  versionForm.version_name = ''
-  versionForm.environment_key = ''
-  versionForm.image_name = 'gzweb_sim:v1'
-  versionForm.launch_file_path = '/launch/main.launch'
-  versionForm.launch_args_template_text = '{}'
-  versionForm.startup_script_ref = ''
-  versionForm.file_bundle_id = ''
-  versionForm.is_visible = true
-}
-
-const openCreateVersionDialog = () => {
-  resetVersionForm()
-  versionDialogVisible.value = true
-}
+// ─── 工具函数 ─────────────────────────────────────────────────────────────────
 
 const parseLaunchArgsTemplate = (text: string): Record<string, string> | null => {
   try {
@@ -174,83 +202,49 @@ const parseLaunchArgsTemplate = (text: string): Record<string, string> | null =>
   }
 }
 
-const buildVersionCreatePayload = (): ExperimentVersionCreateRequest | null => {
-  if (!versionForm.version_name.trim() || !versionForm.environment_key.trim()) {
-    ElMessage.warning('请填写版本号和环境标识')
-    return null
-  }
+// ─── 验证配置（始终可用） ─────────────────────────────────────────────────────
 
-  if (!versionForm.launch_file_path.trim()) {
-    ElMessage.warning('请填写启动文件路径')
-    return null
-  }
-
-  const launchArgsTemplate = parseLaunchArgsTemplate(versionForm.launch_args_template_text)
-  if (!launchArgsTemplate) return null
-
-  return {
-    version_name: versionForm.version_name.trim(),
-    environment_key: versionForm.environment_key.trim(),
-    image_name: versionForm.image_name.trim() || 'gzweb_sim:v1',
-    launch_file_path: versionForm.launch_file_path.trim(),
-    launch_args_template: launchArgsTemplate,
-    startup_script_ref: versionForm.startup_script_ref.trim() || undefined,
-    file_bundle_id: versionForm.file_bundle_id.trim() ? Number(versionForm.file_bundle_id) : undefined,
-    is_visible: versionForm.is_visible
-  }
-}
-
-const createVersion = async () => {
-  const payload = buildVersionCreatePayload()
-  if (!payload) return
-
-  await createExperimentVersionApi(experimentId.value, payload)
-  ElMessage.success('版本创建成功')
-  versionDialogVisible.value = false
-  await fetchExperimentDetail()
-}
-
-const publishVersion = async () => {
+const validateVersion = async () => {
   if (!selectedVersion.value) {
     ElMessage.warning('请先选择版本')
-    return
+    return false
   }
-
-  if (selectedVersion.value.publish_status !== 'draft') {
-    ElMessage.warning('仅草稿版本允许发布')
-    return
+  validatingVersion.value = true
+  try {
+    const res = await validateExperimentVersionApi(
+      experimentId.value,
+      selectedVersion.value.version_id
+    )
+    const { valid, issues } = res.data
+    validateValid.value = valid
+    validateIssues.value = issues || []
+    if (valid) {
+      ElMessage.success('配置验证通过 ✓')
+    }
+    return valid
+  } catch (e: any) {
+    ElMessage.error('验证失败：' + (e?.response?.data?.detail || '未知错误'))
+    return false
+  } finally {
+    validatingVersion.value = false
   }
-
-  await ElMessageBox.confirm('确认发布该版本吗？发布后学生端将可见。', '发布确认', {
-    confirmButtonText: '确认发布',
-    cancelButtonText: '取消',
-    type: 'warning'
-  })
-
-  await publishExperimentVersionApi(experimentId.value, selectedVersion.value.version_id, {
-    publish_note: '教师端手动发布'
-  })
-
-  ElMessage.success('发布成功')
-  await fetchExperimentDetail()
 }
+
+// ─── 保存配置（保存后自动验证） ───────────────────────────────────────────────
 
 const saveVersion = async () => {
   if (!selectedVersion.value) {
     ElMessage.warning('请先选择版本')
     return
   }
-
   if (!isDraftVersion.value) {
     ElMessage.warning('已发布/已废弃版本为只读，不可编辑')
     return
   }
-
   if (!editForm.version_name.trim() || !editForm.environment_key.trim()) {
     ElMessage.warning('请填写版本号和环境标识')
     return
   }
-
   if (!editForm.launch_file_path.trim()) {
     ElMessage.warning('请填写启动文件路径')
     return
@@ -264,15 +258,201 @@ const saveVersion = async () => {
     environment_key: editForm.environment_key.trim(),
     image_name: editForm.image_name.trim() || 'gzweb_sim:v1',
     launch_file_path: editForm.launch_file_path.trim(),
-    startup_script_ref: editForm.startup_script_ref.trim() || undefined,
-    file_bundle_id: editForm.file_bundle_id.trim() ? Number(editForm.file_bundle_id) : undefined,
-    is_visible: editForm.is_visible,
+    file_bundle_id: editForm.file_bundle_id ? Number(editForm.file_bundle_id) : undefined,
+    env_bundle_id: editForm.env_bundle_id ? Number(editForm.env_bundle_id) : undefined,
     launch_args_template: launchArgsTemplate
   }
 
-  await updateExperimentVersionApi(experimentId.value, selectedVersion.value.version_id, payload)
-  ElMessage.success('配置保存成功')
+  savingVersion.value = true
+  try {
+    await updateExperimentVersionApi(experimentId.value, selectedVersion.value.version_id, payload)
+    ElMessage.success('配置保存成功')
+    await fetchExperimentDetail()
+    // 保存后自动验证（SDD §15.3）
+    await validateVersion()
+  } finally {
+    savingVersion.value = false
+  }
+}
+
+// ─── 发布版本（草稿→发布，后端会 blocking 检验） ──────────────────────────────
+
+const publishVersion = async () => {
+  if (!selectedVersion.value || !isDraftVersion.value) {
+    ElMessage.warning('仅草稿版本可发布')
+    return
+  }
+  await ElMessageBox.confirm('确认发布该版本吗？发布后学生端将可见。', '发布确认', {
+    confirmButtonText: '确认发布',
+    cancelButtonText: '取消',
+    type: 'warning'
+  })
+  publishingVersion.value = true
+  try {
+    await publishExperimentVersionApi(experimentId.value, selectedVersion.value.version_id, {
+      publish_note: '教师端手动发布'
+    })
+    ElMessage.success('发布成功')
+    await fetchExperimentDetail()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail === 'VALIDATION_BLOCKING_ISSUE') {
+      ElMessage.error('配置存在阻断性问题，请先修复后再发布（点击「验证配置」查看详情）')
+      await validateVersion()
+    } else {
+      ElMessage.error('发布失败：' + (detail || '未知错误'))
+    }
+  } finally {
+    publishingVersion.value = false
+  }
+}
+
+// ─── 废弃版本（published→deprecated，SDD §15.3） ──────────────────────────────
+
+const deprecateVersion = async () => {
+  if (!selectedVersion.value || !isPublishedVersion.value) {
+    ElMessage.warning('仅已发布版本可废弃')
+    return
+  }
+  await ElMessageBox.confirm('确认废弃该版本吗？废弃后学生不可见，但可重新发布恢复。', '废弃版本', {
+    confirmButtonText: '确认废弃',
+    cancelButtonText: '取消',
+    type: 'warning'
+  })
+  deprecatingVersion.value = true
+  try {
+    await updateExperimentVersionPublishStatusApi(
+      experimentId.value,
+      selectedVersion.value.version_id,
+      { publish_status: 'deprecated', publish_note: '教师手动废弃' }
+    )
+    ElMessage.success('已废弃')
+    await fetchExperimentDetail()
+  } catch (e: any) {
+    ElMessage.error('废弃失败：' + (e?.response?.data?.detail || ''))
+  } finally {
+    deprecatingVersion.value = false
+  }
+}
+
+// ─── 重新发布（deprecated→published，SDD §15.3） ──────────────────────────────
+
+const republishVersion = async () => {
+  if (!selectedVersion.value || !isDeprecatedVersion.value) {
+    ElMessage.warning('仅已废弃版本可重新发布')
+    return
+  }
+  await ElMessageBox.confirm(
+    '重新发布前将自动执行配置校验，存在阻断性问题时将拒绝发布。',
+    '重新发布',
+    { confirmButtonText: '确认重新发布', cancelButtonText: '取消', type: 'warning' }
+  )
+  republishingVersion.value = true
+  try {
+    await updateExperimentVersionPublishStatusApi(
+      experimentId.value,
+      selectedVersion.value.version_id,
+      { publish_status: 'published', publish_note: '教师重新发布' }
+    )
+    ElMessage.success('重新发布成功')
+    await fetchExperimentDetail()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail === 'VALIDATION_BLOCKING_ISSUE') {
+      ElMessage.error('配置存在阻断性问题，无法重新发布（已自动执行验证，请查看下方警告条）')
+      await validateVersion()
+    } else {
+      ElMessage.error('重新发布失败：' + (detail || ''))
+    }
+  } finally {
+    republishingVersion.value = false
+  }
+}
+
+// ─── 删除版本（仅 draft，SDD §15.3） ─────────────────────────────────────────
+
+const deleteVersion = async () => {
+  if (!selectedVersion.value || !isDraftVersion.value) {
+    ElMessage.warning('仅草稿版本可删除')
+    return
+  }
+  await ElMessageBox.confirm(
+    `确认删除版本「${selectedVersion.value.version_name}」吗？此操作不可撤销。`,
+    '删除版本',
+    { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' }
+  )
+  deletingVersion.value = true
+  try {
+    await deleteExperimentVersionApi(experimentId.value, selectedVersion.value.version_id)
+    ElMessage.success('版本已删除')
+    selectedVersionId.value = null
+    await fetchExperimentDetail()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    if (detail === 'VERSION_NOT_DRAFT') {
+      ElMessage.error('仅草稿版本可删除')
+    } else {
+      ElMessage.error('删除失败：' + (detail || ''))
+    }
+  } finally {
+    deletingVersion.value = false
+  }
+}
+
+// ─── 新建版本 ─────────────────────────────────────────────────────────────────
+
+const resetVersionForm = () => {
+  versionForm.version_name = ''
+  versionForm.environment_key = ''
+  versionForm.image_name = 'gzweb_sim:v1'
+  versionForm.launch_file_path = '/launch/main.launch'
+  versionForm.launch_args_template_text = '{}'
+  versionForm.file_bundle_id = ''
+  versionForm.env_bundle_id = ''
+}
+
+const openCreateVersionDialog = () => {
+  resetVersionForm()
+  versionDialogVisible.value = true
+}
+
+const buildVersionCreatePayload = (): ExperimentVersionCreateRequest | null => {
+  if (!versionForm.version_name.trim() || !versionForm.environment_key.trim()) {
+    ElMessage.warning('请填写版本号和环境标识')
+    return null
+  }
+  if (!versionForm.launch_file_path.trim()) {
+    ElMessage.warning('请填写启动文件路径')
+    return null
+  }
+  const launchArgsTemplate = parseLaunchArgsTemplate(versionForm.launch_args_template_text)
+  if (!launchArgsTemplate) return null
+  return {
+    version_name: versionForm.version_name.trim(),
+    environment_key: versionForm.environment_key.trim(),
+    image_name: versionForm.image_name.trim() || 'gzweb_sim:v1',
+    launch_file_path: versionForm.launch_file_path.trim(),
+    launch_args_template: launchArgsTemplate,
+    file_bundle_id: versionForm.file_bundle_id ? Number(versionForm.file_bundle_id) : undefined,
+    env_bundle_id: versionForm.env_bundle_id ? Number(versionForm.env_bundle_id) : undefined
+  }
+}
+
+const createVersion = async () => {
+  const payload = buildVersionCreatePayload()
+  if (!payload) return
+  await createExperimentVersionApi(experimentId.value, payload)
+  ElMessage.success('版本创建成功')
+  versionDialogVisible.value = false
   await fetchExperimentDetail()
+}
+
+// ─── 严重性颜色映射 ────────────────────────────────────────────────────────────
+
+const issueSeverityType = (
+  severity: string
+): 'success' | 'warning' | 'info' | 'danger' | 'primary' => {
+  return severity === 'blocking' ? 'danger' : 'warning'
 }
 
 fetchExperimentDetail()
@@ -284,16 +464,38 @@ fetchExperimentDetail()
       <div>
         <div class="text-16px font-600">{{ detailData?.base_info?.name || '-' }}</div>
         <div class="text-12px color-#909399">
-          编码：{{ detailData?.base_info?.code || '-' }}（ID: {{ detailData?.base_info?.experiment_id || '-' }}）
+          编码：{{ detailData?.base_info?.code || '-' }}（ID:
+          {{ detailData?.base_info?.experiment_id || '-' }}）
         </div>
       </div>
       <div class="flex gap-8px">
-        <ElButton @click="router.push('/teacher/experiments')">返回列表</ElButton>
+        <ElButton @click="router.push('/teacher/experiments/list')">返回列表</ElButton>
         <ElButton type="primary" @click="openCreateVersionDialog">新增版本</ElButton>
       </div>
     </div>
 
+    <!-- 验证结果黄色警告条（SDD §15.3） -->
+    <ElAlert
+      v-if="validateValid === false && validateIssues.length > 0"
+      type="warning"
+      class="mb-12px"
+      :closable="false"
+    >
+      <template #default>
+        <div class="font-600 mb-6px">配置存在以下问题：</div>
+        <div v-for="(issue, i) in validateIssues" :key="i" class="flex items-center gap-6px mb-4px">
+          <ElTag :type="issueSeverityType(issue.severity)" size="small">
+            {{ issue.severity === 'blocking' ? '阻断' : '警告' }}
+          </ElTag>
+          <span class="text-13px">
+            [{{ issue.field }}] {{ issue.message }}（{{ issue.code }}）
+          </span>
+        </div>
+      </template>
+    </ElAlert>
+
     <div class="grid grid-cols-[360px_1fr] gap-12px" v-loading="detailLoading">
+      <!-- 左侧：版本列表 + 操作按钮 -->
       <ElCard shadow="never">
         <template #header>
           <div class="font-600">版本列表</div>
@@ -308,21 +510,89 @@ fetchExperimentDetail()
         >
           <ElTableColumn prop="version_name" label="版本" min-width="120" />
           <ElTableColumn prop="environment_key" label="环境标识" min-width="140" />
-          <ElTableColumn label="状态" width="110">
+          <ElTableColumn label="状态" width="90">
             <template #default="scope">
-              <ElTag :type="versionStatusTagTypeMap[scope.row.publish_status] || 'info'" size="small">
+              <ElTag
+                :type="versionStatusTagTypeMap[scope.row.publish_status] || 'info'"
+                size="small"
+              >
                 {{ versionStatusLabelMap[scope.row.publish_status] || scope.row.publish_status }}
               </ElTag>
             </template>
           </ElTableColumn>
         </ElTable>
 
-        <div class="mt-12px flex gap-8px">
-          <ElButton type="primary" :disabled="!isDraftVersion" @click="saveVersion">保存配置</ElButton>
-          <ElButton type="success" :disabled="!isDraftVersion" @click="publishVersion">发布版本</ElButton>
+        <!-- 操作按钮区（SDD §15.3） -->
+        <div class="mt-12px flex flex-wrap gap-6px">
+          <!-- 保存配置：仅 draft 可用 -->
+          <ElButton
+            type="primary"
+            size="small"
+            :disabled="!isDraftVersion"
+            :loading="savingVersion"
+            @click="saveVersion"
+          >
+            保存配置
+          </ElButton>
+
+          <!-- 验证配置：始终可用 -->
+          <ElButton
+            type="info"
+            size="small"
+            :disabled="!selectedVersion"
+            :loading="validatingVersion"
+            @click="validateVersion"
+          >
+            验证配置
+          </ElButton>
+
+          <!-- 发布版本：仅 draft -->
+          <ElButton
+            type="success"
+            size="small"
+            :disabled="!isDraftVersion"
+            :loading="publishingVersion"
+            @click="publishVersion"
+          >
+            发布版本
+          </ElButton>
+
+          <!-- 废弃版本：仅 published -->
+          <ElButton
+            type="warning"
+            size="small"
+            :disabled="!isPublishedVersion"
+            :loading="deprecatingVersion"
+            @click="deprecateVersion"
+          >
+            废弃版本
+          </ElButton>
+
+          <!-- 重新发布：仅 deprecated -->
+          <ElButton
+            type="success"
+            size="small"
+            :disabled="!isDeprecatedVersion"
+            :loading="republishingVersion"
+            @click="republishVersion"
+          >
+            重新发布
+          </ElButton>
+
+          <!-- 删除版本：仅 draft -->
+          <ElButton
+            type="danger"
+            size="small"
+            :disabled="!isDraftVersion"
+            :loading="deletingVersion"
+            @click="deleteVersion"
+          >
+            删除版本
+          </ElButton>
         </div>
       </ElCard>
 
+      <!-- 右侧：配置编辑区 + 发布记录 -->
       <div class="flex flex-col gap-12px">
         <ElCard shadow="never">
           <template #header>
@@ -347,14 +617,25 @@ fetchExperimentDetail()
             <ElFormItem label="启动文件">
               <ElInput v-model="editForm.launch_file_path" :disabled="!isDraftVersion" />
             </ElFormItem>
-            <ElFormItem label="启动脚本引用">
-              <ElInput v-model="editForm.startup_script_ref" :disabled="!isDraftVersion" />
-            </ElFormItem>
             <ElFormItem label="文件包 ID">
               <ElInput v-model="editForm.file_bundle_id" :disabled="!isDraftVersion" />
             </ElFormItem>
-            <ElFormItem label="学生可见">
-              <ElCheckbox v-model="editForm.is_visible" :disabled="!isDraftVersion">可见</ElCheckbox>
+            <!-- env_bundle_id：下拉选择已创建的环境包（SDD §15.3） -->
+            <ElFormItem label="环境包">
+              <ElSelect
+                v-model="editForm.env_bundle_id"
+                :disabled="!isDraftVersion"
+                clearable
+                placeholder="请选择环境包（可选）"
+                style="width: 100%"
+              >
+                <ElOption
+                  v-for="eb in envBundleOptions"
+                  :key="eb.env_bundle_id"
+                  :label="`${eb.name}（ID: ${eb.env_bundle_id}）`"
+                  :value="eb.env_bundle_id"
+                />
+              </ElSelect>
             </ElFormItem>
           </ElForm>
 
@@ -383,6 +664,7 @@ fetchExperimentDetail()
       </div>
     </div>
 
+    <!-- 新增版本对话框 -->
     <ElDialog v-model="versionDialogVisible" title="新增版本" width="640px">
       <ElForm label-width="120px">
         <ElFormItem label="版本号" required>
@@ -405,14 +687,24 @@ fetchExperimentDetail()
             placeholder='例如：{"use_sim_time":"true"}'
           />
         </ElFormItem>
-        <ElFormItem label="启动脚本引用">
-          <ElInput v-model="versionForm.startup_script_ref" placeholder="可选" />
-        </ElFormItem>
         <ElFormItem label="文件包 ID">
           <ElInput v-model="versionForm.file_bundle_id" placeholder="可选" />
         </ElFormItem>
-        <ElFormItem label="学生可见">
-          <ElCheckbox v-model="versionForm.is_visible">可见</ElCheckbox>
+        <!-- 新增版本时也用下拉选择环境包 -->
+        <ElFormItem label="环境包">
+          <ElSelect
+            v-model="versionForm.env_bundle_id"
+            clearable
+            placeholder="请选择环境包（可选）"
+            style="width: 100%"
+          >
+            <ElOption
+              v-for="eb in envBundleOptions"
+              :key="eb.env_bundle_id"
+              :label="`${eb.name}（ID: ${eb.env_bundle_id}）`"
+              :value="eb.env_bundle_id"
+            />
+          </ElSelect>
         </ElFormItem>
       </ElForm>
       <template #footer>

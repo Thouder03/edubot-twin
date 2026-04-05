@@ -180,7 +180,10 @@ async def get_user_routes(role: str):
             "/teacher/containers",
             "/teacher/containers/monitor",
             "/teacher/experiments",
-            "/teacher/experiments/:id"
+            "/teacher/experiments/list",
+            "/teacher/experiments/:id/detail",
+            "/teacher/experiments/files",
+            "/teacher/experiments/environments"
         ],
         "admin": [
             "/dashboard",

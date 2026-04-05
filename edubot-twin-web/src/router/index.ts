@@ -770,25 +770,56 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
       },
       {
         path: 'experiments',
-        component: () => import('@/views/Teacher/Experiments/Experiments.vue'),
+        component: getParentLayout(),
+        redirect: '/teacher/experiments/list',
         name: 'TeacherExperiments',
         meta: {
           title: t('router.teacherExperiments'),
-          icon: 'vi-carbon:chemistry'
-        }
-      },
-      {
-        path: 'experiments/:id',
-        component: () => import('@/views/Teacher/Experiments/ExperimentDetail.vue'),
-        name: 'TeacherExperimentDetail',
-        meta: {
-          title: t('router.teacherExperiments'),
-          noTagsView: true,
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          activeMenu: '/teacher/experiments'
-        }
+          icon: 'vi-carbon:chemistry',
+          alwaysShow: true
+        },
+        children: [
+          {
+            path: 'list',
+            component: () => import('@/views/Teacher/Experiments/ExperimentList.vue'),
+            name: 'TeacherExperimentList',
+            meta: {
+              title: '实验列表',
+              icon: 'vi-carbon:list'
+            }
+          },
+          {
+            path: ':id/detail',
+            component: () => import('@/views/Teacher/Experiments/ExperimentDetail.vue'),
+            name: 'TeacherExperimentDetail',
+            meta: {
+              title: '版本管理',
+              noTagsView: true,
+              noCache: true,
+              hidden: true,
+              canTo: true,
+              activeMenu: '/teacher/experiments/list'
+            }
+          },
+          {
+            path: 'files',
+            component: () => import('@/views/Teacher/Experiments/ExperimentFiles.vue'),
+            name: 'TeacherExperimentFiles',
+            meta: {
+              title: '实验文件',
+              icon: 'vi-carbon:folder'
+            }
+          },
+          {
+            path: 'environments',
+            component: () => import('@/views/Teacher/Experiments/ExperimentEnvs.vue'),
+            name: 'TeacherExperimentEnvs',
+            meta: {
+              title: '实验环境',
+              icon: 'vi-carbon:settings'
+            }
+          }
+        ]
       },
       {
         path: 'containers',

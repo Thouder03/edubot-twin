@@ -23,6 +23,7 @@ import type {
   StudentAvailableVersionItem,
   StudentSimulationTaskResponse
 } from '@/api/experiment/types'
+import { ElMessageBox } from 'element-plus'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('student-home')
@@ -110,15 +111,36 @@ function openSimulationPage(version: StudentAvailableVersionItem) {
   }
 }
 
-async function pollTaskUntilDone(taskId: string): Promise<StudentSimulationTaskResponse> {
-  const maxRounds = 60
-  const intervalMs = 1000
+// ─── 阶段文案映射（SDD §15.1）────────────────────────────────────────────────
+
+const stageTextMap: Record<string, string> = {
+  PREPARING_CONFIG: '正在准备配置...',
+  STOPPING_OLD_CONTAINER: '正在清理旧环境...',
+  CREATING_NEW_CONTAINER: '正在创建仿真容器...',
+  CHECKING_GZWEB: '等待 Gazebo 仿真引擎启动...',
+  CHECKING_ROSBRIDGE: '等待 ROS 通信桥启动...',
+  SUCCEEDED: '仿真环境就绪，正在打开...',
+  FAILED: '启动失败'
+}
+
+async function pollTaskUntilDone(
+  taskId: string,
+  loadingInstance: ReturnType<typeof ElLoading.service>
+): Promise<StudentSimulationTaskResponse> {
+  const maxRounds = 90
+  const intervalMs = 2000
 
   for (let i = 0; i < maxRounds; i++) {
     const res = await getSimulationTaskApi(taskId)
     const task = res.data
     if (!task) {
       throw new Error('task response empty')
+    }
+
+    // 按 current_stage 更新文案（SDD §15.1）
+    const stage = (task as any).current_stage as string | undefined
+    if (stage && stageTextMap[stage]) {
+      loadingInstance.setText(stageTextMap[stage])
     }
 
     if (task.task_status === 'SUCCEEDED' || task.task_status === 'FAILED') {
@@ -150,15 +172,29 @@ const handleStartSimulation = async () => {
 
     const startData = startRes.data
     if (startData?.task_id) {
-      loadingInstance.setText('正在重建仿真环境，请稍候...')
-      const task = await pollTaskUntilDone(startData.task_id)
+      loadingInstance.setText('正在准备配置...')
+      const task = await pollTaskUntilDone(startData.task_id, loadingInstance)
       if (task.task_status === 'FAILED') {
-        ElMessage.error(task.error_message || '环境重建失败，请重试')
+        loadingInstance.close()
+        // FAILED 时弹出错误弹窗含重试按钮（SDD §15.1）
+        await ElMessageBox.confirm(
+          task.error_message || '仿真环境启动失败，请检查配置后重试',
+          '启动失败',
+          {
+            confirmButtonText: '重试',
+            cancelButtonText: '关闭',
+            type: 'error'
+          }
+        )
+          .then(() => handleStartSimulation())
+          .catch(() => {})
         return
       }
     }
 
-    ElMessage.success('仿真环境启动成功')
+    // SUCCEEDED：延迟 500ms 后跳转（SDD §15.1）
+    loadingInstance.setText('仿真环境就绪，正在打开...')
+    await new Promise((resolve) => setTimeout(resolve, 500))
     openSimulationPage(version)
   } catch (e: any) {
     const detail = e?.response?.data?.detail
