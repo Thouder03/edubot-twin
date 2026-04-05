@@ -2,15 +2,14 @@
 /**
  * 实验文件管理页 — /teacher/experiments/files
  *
- * 状态 A：文件包列表视图（初始状态）
- * 状态 B：文件树视图（双击进入后，完整复用学生端 FileTree.vue 右键菜单）
+ * 左侧：文件包列表（单击选中 / 双击进入文件树）+ 右键菜单
+ * 右侧：EditorWorkbench.vue（完整复用学生端编辑器，含标签页+Ctrl+S）
  *
- * SDD §15.4：文件树完全复用 WorkspacePanel 的文件树组件（FileTree.vue），
- * 通过 useBundleWorkspace 适配不同 API 后端地址。
+ * SDD §15.4：文件树和编辑器均完整复用 WorkspacePanel 组件。
  */
 import { ContentWrap } from '@/components/ContentWrap'
-import MonacoEditor from '@/components/Monaco/MonacoEditor.vue'
 import FileTree from '@/views/Simulation/panels/WorkspacePanel/FileTree.vue'
+import EditorWorkbench from '@/views/Simulation/panels/WorkspacePanel/EditorWorkbench.vue'
 import {
   createFileBundleApi,
   deleteFileBundleApi,
@@ -21,6 +20,8 @@ import {
 } from '@/api/experiment'
 import type { FileBundleListItem } from '@/api/experiment/types'
 import { useBundleWorkspace } from './composables/useBundleWorkspace'
+import { useBundleEditorState } from './composables/useBundleEditorState'
+import { useWorkspaceSettings } from '@/composables/useWorkspaceSettings'
 import {
   ElButton,
   ElDialog,
@@ -35,7 +36,7 @@ import {
   ElTag,
   ElTooltip
 } from 'element-plus'
-import { computed, ref, watch, onBeforeUnmount, nextTick } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 
 // ─── 视图状态 ─────────────────────────────────────────────────────────────────
@@ -69,16 +70,31 @@ const fileApiPrefix = computed(() =>
     : ''
 )
 
-// ─── useBundleWorkspace（完全兼容 FileTree.vue 接口）─────────────────────────
+// ─── 文件树（完整复用 FileTree.vue + 右键菜单）────────────────────────────────
 
 const workspace = useBundleWorkspace(fileApiPrefix)
 
-// 当切换文件包时重载树
 watch(fileApiPrefix, async (newPrefix) => {
   if (newPrefix && viewMode.value === 'tree') {
     await workspace.loadTree()
   }
 })
+
+// ─── 编辑器状态（完整复用 EditorWorkbench.vue + 标签页逻辑）─────────────────
+
+const { settings } = useWorkspaceSettings()
+
+const editor = useBundleEditorState(
+  // readFn：读取文件内容
+  async (path: string) => {
+    const res = await readFileBundleFileApi(selectedBundle.value!.bundle_id, path)
+    return res.data?.content ?? ''
+  },
+  // saveFn：保存文件内容
+  async (path: string, content: string) => {
+    await saveFileBundleFileApi(selectedBundle.value!.bundle_id, path, content)
+  }
+)
 
 // ─── 单击选中 ─────────────────────────────────────────────────────────────────
 
@@ -89,16 +105,13 @@ const handleBundleClick = (bundle: FileBundleListItem) => {
 // ─── 双击进入文件树 ───────────────────────────────────────────────────────────
 
 const handleBundleDblClick = async (bundle: FileBundleListItem) => {
-  if (hasUnsavedChanges.value) {
+  if (editor.hasAnyUnsavedChanges()) {
     const ok = await confirmLeave()
     if (!ok) return
   }
   selectedBundle.value = bundle
   viewMode.value = 'tree'
   workspace.clearSelection()
-  openedFilePath.value = ''
-  fileContent.value = ''
-  hasUnsavedChanges.value = false
   await workspace.loadTree()
 }
 
@@ -108,81 +121,48 @@ const handleBackToList = async () => {
   const ok = await confirmLeave()
   if (!ok) return
   viewMode.value = 'list'
-  openedFilePath.value = ''
-  fileContent.value = ''
-  hasUnsavedChanges.value = false
+  // 关闭所有标签页并清除缓存
+  const allPaths = [
+    ...editor.pinnedTabs.value,
+    ...(editor.previewPath.value ? [editor.previewPath.value] : [])
+  ]
+  allPaths.forEach((p) => editor.closeTab(p))
 }
 
-// ─── 编辑器状态 ───────────────────────────────────────────────────────────────
-
-const openedFilePath = ref('')
-const fileContent = ref('')
-const hasUnsavedChanges = ref(false)
-
-const editorContent = computed({
-  get: () => fileContent.value,
-  set: (val) => {
-    fileContent.value = val
-    hasUnsavedChanges.value = true
-  }
-})
-
-// ─── 点击文件树节点打开文件 ───────────────────────────────────────────────────
+// ─── 点击文件树节点 ───────────────────────────────────────────────────────────
 
 const handleSelectFile = async (path: string) => {
   // 目录节点不打开编辑器
   const node = workspace.findNodeByPath(workspace.treeData.value, path)
   if (!node || node.type === 'directory') return
-
-  if (hasUnsavedChanges.value) {
-    const ok = await confirmLeave()
-    if (!ok) return
-  }
-
-  try {
-    const res = await readFileBundleFileApi(selectedBundle.value!.bundle_id, path)
-    openedFilePath.value = path
-    fileContent.value = res.data?.content ?? ''
-    hasUnsavedChanges.value = false
-  } catch (e: any) {
-    ElMessage.error('打开文件失败：' + (e?.response?.data?.detail ?? e.message ?? ''))
-  }
-}
-
-// ─── 保存文件 ─────────────────────────────────────────────────────────────────
-
-const handleSave = async () => {
-  if (!openedFilePath.value || !selectedBundle.value) return
-  try {
-    await saveFileBundleFileApi(
-      selectedBundle.value.bundle_id,
-      openedFilePath.value,
-      fileContent.value
-    )
-    ElMessage.success('保存成功')
-    hasUnsavedChanges.value = false
-  } catch (e: any) {
-    const detail = e?.response?.data?.detail
-    if (detail === 'FILE_SAVE_CONFLICT') {
-      ElMessage.error('文件已被其他操作更新，请刷新后重试')
-    } else {
-      ElMessage.error('保存失败：' + (detail ?? e.message ?? ''))
-    }
-  }
+  // 单击 = preview 模式（斜体标签，可被下一次单击替换）
+  await editor.openFile(path, true)
 }
 
 // ─── 离开确认 ─────────────────────────────────────────────────────────────────
 
 const confirmLeave = async (): Promise<boolean> => {
-  if (!hasUnsavedChanges.value) return true
+  const dirtyPaths = editor.getDirtyPaths()
+  if (dirtyPaths.length === 0) return true
+
+  const fileNames = dirtyPaths.map((p) => p.split('/').pop()).join('、')
   try {
-    await ElMessageBox.confirm('当前文件有未保存的修改，是否保存后继续？', '未保存修改', {
-      confirmButtonText: '保存后继续',
-      cancelButtonText: '放弃修改',
-      distinguishCancelAndClose: true,
-      type: 'warning'
-    })
-    await handleSave()
+    const action = await ElMessageBox.confirm(
+      `以下文件有未保存的修改：${fileNames}，是否保存后继续？`,
+      '未保存修改',
+      {
+        confirmButtonText: '全部保存后继续',
+        cancelButtonText: '放弃修改并继续',
+        distinguishCancelAndClose: true,
+        type: 'warning'
+      }
+    )
+    if (action === 'confirm') {
+      for (const path of dirtyPaths) {
+        const content = editor.fileCache[path]?.content ?? ''
+        await saveFileBundleFileApi(selectedBundle.value!.bundle_id, path, content)
+      }
+    }
     return true
   } catch (action) {
     if (action === 'cancel') return true // 放弃修改
@@ -198,32 +178,25 @@ onBeforeRouteLeave(async (_to, _from, next) => {
 // ─── 上传 ─────────────────────────────────────────────────────────────────────
 
 const uploadInputRef = ref<HTMLInputElement | null>(null)
-
-const triggerUpload = () => {
-  uploadInputRef.value?.click()
-}
-
+const triggerUpload = () => uploadInputRef.value?.click()
 const handleFileInputChange = async (e: Event) => {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
-  if (!file || !selectedBundle.value) return
+  if (!file) return
   await workspace.uploadExternalCommand(file, '.')
   target.value = ''
 }
 
-// ─── 文件包列表右键菜单（重命名/删除） ───────────────────────────────────────
+// ─── 文件包列表右键菜单 ──────────────────────────────────────────────────────
 
 const ctxMenu = ref({ visible: false, x: 0, y: 0, bundle: null as FileBundleListItem | null })
-
 const showCtxMenu = (e: MouseEvent, bundle: FileBundleListItem) => {
   e.preventDefault()
   ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, bundle }
 }
-
 const hideCtxMenu = () => {
   ctxMenu.value.visible = false
 }
-
 onBeforeUnmount(() => document.removeEventListener('click', hideCtxMenu))
 nextTick(() => document.addEventListener('click', hideCtxMenu))
 
@@ -246,9 +219,7 @@ const submitRename = async () => {
     const res = await patchFileBundleApi(renameBundleId.value, { name: renameInput.value.trim() })
     ElMessage.success('重命名成功')
     if (res.data?.affected_versions?.length) {
-      ElMessage.info(
-        `此更改影响 ${res.data.affected_versions.length} 个版本的文件包关联名称（bundle_id 不变）`
-      )
+      ElMessage.info(`此更改影响 ${res.data.affected_versions.length} 个版本的关联`)
     }
     renameDialogVisible.value = false
     await fetchBundles()
@@ -276,11 +247,11 @@ const handleDeleteBundle = async (bundle: FileBundleListItem) => {
     await fetchBundles()
   } catch (e: any) {
     const detail = e?.response?.data?.detail
-    if (detail === 'BUNDLE_IN_USE') {
-      ElMessage.error('该文件包被版本引用，请先解除关联后再删除')
-    } else {
-      ElMessage.error('删除失败：' + (detail || ''))
-    }
+    ElMessage.error(
+      detail === 'BUNDLE_IN_USE'
+        ? '该文件包被版本引用，请先解除关联后再删除'
+        : '删除失败：' + (detail || '')
+    )
   }
 }
 
@@ -316,18 +287,6 @@ const formatSize = (bytes: number) => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
-
-// ─── 语言检测 ─────────────────────────────────────────────────────────────────
-
-const detectLanguage = (path: string) => {
-  if (path.endsWith('.py')) return 'python'
-  if (path.endsWith('.launch')) return 'xml'
-  if (path.endsWith('.yaml') || path.endsWith('.yml')) return 'yaml'
-  if (path.endsWith('.sh')) return 'shell'
-  if (path.endsWith('.json')) return 'json'
-  if (path.endsWith('.cpp') || path.endsWith('.c') || path.endsWith('.h')) return 'cpp'
-  return 'plaintext'
-}
 </script>
 
 <template>
@@ -359,34 +318,36 @@ const detectLanguage = (path: string) => {
                 </template>
               </ElEmpty>
             </div>
-            <div v-else class="bundle-hint text-12px color-#909399 mb-8px">
-              💡 单击选中，<strong>双击</strong>进入文件树 | 右键可重命名/删除
-            </div>
-            <ElScrollbar class="bundle-list-scroll">
-              <div
-                v-for="bundle in bundles"
-                :key="bundle.bundle_id"
-                :class="[
-                  'bundle-item',
-                  selectedBundle?.bundle_id === bundle.bundle_id && 'bundle-item--selected'
-                ]"
-                @click="handleBundleClick(bundle)"
-                @dblclick="handleBundleDblClick(bundle)"
-                @contextmenu="showCtxMenu($event, bundle)"
-              >
-                <span class="bundle-item__icon">📦</span>
-                <div class="bundle-item__info">
-                  <div class="bundle-item__name">{{ bundle.name }}</div>
-                  <div class="bundle-item__meta">
-                    {{ bundle.file_count }} 个文件 · {{ formatSize(bundle.total_size_bytes) }}
+            <template v-else>
+              <div class="bundle-hint text-12px color-#909399">
+                💡 单击选中，<strong>双击</strong>进入文件树 | 右键可重命名/删除
+              </div>
+              <ElScrollbar class="bundle-list-scroll">
+                <div
+                  v-for="bundle in bundles"
+                  :key="bundle.bundle_id"
+                  :class="[
+                    'bundle-item',
+                    selectedBundle?.bundle_id === bundle.bundle_id && 'bundle-item--selected'
+                  ]"
+                  @click="handleBundleClick(bundle)"
+                  @dblclick="handleBundleDblClick(bundle)"
+                  @contextmenu="showCtxMenu($event, bundle)"
+                >
+                  <span class="bundle-item__icon">📦</span>
+                  <div class="bundle-item__info">
+                    <div class="bundle-item__name">{{ bundle.name }}</div>
+                    <div class="bundle-item__meta">
+                      {{ bundle.file_count }} 个文件 · {{ formatSize(bundle.total_size_bytes) }}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </ElScrollbar>
+              </ElScrollbar>
+            </template>
           </template>
         </template>
 
-        <!-- 状态 B：文件树视图 — 完整复用 FileTree.vue（含右键菜单） -->
+        <!-- 状态 B：文件树视图 -->
         <template v-if="viewMode === 'tree'">
           <div class="tree-header">
             <ElButton link @click="handleBackToList">← 返回列表</ElButton>
@@ -401,7 +362,6 @@ const detectLanguage = (path: string) => {
               @change="handleFileInputChange"
             />
           </div>
-          <!-- FileTree.vue：与学生端完全一致，自带右键菜单 -->
           <div class="file-tree-wrap">
             <FileTree
               :tree-data="workspace.treeData.value"
@@ -414,9 +374,9 @@ const detectLanguage = (path: string) => {
         </template>
       </div>
 
-      <!-- ─── 右侧面板 ─── -->
+      <!-- ─── 右侧面板：EditorWorkbench（完整复用学生端编辑器）─── -->
       <div class="exp-files-right">
-        <!-- 未进入文件树时的提示 -->
+        <!-- 列表视图：摘要 -->
         <div v-if="viewMode === 'list'" class="right-placeholder">
           <div v-if="!selectedBundle" class="color-#bbb text-14px">请先选择一个文件包</div>
           <div v-else class="bundle-summary">
@@ -431,22 +391,20 @@ const detectLanguage = (path: string) => {
           </div>
         </div>
 
-        <!-- 已进入文件树：Monaco 编辑器 -->
-        <div v-else class="editor-area">
-          <div v-if="!openedFilePath" class="editor-placeholder">
-            点击左侧文件树中的文件以打开编辑
-          </div>
-          <template v-else>
-            <div class="editor-toolbar">
-              <span class="editor-toolbar__path">📄 {{ openedFilePath }}</span>
-              <ElTag v-if="hasUnsavedChanges" type="warning" size="small">未保存</ElTag>
-              <ElButton type="primary" size="small" @click="handleSave">保存</ElButton>
-            </div>
-            <div class="editor-body">
-              <MonacoEditor v-model="editorContent" :language="detectLanguage(openedFilePath)" />
-            </div>
-          </template>
-        </div>
+        <!-- 文件树视图：EditorWorkbench（标签页 + Ctrl+S 快捷键） -->
+        <EditorWorkbench
+          v-else
+          :preview-path="editor.previewPath.value"
+          :active-path="editor.activePath.value"
+          :pinned-tabs="editor.pinnedTabs.value"
+          :file-cache="editor.fileCache"
+          :dirty-map="editor.dirtyMap"
+          :settings="settings"
+          @content-change="editor.handleContentChange($event)"
+          @save="editor.saveActiveFile($event)"
+          @select-tab="editor.handleSelectTab($event, false)"
+          @close-tab="editor.closeTab($event)"
+        />
       </div>
     </div>
 
@@ -454,13 +412,16 @@ const detectLanguage = (path: string) => {
     <div class="exp-files-statusbar">
       <template v-if="viewMode === 'list'">共 {{ bundles.length }} 个文件包</template>
       <template v-else>
-        {{ selectedBundle?.name }} | 文件数：{{ workspace.treeData.value.length }}
-        <span v-if="openedFilePath"> | 当前文件：{{ openedFilePath }}</span>
+        {{ selectedBundle?.name }}
+        <span v-if="editor.activePath.value"> | 当前文件：{{ editor.activePath.value }}</span>
+        <span v-if="editor.getDirtyPaths().length > 0" class="statusbar-dirty">
+          ● {{ editor.getDirtyPaths().length }} 个文件未保存
+        </span>
       </template>
     </div>
   </ContentWrap>
 
-  <!-- 文件包列表右键菜单（仅在列表视图显示） -->
+  <!-- 文件包列表右键菜单 -->
   <div
     v-if="ctxMenu.visible"
     class="ctx-menu"
@@ -472,7 +433,7 @@ const detectLanguage = (path: string) => {
     </div>
   </div>
 
-  <!-- 新建文件包对话框 -->
+  <!-- 新建文件包 -->
   <ElDialog v-model="createDialogVisible" title="新建文件包" width="420px">
     <ElForm label-width="90px">
       <ElFormItem label="文件包名称" required>
@@ -489,7 +450,7 @@ const detectLanguage = (path: string) => {
     </template>
   </ElDialog>
 
-  <!-- 重命名文件包对话框 -->
+  <!-- 重命名文件包 -->
   <ElDialog v-model="renameDialogVisible" title="重命名文件包" width="420px">
     <ElForm label-width="90px">
       <ElFormItem label="新名称" required>
@@ -605,7 +566,6 @@ const detectLanguage = (path: string) => {
   }
 }
 
-/* FileTree.vue 需要占满剩余高度 */
 .file-tree-wrap {
   flex: 1;
   overflow: hidden;
@@ -629,45 +589,6 @@ const detectLanguage = (path: string) => {
   }
 }
 
-.editor-area {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.editor-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
-}
-
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--el-border-color);
-  background: var(--el-fill-color-lighter);
-  flex-shrink: 0;
-
-  &__path {
-    flex: 1;
-    font-size: 13px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--el-text-color-secondary);
-  }
-}
-
-.editor-body {
-  flex: 1;
-  overflow: hidden;
-}
-
 .exp-files-statusbar {
   margin-top: 8px;
   padding: 6px 12px;
@@ -677,7 +598,12 @@ const detectLanguage = (path: string) => {
   color: var(--el-text-color-secondary);
 }
 
-// 列表视图右键菜单（文件包重命名/删除）
+.statusbar-dirty {
+  color: var(--el-color-warning);
+  margin-left: 8px;
+}
+
+// 文件包列表右键菜单
 .ctx-menu {
   position: fixed;
   z-index: 9999;
@@ -697,7 +623,6 @@ const detectLanguage = (path: string) => {
     &:hover {
       background: var(--el-fill-color-light);
     }
-
     &--danger {
       color: var(--el-color-danger);
     }

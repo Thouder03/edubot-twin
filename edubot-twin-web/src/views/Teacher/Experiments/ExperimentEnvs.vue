@@ -2,15 +2,14 @@
 /**
  * 实验环境管理页 — /teacher/experiments/environments
  *
- * 状态 A：环境包列表视图
- * 状态 B：文件树视图（完整复用学生端 FileTree.vue 右键菜单）
- *         + 基本设置区（可拖拽分隔）
+ * 左侧：环境包列表 + 文件树（FileTree.vue 完整右键菜单）+ 基本设置（可拖拽调整）
+ * 右侧：EditorWorkbench.vue（与学生端相同：标签页 + Ctrl+S + dirty 标记）
  *
- * startup.sh 在文件树中显示为不可删除（useBundleWorkspace protectedPaths 约束）
+ * startup.sh 在文件树中被保护，不可删除，但可在编辑器中正常编辑和保存。
  */
 import { ContentWrap } from '@/components/ContentWrap'
-import MonacoEditor from '@/components/Monaco/MonacoEditor.vue'
 import FileTree from '@/views/Simulation/panels/WorkspacePanel/FileTree.vue'
+import EditorWorkbench from '@/views/Simulation/panels/WorkspacePanel/EditorWorkbench.vue'
 import {
   createEnvBundleApi,
   deleteEnvBundleApi,
@@ -22,6 +21,8 @@ import {
 } from '@/api/experiment'
 import type { EnvBundleListItem } from '@/api/experiment/types'
 import { useBundleWorkspace } from './composables/useBundleWorkspace'
+import { useBundleEditorState } from './composables/useBundleEditorState'
+import { useWorkspaceSettings } from '@/composables/useWorkspaceSettings'
 import {
   ElButton,
   ElDialog,
@@ -74,7 +75,7 @@ const fileApiPrefix = computed(() =>
     : ''
 )
 
-// ─── useBundleWorkspace（startup.sh 不可删除）────────────────────────────────
+// ─── 文件树（FileTree.vue + startup.sh 保护）─────────────────────────────────
 
 const workspace = useBundleWorkspace(fileApiPrefix, ['startup.sh'])
 
@@ -84,16 +85,28 @@ watch(fileApiPrefix, async (newPrefix) => {
   }
 })
 
-// ─── 单击选中 ─────────────────────────────────────────────────────────────────
+// ─── 编辑器状态（EditorWorkbench.vue 接口）───────────────────────────────────
+
+const { settings } = useWorkspaceSettings()
+
+const editor = useBundleEditorState(
+  async (path: string) => {
+    const res = await readEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path)
+    return res.data?.content ?? ''
+  },
+  async (path: string, content: string) => {
+    await saveEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path, content)
+  }
+)
+
+// ─── 单击 / 双击环境包 ────────────────────────────────────────────────────────
 
 const handleEnvBundleClick = (bundle: EnvBundleListItem) => {
   selectedEnvBundle.value = bundle
 }
 
-// ─── 双击进入文件树 ───────────────────────────────────────────────────────────
-
 const handleEnvBundleDblClick = async (bundle: EnvBundleListItem) => {
-  if (hasUnsavedChanges.value) {
+  if (editor.hasAnyUnsavedChanges()) {
     const ok = await confirmLeave()
     if (!ok) return
   }
@@ -103,14 +116,17 @@ const handleEnvBundleDblClick = async (bundle: EnvBundleListItem) => {
   settingsForm.value.access_level = (bundle as any).access_level || 'readonly'
   viewMode.value = 'tree'
   workspace.clearSelection()
-  openedFilePath.value = ''
-  fileContent.value = ''
-  hasUnsavedChanges.value = false
+  // 关闭旧标签页
+  const allPaths = [
+    ...editor.pinnedTabs.value,
+    ...(editor.previewPath.value ? [editor.previewPath.value] : [])
+  ]
+  allPaths.forEach((p) => editor.closeTab(p))
   await workspace.loadTree()
   // 自动打开 startup.sh
   const startupNode = workspace.findNodeByPath(workspace.treeData.value, 'startup.sh')
   if (startupNode) {
-    await handleSelectFile('startup.sh')
+    await editor.openFile('startup.sh', false) // pinned
   }
 }
 
@@ -120,99 +136,43 @@ const handleBackToList = async () => {
   const ok = await confirmLeave()
   if (!ok) return
   viewMode.value = 'list'
-  openedFilePath.value = ''
-  fileContent.value = ''
-  hasUnsavedChanges.value = false
+  const allPaths = [
+    ...editor.pinnedTabs.value,
+    ...(editor.previewPath.value ? [editor.previewPath.value] : [])
+  ]
+  allPaths.forEach((p) => editor.closeTab(p))
 }
 
-// ─── 编辑器状态 ───────────────────────────────────────────────────────────────
-
-const openedFilePath = ref('')
-const fileContent = ref('')
-const hasUnsavedChanges = ref(false)
-
-const editorContent = computed({
-  get: () => fileContent.value,
-  set: (val) => {
-    fileContent.value = val
-    hasUnsavedChanges.value = true
-  }
-})
-
-// ─── 语言检测 ─────────────────────────────────────────────────────────────────
-
-const getFileLanguage = (path: string) => {
-  const ext = path.split('.').pop() ?? ''
-  const map: Record<string, string> = {
-    py: 'python',
-    launch: 'xml',
-    yaml: 'yaml',
-    yml: 'yaml',
-    sh: 'shell',
-    json: 'json',
-    cpp: 'cpp',
-    c: 'c',
-    txt: 'plaintext',
-    md: 'markdown'
-  }
-  return map[ext] ?? 'plaintext'
-}
-
-// ─── 打开文件（点击文件树节点） ───────────────────────────────────────────────
+// ─── 点击文件树节点 ───────────────────────────────────────────────────────────
 
 const handleSelectFile = async (path: string) => {
   const node = workspace.findNodeByPath(workspace.treeData.value, path)
   if (!node || node.type === 'directory') return
-
-  if (hasUnsavedChanges.value) {
-    const ok = await confirmLeave()
-    if (!ok) return
-  }
-
-  try {
-    const res = await readEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path)
-    openedFilePath.value = path
-    fileContent.value = res.data?.content ?? ''
-    hasUnsavedChanges.value = false
-  } catch (e: any) {
-    ElMessage.error('打开文件失败：' + (e?.response?.data?.detail ?? e.message ?? ''))
-  }
-}
-
-// ─── 保存文件 ─────────────────────────────────────────────────────────────────
-
-const handleSave = async () => {
-  if (!openedFilePath.value || !selectedEnvBundle.value) return
-  try {
-    await saveEnvBundleFileApi(
-      selectedEnvBundle.value.env_bundle_id,
-      openedFilePath.value,
-      fileContent.value
-    )
-    ElMessage.success('保存成功')
-    hasUnsavedChanges.value = false
-  } catch (e: any) {
-    const detail = e?.response?.data?.detail
-    if (detail === 'FILE_SAVE_CONFLICT') {
-      ElMessage.error('文件已被其他操作更新，请刷新后重试')
-    } else {
-      ElMessage.error('保存失败：' + (detail ?? e.message ?? ''))
-    }
-  }
+  await editor.openFile(path, true)
 }
 
 // ─── 离开确认 ─────────────────────────────────────────────────────────────────
 
 const confirmLeave = async (): Promise<boolean> => {
-  if (!hasUnsavedChanges.value) return true
+  const dirtyPaths = editor.getDirtyPaths()
+  if (dirtyPaths.length === 0) return true
+
+  const fileNames = dirtyPaths.map((p) => p.split('/').pop()).join('、')
   try {
-    await ElMessageBox.confirm('当前文件有未保存的修改，是否保存后继续？', '未保存修改', {
-      confirmButtonText: '保存后继续',
-      cancelButtonText: '放弃修改',
-      distinguishCancelAndClose: true,
-      type: 'warning'
-    })
-    await handleSave()
+    await ElMessageBox.confirm(
+      `以下文件有未保存的修改：${fileNames}，是否保存后继续？`,
+      '未保存修改',
+      {
+        confirmButtonText: '全部保存后继续',
+        cancelButtonText: '放弃修改并继续',
+        distinguishCancelAndClose: true,
+        type: 'warning'
+      }
+    )
+    for (const path of dirtyPaths) {
+      const content = editor.fileCache[path]?.content ?? ''
+      await saveEnvBundleFileApi(selectedEnvBundle.value!.env_bundle_id, path, content)
+    }
     return true
   } catch (action) {
     if (action === 'cancel') return true
@@ -258,7 +218,7 @@ const handleSaveSettings = async () => {
   }
 }
 
-// ─── 可拖拽分隔 ───────────────────────────────────────────────────────────────
+// ─── 可拖拽分隔（文件树 / 基本设置）─────────────────────────────────────────
 
 const treeHeightPercent = ref(60)
 const isDragging = ref(false)
@@ -270,8 +230,7 @@ const startDrag = (e: MouseEvent) => {
   const startPercent = treeHeightPercent.value
   const onMove = (ev: MouseEvent) => {
     if (!leftPanelRef.value) return
-    const totalH = leftPanelRef.value.clientHeight
-    const delta = ((ev.clientY - startY) / totalH) * 100
+    const delta = ((ev.clientY - startY) / leftPanelRef.value.clientHeight) * 100
     treeHeightPercent.value = Math.max(20, Math.min(80, startPercent + delta))
   }
   const onUp = () => {
@@ -287,7 +246,6 @@ const startDrag = (e: MouseEvent) => {
 
 const uploadInputRef = ref<HTMLInputElement | null>(null)
 const triggerUpload = () => uploadInputRef.value?.click()
-
 const handleUploadChange = async (e: Event) => {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
@@ -296,23 +254,20 @@ const handleUploadChange = async (e: Event) => {
   target.value = ''
 }
 
-// ─── 文件包列表右键菜单（重命名/删除） ───────────────────────────────────────
+// ─── 环境包列表右键菜单 ──────────────────────────────────────────────────────
 
 const ctxMenu = ref({ visible: false, x: 0, y: 0, bundle: null as EnvBundleListItem | null })
-
 const showCtxMenu = (e: MouseEvent, bundle: EnvBundleListItem) => {
   e.preventDefault()
   ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, bundle }
 }
-
 const hideCtxMenu = () => {
   ctxMenu.value.visible = false
 }
-
 onBeforeUnmount(() => document.removeEventListener('click', hideCtxMenu))
 nextTick(() => document.addEventListener('click', hideCtxMenu))
 
-// ─── 重命名 ──────────────────────────────────────────────────────────────────
+// ─── 重命名 / 删除环境包 ─────────────────────────────────────────────────────
 
 const renameDialogVisible = ref(false)
 const renameInput = ref('')
@@ -337,8 +292,6 @@ const submitRename = async () => {
   }
 }
 
-// ─── 删除环境包 ──────────────────────────────────────────────────────────────
-
 const handleDeleteBundle = async (bundle: EnvBundleListItem) => {
   hideCtxMenu()
   await ElMessageBox.confirm(`确认删除环境包「${bundle.name}」吗？`, '删除确认', {
@@ -356,11 +309,11 @@ const handleDeleteBundle = async (bundle: EnvBundleListItem) => {
     await fetchEnvBundles()
   } catch (e: any) {
     const detail = e?.response?.data?.detail
-    if (detail === 'BUNDLE_IN_USE') {
-      ElMessage.error('该环境包被版本引用，请先解除关联')
-    } else {
-      ElMessage.error('删除失败：' + (detail || ''))
-    }
+    ElMessage.error(
+      detail === 'BUNDLE_IN_USE'
+        ? '该环境包被版本引用，请先解除关联'
+        : '删除失败：' + (detail || '')
+    )
   }
 }
 
@@ -408,7 +361,7 @@ const dryRunVersionId = ref('')
 const dryRunLoading = ref(false)
 
 const openDryRunDialog = async () => {
-  if (hasUnsavedChanges.value) {
+  if (editor.hasAnyUnsavedChanges()) {
     const ok = await confirmLeave()
     if (!ok) return
   }
@@ -441,11 +394,11 @@ const startDryRun = async () => {
     window.open(url, '_blank')
   } catch (e: any) {
     const detail = e?.response?.data?.detail
-    if (detail === 'DRY_RUN_RESOURCE_EXHAUSTED') {
-      ElMessage.error('测试容器配额已满（最多 3 个），请先关闭已有测试容器')
-    } else {
-      ElMessage.error('启动失败：' + (detail || '未知错误'))
-    }
+    ElMessage.error(
+      detail === 'DRY_RUN_RESOURCE_EXHAUSTED'
+        ? '测试容器配额已满（最多 3 个），请先关闭已有测试容器'
+        : '启动失败：' + (detail || '未知错误')
+    )
   } finally {
     dryRunLoading.value = false
   }
@@ -457,9 +410,14 @@ const startDryRun = async () => {
     <!-- 标题栏 -->
     <div class="mb-16px flex items-center justify-between">
       <div class="text-18px font-600">实验环境管理</div>
-      <ElButton v-if="viewMode === 'list'" type="primary" @click="openCreateDialog">
-        + 新建环境包
-      </ElButton>
+      <div class="flex items-center gap-8px">
+        <ElButton v-if="viewMode === 'tree'" type="warning" size="small" @click="openDryRunDialog">
+          🧪 试运行
+        </ElButton>
+        <ElButton v-if="viewMode === 'list'" type="primary" @click="openCreateDialog">
+          + 新建环境包
+        </ElButton>
+      </div>
     </div>
 
     <div class="exp-envs-layout">
@@ -473,42 +431,43 @@ const startDryRun = async () => {
               <ElEmpty>
                 <template #description>
                   <div class="text-14px color-#606266">
-                    暂无环境包。<br />
-                    点击「新建环境包」创建，<br />
-                    然后<strong>双击</strong>进入文件树编辑 startup.sh。
+                    暂无环境包。<br />点击「新建环境包」创建，<br />
+                    然后<strong>双击</strong>进入文件树编辑。
                   </div>
                 </template>
               </ElEmpty>
             </div>
-            <div v-else class="bundle-hint text-12px color-#909399 mb-8px">
-              💡 单击选中，<strong>双击</strong>进入文件树 | 右键可重命名/删除
-            </div>
-            <ElScrollbar class="bundle-list-scroll">
-              <div
-                v-for="bundle in envBundles"
-                :key="bundle.env_bundle_id"
-                :class="[
-                  'bundle-item',
-                  selectedEnvBundle?.env_bundle_id === bundle.env_bundle_id &&
-                    'bundle-item--selected'
-                ]"
-                @click="handleEnvBundleClick(bundle)"
-                @dblclick="handleEnvBundleDblClick(bundle)"
-                @contextmenu="showCtxMenu($event, bundle)"
-              >
-                <span class="bundle-item__icon">🔧</span>
-                <div class="bundle-item__info">
-                  <div class="bundle-item__name">{{ bundle.name }}</div>
-                  <div class="bundle-item__meta">{{ bundle.container_target_dir }}</div>
-                </div>
+            <template v-else>
+              <div class="bundle-hint text-12px color-#909399">
+                💡 单击选中，<strong>双击</strong>进入文件树 | 右键可重命名/删除
               </div>
-            </ElScrollbar>
+              <ElScrollbar class="bundle-list-scroll">
+                <div
+                  v-for="bundle in envBundles"
+                  :key="bundle.env_bundle_id"
+                  :class="[
+                    'bundle-item',
+                    selectedEnvBundle?.env_bundle_id === bundle.env_bundle_id &&
+                      'bundle-item--selected'
+                  ]"
+                  @click="handleEnvBundleClick(bundle)"
+                  @dblclick="handleEnvBundleDblClick(bundle)"
+                  @contextmenu="showCtxMenu($event, bundle)"
+                >
+                  <span class="bundle-item__icon">🔧</span>
+                  <div class="bundle-item__info">
+                    <div class="bundle-item__name">{{ bundle.name }}</div>
+                    <div class="bundle-item__meta">{{ bundle.container_target_dir }}</div>
+                  </div>
+                </div>
+              </ElScrollbar>
+            </template>
           </template>
         </template>
 
         <!-- 状态 B：文件树 + 基本设置 -->
         <template v-if="viewMode === 'tree'">
-          <!-- 文件树区域（完整复用 FileTree.vue，含右键菜单） -->
+          <!-- 文件树区域 -->
           <div class="file-tree-area" :style="{ height: treeHeightPercent + '%' }">
             <div class="tree-header">
               <ElButton link @click="handleBackToList">← 返回列表</ElButton>
@@ -523,7 +482,6 @@ const startDryRun = async () => {
                 @change="handleUploadChange"
               />
             </div>
-            <!-- FileTree.vue：startup.sh 在右键菜单中删除选项被禁用 -->
             <div class="file-tree-wrap">
               <FileTree
                 :tree-data="workspace.treeData.value"
@@ -547,7 +505,7 @@ const startDryRun = async () => {
           <!-- 基本设置区 -->
           <div class="settings-area">
             <div class="settings-header">基本设置</div>
-            <ElForm :model="settingsForm" label-position="top" class="settings-form pa-12px">
+            <ElForm :model="settingsForm" label-position="top" class="pa-12px">
               <ElFormItem label="容器目标目录">
                 <ElInput
                   v-model="settingsForm.container_target_dir"
@@ -576,9 +534,9 @@ const startDryRun = async () => {
         </template>
       </div>
 
-      <!-- ─── 右侧面板 ─── -->
+      <!-- ─── 右侧面板：EditorWorkbench ─── -->
       <div class="exp-envs-right">
-        <!-- 列表视图：摘要信息 -->
+        <!-- 列表视图摘要 -->
         <div v-if="viewMode === 'list'" class="right-placeholder">
           <div v-if="!selectedEnvBundle" class="color-#bbb text-14px">请先选择一个环境包</div>
           <div v-else class="bundle-summary">
@@ -592,26 +550,20 @@ const startDryRun = async () => {
           </div>
         </div>
 
-        <!-- 文件树视图：Monaco 编辑器 -->
-        <div v-else class="editor-area">
-          <div v-if="!openedFilePath" class="editor-placeholder">
-            点击左侧文件树中的文件以打开编辑（含 startup.sh）
-          </div>
-          <template v-else>
-            <div class="editor-toolbar">
-              <span class="editor-toolbar__path">
-                <span v-if="openedFilePath === 'startup.sh'">🚀</span>
-                📄 {{ openedFilePath }}
-              </span>
-              <ElTag v-if="hasUnsavedChanges" type="warning" size="small">未保存</ElTag>
-              <ElButton type="primary" size="small" @click="handleSave">保存</ElButton>
-              <ElButton type="warning" size="small" @click="openDryRunDialog"> 🧪 试运行 </ElButton>
-            </div>
-            <div class="editor-body">
-              <MonacoEditor v-model="editorContent" :language="getFileLanguage(openedFilePath)" />
-            </div>
-          </template>
-        </div>
+        <!-- 文件树视图：EditorWorkbench（标签页 + Ctrl+S） -->
+        <EditorWorkbench
+          v-else
+          :preview-path="editor.previewPath.value"
+          :active-path="editor.activePath.value"
+          :pinned-tabs="editor.pinnedTabs.value"
+          :file-cache="editor.fileCache"
+          :dirty-map="editor.dirtyMap"
+          :settings="settings"
+          @content-change="editor.handleContentChange($event)"
+          @save="editor.saveActiveFile($event)"
+          @select-tab="editor.handleSelectTab($event, false)"
+          @close-tab="editor.closeTab($event)"
+        />
       </div>
     </div>
 
@@ -620,6 +572,9 @@ const startDryRun = async () => {
       <template v-if="viewMode === 'list'">共 {{ envBundles.length }} 个环境包</template>
       <template v-else>
         {{ selectedEnvBundle?.name }} | 访问权限：{{ settingsForm.access_level }}
+        <span v-if="editor.getDirtyPaths().length > 0" class="statusbar-dirty">
+          ● {{ editor.getDirtyPaths().length }} 个文件未保存
+        </span>
       </template>
     </div>
   </ContentWrap>
@@ -636,7 +591,7 @@ const startDryRun = async () => {
     </div>
   </div>
 
-  <!-- 新建环境包对话框 -->
+  <!-- 新建环境包 -->
   <ElDialog v-model="createDialogVisible" title="新建环境包" width="500px">
     <ElForm :model="createForm" label-width="120px">
       <ElFormItem label="环境包名称" required>
@@ -659,7 +614,7 @@ const startDryRun = async () => {
     </template>
   </ElDialog>
 
-  <!-- 重命名对话框 -->
+  <!-- 重命名环境包 -->
   <ElDialog v-model="renameDialogVisible" title="重命名环境包" width="420px">
     <ElForm label-width="90px">
       <ElFormItem label="新名称" required>
@@ -675,16 +630,12 @@ const startDryRun = async () => {
   <!-- Dry Run 对话框 -->
   <ElDialog v-model="dryRunDialogVisible" title="试运行" width="460px">
     <div class="mb-12px text-14px color-#606266">
-      将为您创建一个临时测试容器，验证启动脚本和 Launch 文件是否能正常运行。<br />
-      容器停止后将立即自动清理。
+      创建临时测试容器，验证 startup.sh 和 launch 文件能否正常运行。<br />
+      容器结束后立即自动清理。
     </div>
-    <ElForm label-width="120px">
+    <ElForm label-width="130px">
       <ElFormItem label="关联实验版本 ID" required>
-        <ElInput
-          v-model="dryRunVersionId"
-          placeholder="输入实验版本 ID（version_id）"
-          type="number"
-        />
+        <ElInput v-model="dryRunVersionId" placeholder="输入实验版本 ID" type="number" />
       </ElFormItem>
     </ElForm>
     <template #footer>
@@ -749,7 +700,6 @@ const startDryRun = async () => {
   &__icon {
     font-size: 20px;
   }
-
   &__info {
     flex: 1;
     min-width: 0;
@@ -808,7 +758,6 @@ const startDryRun = async () => {
   flex-shrink: 0;
 }
 
-/* FileTree.vue 占满文件树区域剩余高度 */
 .file-tree-wrap {
   flex: 1;
   overflow: hidden;
@@ -831,7 +780,6 @@ const startDryRun = async () => {
   &--active {
     background: var(--el-color-primary-light-8);
   }
-
   &__hint {
     font-size: 12px;
     color: var(--el-text-color-secondary);
@@ -857,10 +805,6 @@ const startDryRun = async () => {
   background: var(--el-fill-color-lighter);
 }
 
-.settings-form {
-  flex: 1;
-}
-
 .right-placeholder {
   display: flex;
   align-items: center;
@@ -878,45 +822,6 @@ const startDryRun = async () => {
   }
 }
 
-.editor-area {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.editor-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
-}
-
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--el-border-color);
-  background: var(--el-fill-color-lighter);
-  flex-shrink: 0;
-
-  &__path {
-    flex: 1;
-    font-size: 13px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--el-text-color-secondary);
-  }
-}
-
-.editor-body {
-  flex: 1;
-  overflow: hidden;
-}
-
 .exp-envs-statusbar {
   margin-top: 8px;
   padding: 6px 12px;
@@ -926,7 +831,11 @@ const startDryRun = async () => {
   color: var(--el-text-color-secondary);
 }
 
-// 环境包列表视图右键菜单
+.statusbar-dirty {
+  color: var(--el-color-warning);
+  margin-left: 8px;
+}
+
 .ctx-menu {
   position: fixed;
   z-index: 9999;
@@ -946,7 +855,6 @@ const startDryRun = async () => {
     &:hover {
       background: var(--el-fill-color-light);
     }
-
     &--danger {
       color: var(--el-color-danger);
     }
