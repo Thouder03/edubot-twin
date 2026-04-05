@@ -167,6 +167,14 @@ watch(resolvedLanguage, (lang) => {
 })
 
 watch(
+  () => props.readonly,
+  (readonly) => {
+    if (!editorInstance) return
+    editorInstance.updateOptions({ readOnly: readonly ?? false })
+  }
+)
+
+watch(
   () => props.settings,
   (s) => {
     if (!editorInstance || !s) return

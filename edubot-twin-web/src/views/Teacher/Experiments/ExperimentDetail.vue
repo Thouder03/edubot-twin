@@ -159,6 +159,12 @@ const selectedVersion = computed<ExperimentVersionResponse | null>(() => {
   return currentVersions.value.find((v) => v.version_id === selectedVersionId.value) || null
 })
 
+const handleCurrentVersionChange = (row: ExperimentVersionResponse | null) => {
+  // Element Plus 在表格数据刷新时会触发一次 row=null，忽略该瞬时事件以保留当前选中版本
+  if (!row) return
+  selectedVersionId.value = row.version_id
+}
+
 const isDraftVersion = computed(() => selectedVersion.value?.publish_status === 'draft')
 
 // ─── 同步编辑表单 ─────────────────────────────────────────────────────────────
@@ -189,21 +195,26 @@ watch(selectedVersion, syncEditFormFromSelected, { immediate: true })
 
 // ─── 加载实验详情 ─────────────────────────────────────────────────────────────
 
-const fetchExperimentDetail = async () => {
+const fetchExperimentDetail = async (preferredVersionId?: number | null) => {
   if (!experimentId.value || Number.isNaN(experimentId.value)) {
     ElMessage.error('实验ID无效')
     router.replace('/teacher/experiments/list')
     return
   }
+
+  const keepVersionId = preferredVersionId ?? selectedVersionId.value
   detailLoading.value = true
   try {
     const res = await getExperimentDetailApi(experimentId.value)
-    detailData.value = res.data || null
-    if (
-      !selectedVersionId.value ||
-      !currentVersions.value.some((v) => v.version_id === selectedVersionId.value)
-    ) {
-      selectedVersionId.value = currentVersions.value[0]?.version_id ?? null
+    const nextDetail = res.data || null
+    const nextVersions = nextDetail?.versions || []
+
+    detailData.value = nextDetail
+
+    if (keepVersionId && nextVersions.some((v) => v.version_id === keepVersionId)) {
+      selectedVersionId.value = keepVersionId
+    } else {
+      selectedVersionId.value = nextVersions[0]?.version_id ?? null
     }
   } finally {
     detailLoading.value = false
@@ -289,9 +300,10 @@ const saveVersion = async () => {
 
   savingVersion.value = true
   try {
-    await updateExperimentVersionApi(experimentId.value, selectedVersion.value.version_id, payload)
+    const currentVersionId = selectedVersion.value.version_id
+    await updateExperimentVersionApi(experimentId.value, currentVersionId, payload)
     ElMessage.success('配置保存成功')
-    await fetchExperimentDetail()
+    await fetchExperimentDetail(currentVersionId)
     // 保存后自动验证（SDD §15.3）
     await validateVersion()
   } finally {
@@ -348,7 +360,7 @@ const handleVersionStatusChange = async (
     }
 
     ElMessage.success(`状态已切换为${versionStatusLabelMap[targetStatus]}`)
-    await fetchExperimentDetail()
+    await fetchExperimentDetail(row.version_id)
   } catch (e: any) {
     if (e === 'cancel' || e === 'close') {
       return
@@ -363,7 +375,7 @@ const handleVersionStatusChange = async (
     } else {
       ElMessage.error('状态切换失败：' + (detail || '未知错误'))
     }
-    await fetchExperimentDetail()
+    await fetchExperimentDetail(row.version_id)
   } finally {
     changingStatusVersionId.value = null
   }
@@ -503,10 +515,12 @@ fetchExperimentDetail()
 
         <ElTable
           :data="currentVersions"
+          row-key="version_id"
+          :current-row-key="selectedVersionId || undefined"
           border
           height="520"
           highlight-current-row
-          @current-change="(row) => (selectedVersionId = row?.version_id || null)"
+          @current-change="handleCurrentVersionChange"
         >
           <ElTableColumn prop="version_name" label="版本" min-width="120" />
           <ElTableColumn prop="environment_key" label="环境标识" min-width="140" />
@@ -650,12 +664,28 @@ fetchExperimentDetail()
             </ElFormItem>
           </ElForm>
 
+          <div class="mb-8px flex items-center justify-between">
+            <span class="text-12px color-#909399">
+              launch_args_template（注入启动脚本参数）编辑区：
+            </span>
+            <ElButton
+              type="primary"
+              size="small"
+              :disabled="!isDraftVersion"
+              :loading="savingVersion"
+              @click="saveVersion"
+            >
+              保存配置
+            </ElButton>
+          </div>
+
           <div style="height: 360px">
             <MonacoEditor
               v-model="editorText"
               language="json"
-              :readonly="!isDraftVersion"
+              :readonly="!selectedVersion"
               placeholder="请选择版本后编辑 launch_args_template"
+              @save="saveVersion"
             />
           </div>
         </ElCard>
