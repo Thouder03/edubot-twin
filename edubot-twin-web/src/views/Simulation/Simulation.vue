@@ -9,10 +9,15 @@
  * 页面加载时即初始化 GzWeb iframe 通信（不等 GzWebViewer 面板挂载），
  * 确保 SimControlBar 在 GzWebViewer 面板关闭时仍能控制仿真。
  *
- * ── 第四期：容器生命周期管理 ──
+ * ── 容器生命周期管理 ──
  * 心跳上报（30s/前台，120s/后台）
  * 页面重新激活弹窗
  * 退出仿真确认（beforeunload + sendBeacon）
+ *
+ * ── Dry Run 模式（Shadow 学生方案）──
+ * simulation_token（Shadow JWT）从 URL query 传入 → 存入 sessionStorage → 清除 URL
+ * 所有 API 调用通过请求拦截器自动使用 sessionStorage 中的 simulation_token
+ * isDryRunMode 仅用于控制 DryRunToolbar 可见性，不影响任何业务逻辑
  */
 import { ref, onMounted, onBeforeUnmount, provide, readonly } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
@@ -20,6 +25,7 @@ import { LayoutConfig, type ResolvedLayoutConfig } from 'golden-layout'
 import { useRoute, useRouter } from 'vue-router'
 
 import SimulationHeader from './components/SimulationHeader.vue'
+import DryRunToolbar from './components/DryRunToolbar.vue'
 import GLayout from './components/GLayout.vue'
 import SettingsSidebar from './components/SettingsSidebar.vue'
 import { defaultLayout } from './config/predefined-layouts'
@@ -32,7 +38,6 @@ import {
   startMyContainerApi,
   stopOnExitApi
 } from '@/api/container'
-import { stopDryRunApi } from '@/api/experiment'
 import type { ContainerStatus } from '@/api/container/types'
 import { useUserStore } from '@/store/modules/user'
 
@@ -47,9 +52,8 @@ const experimentContext = ref<{
   environment_key?: string
 } | null>(null)
 
-// ---------- Dry Run 模式（SDD §15.5）----------
-const isDryRun = ref(false)
-const dryRunContainerId = ref<string | null>(null)
+// ---------- Dry Run 模式标记（仅用于工具栏可见性，不影响业务逻辑）----------
+const isDryRunMode = ref(!!sessionStorage.getItem('simulation_token'))
 
 // ---------- GzWeb 通信（页面级初始化）----------
 const { initialize: initGzBridge, dispose: disposeGzBridge } = useGzBridge()
@@ -314,6 +318,18 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   return event.returnValue
 }
 
+// ─── simulation_token 接收与 URL 清理 ────────────────────
+function handleSimulationToken() {
+  const simToken = route.query.simulation_token
+  if (typeof simToken === 'string') {
+    sessionStorage.setItem('simulation_token', simToken)
+    isDryRunMode.value = true
+    // 从 URL 移除 token，防止泄露到浏览器历史
+    const { simulation_token: _, ...restQuery } = route.query
+    router.replace({ ...route, query: restQuery })
+  }
+}
+
 // ---------- 局部暗色模式 ----------
 let originalDarkClass = false
 
@@ -329,6 +345,9 @@ onMounted(async () => {
   window.addEventListener('beforeunload', handleBeforeUnload)
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
+  // 接收 Shadow JWT（Dry Run 场景），存入 sessionStorage 并清除 URL
+  handleSimulationToken()
+
   const experimentName =
     typeof route.query.experiment_name === 'string' ? route.query.experiment_name : undefined
   const versionName =
@@ -342,73 +361,35 @@ onMounted(async () => {
     environment_key: environmentKey
   }
 
-  // Dry Run 模式检测（SDD §15.5）
-  isDryRun.value = route.query.dry_run === '1'
-  if (isDryRun.value) {
-    const cid = route.query.container_id
-    dryRunContainerId.value = typeof cid === 'string' ? cid : null
-  }
+  // ── 页面级 GzWeb 通信 + 容器信息初始化（统一走 /mine API）──
+  try {
+    const res = await getMyContainerApi()
+    const data = res?.data
+    const gzUrl = data?.gzbridge_url
+    const rosUrl = data?.rosbridge_url
 
-  // ── 页面级 GzWeb 通信初始化 ──
-  if (isDryRun.value) {
-    // Dry Run 模式：直接从 URL 参数获取 simulation_url（即 gzbridge_url），不调用学生容器 API
-    const simUrl =
-      typeof route.query.simulation_url === 'string' ? route.query.simulation_url : null
-    const rosUrl = typeof route.query.rosbridge_url === 'string' ? route.query.rosbridge_url : null
-    if (simUrl) {
-      console.info('[Simulation][DryRun] 从 query 获取 gzbridge URL:', simUrl)
-      initGzBridge(simUrl)
+    // 同步初始容器状态
+    if (data?.status) {
+      containerStatus.value = data.status
+    }
+
+    if (gzUrl) {
+      console.info('[Simulation] 从 API 获取 gzbridge URL:', gzUrl)
+      initGzBridge(gzUrl)
     } else {
-      console.warn(
-        '[Simulation][DryRun] simulation_url 未传入，使用 fallback:',
-        gzDefaultConfig.gzwebUrl
-      )
+      console.warn('[Simulation] API 未返回 gzbridge_url，使用 fallback:', gzDefaultConfig.gzwebUrl)
       initGzBridge(gzDefaultConfig.gzwebUrl)
     }
+
     if (rosUrl) {
       containerRosUrl.value = rosUrl
     }
-  } else {
-    try {
-      const res = await getMyContainerApi()
-      const data = res?.data
-      const gzUrl = data?.gzbridge_url
-      const rosUrl = data?.rosbridge_url
-
-      // 同步初始容器状态
-      if (data?.status) {
-        containerStatus.value = data.status
-      }
-
-      if (gzUrl) {
-        console.info('[Simulation] 从 API 获取 gzbridge URL:', gzUrl)
-        initGzBridge(gzUrl)
-      } else {
-        console.warn(
-          '[Simulation] API 未返回 gzbridge_url，使用 fallback:',
-          gzDefaultConfig.gzwebUrl
-        )
-        initGzBridge(gzDefaultConfig.gzwebUrl)
-      }
-
-      if (rosUrl) {
-        containerRosUrl.value = rosUrl
-        console.info('[Simulation] 已 provide 容器 rosbridge_url:', rosUrl)
-      }
-    } catch (err) {
-      console.warn(
-        '[Simulation] 页面级初始化: 获取容器 API 失败, 使用 fallback:',
-        err,
-        gzDefaultConfig.gzwebUrl
-      )
-      initGzBridge(gzDefaultConfig.gzwebUrl)
-    }
+  } catch (err) {
+    console.warn('[Simulation] 获取容器 API 失败, 使用 fallback:', err, gzDefaultConfig.gzwebUrl)
+    initGzBridge(gzDefaultConfig.gzwebUrl)
   }
 
-  // ── 启动心跳（Dry Run 模式下教师无学生容器，跳过）──
-  if (!isDryRun.value) {
-    startHeartbeat()
-  }
+  startHeartbeat()
 })
 
 onBeforeUnmount(() => {
@@ -416,15 +397,14 @@ onBeforeUnmount(() => {
   saveLayoutToStorage()
   disposeGzBridge()
 
-  // 组件卸载时用 sendBeacon 通知后端停止容器（Dry Run 模式由 stopDryRunApi 负责清理）
-  if (!isDryRun.value) {
-    const token = userStore.getToken
-    if (token) {
-      stopOnExitApi(token)
-    }
+  // 用 sendBeacon 通知后端停止容器（Shadow 学生用 simulation_token，普通学生用自身 token）
+  const token = sessionStorage.getItem('simulation_token') || userStore.getToken
+  if (token) {
+    stopOnExitApi(token)
   }
 
-  // 恢复原始暗色模式状态
+  sessionStorage.removeItem('simulation_token')
+
   if (!originalDarkClass) {
     document.documentElement.classList.remove('dark')
     document.documentElement.classList.add('light')
@@ -434,11 +414,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', saveLayoutToStorage)
   window.removeEventListener('beforeunload', handleBeforeUnload)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-
-  // Dry Run：best-effort 清理测试容器（SDD §15.5）
-  if (isDryRun.value && dryRunContainerId.value) {
-    stopDryRunApi(dryRunContainerId.value).catch(() => {})
-  }
 })
 
 // ---------- 退出（来自 SimulationHeader 的 back 事件）----------
@@ -453,8 +428,6 @@ async function handleBack() {
 
 <template>
   <div class="simulation-page">
-    <!-- Dry Run 橙色提示条（SDD §15.5）-->
-    <div v-if="isDryRun" class="dry-run-banner"> 🧪 试运行模式 — 该容器将在结束后立即自动清理 </div>
     <SimulationHeader
       :experiment-context="experimentContext"
       @layout-change="handleLayoutChange"
@@ -469,6 +442,7 @@ async function handleBack() {
         @settings-toggle="handleSettingsToggle"
       />
     </div>
+    <DryRunToolbar v-if="isDryRunMode" />
   </div>
 </template>
 
@@ -481,18 +455,6 @@ async function handleBack() {
   overflow: hidden;
   background: #11111b;
   flex-direction: column;
-}
-
-.dry-run-banner {
-  background: #e6790c;
-  color: #fff;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 6px 16px;
-  letter-spacing: 0.3px;
-  flex-shrink: 0;
-  z-index: 100;
 }
 
 .simulation-content {

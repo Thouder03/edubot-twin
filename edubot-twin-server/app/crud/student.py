@@ -42,9 +42,9 @@ async def get_users(
     limit: int = 100,
     keyword: Optional[str] = None,
 ) -> Tuple[List[User], int]:
-    """获取用户列表（分页 + 可选关键词过滤）。"""
-    base_query = select(User)
-    count_query = select(func.count()).select_from(User)
+    """获取用户列表（分页 + 可选关键词过滤，排除 Shadow 账号）。"""
+    base_query = select(User).where(User.is_shadow == False)  # noqa: E712
+    count_query = select(func.count()).select_from(User).where(User.is_shadow == False)  # noqa: E712
 
     if keyword:
         like_expr = f"%{keyword}%"

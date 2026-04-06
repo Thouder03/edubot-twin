@@ -24,7 +24,6 @@ async def create_container(
     - launch_file_path / launch_args
     - startup_script_path
     - env_volumes
-    - is_dry_run
 
     若 Docker 操作失败，status 改为 ERROR 并记录 error_message。
     """
@@ -55,7 +54,6 @@ async def create_container(
             launch_args=data.launch_args,
             startup_script_path=data.startup_script_path,
             env_volumes=data.env_volumes,
-            is_dry_run=data.is_dry_run,
         )
         container.container_id = docker_id
         container.status = ContainerStatus.RUNNING

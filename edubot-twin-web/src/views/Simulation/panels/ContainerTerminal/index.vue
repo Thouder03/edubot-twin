@@ -44,6 +44,17 @@ const statusText = computed(() => {
 // ---------- 用户 Token ----------
 const userStore = useUserStore()
 
+// ---------- Dry Run / ROOT 模式 ----------
+const isDryRunMode = computed(() => !!sessionStorage.getItem('simulation_token'))
+const rootMode = ref(false)
+
+function toggleRootMode() {
+  rootMode.value = !rootMode.value
+  // 重新连接 WebSocket（切换 root 参数）
+  terminal?.clear()
+  connectWs()
+}
+
 // ---------- xterm 相关 ----------
 const terminalEl = ref<HTMLElement | null>(null)
 let terminal: Terminal | null = null
@@ -57,11 +68,14 @@ const wsError = ref('')
 
 const TERMINAL_WS_PATH = '/api/v1/students/terminal/ws'
 
-function getWsUrl(): string {
-  const token = userStore.getToken
+function getWsUrl(rootMode = false): string {
+  // Dry Run 标签页中优先使用 Shadow 学生 JWT
+  const simulationToken = sessionStorage.getItem('simulation_token')
+  const token = simulationToken || userStore.getToken
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
-  return `${protocol}//${host}${TERMINAL_WS_PATH}?token=${encodeURIComponent(token ?? '')}`
+  const rootParam = rootMode ? '&root=1' : ''
+  return `${protocol}//${host}${TERMINAL_WS_PATH}?token=${encodeURIComponent(token ?? '')}${rootParam}`
 }
 
 function connectWs() {
@@ -71,7 +85,7 @@ function connectWs() {
   }
   wsError.value = ''
 
-  const url = getWsUrl()
+  const url = getWsUrl(rootMode.value)
   ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
 
@@ -244,6 +258,16 @@ onBeforeUnmount(() => {
         <button v-if="!wsConnected" class="container-terminal__reconnect" @click="reconnect">
           重连
         </button>
+        <!-- ROOT 切换（仅 Dry Run 模式可见）-->
+        <button
+          v-if="isDryRunMode"
+          class="container-terminal__root-btn"
+          :class="{ active: rootMode }"
+          :title="rootMode ? '切换回普通用户' : '切换到 ROOT 用户'"
+          @click="toggleRootMode"
+        >
+          {{ rootMode ? '🔴 ROOT' : '⚪ USER' }}
+        </button>
       </div>
 
       <!-- xterm 容器 -->
@@ -331,6 +355,28 @@ onBeforeUnmount(() => {
 
     &:hover {
       background: rgb(137 180 250 / 20%);
+    }
+  }
+
+  &__root-btn {
+    margin-left: auto;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    background: rgb(249 114 114 / 10%);
+    border: 1px solid #585b70;
+    border-radius: 4px;
+    color: #a6adc8;
+    transition: all 0.15s ease;
+
+    &.active {
+      background: rgb(249 114 114 / 20%);
+      border-color: #f38ba8;
+      color: #f38ba8;
+    }
+
+    &:hover {
+      background: rgb(249 114 114 / 25%);
     }
   }
 

@@ -11,7 +11,7 @@
 """
 
 from fastapi import APIRouter
-from . import containers, students, monitor, experiments, file_bundles, env_bundles
+from . import containers, students, monitor, experiments, file_bundles, env_bundles, dry_run_tools, container_files
 
 # 创建教师路由聚合器
 router = APIRouter()
@@ -27,6 +27,12 @@ router.include_router(file_bundles.router, prefix="/file-bundles", tags=["教师
 
 # 环境包管理（10-S1-4 新增）
 router.include_router(env_bundles.router, prefix="/env-bundles", tags=["教师-环境包管理"])
+
+# Dry Run 工具（Docker Logs / 失败回顾，仅 Shadow 学生可用）
+router.include_router(dry_run_tools.router, prefix="/dry-run-tools", tags=["教师-DryRun工具"])
+
+# Dry Run ROOT 文件操作（容器内文件系统，仅 Shadow 学生可用）
+router.include_router(container_files.router, prefix="/dry-run-tools/files", tags=["教师-DryRun文件"])
 
 # 容器监控（第五期）—— 具体路径，优先注册
 router.include_router(monitor.router, prefix="/containers/monitor", tags=["教师-容器监控"])

@@ -1,9 +1,61 @@
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import type { TreeNode } from '@/api/files/types'
+import type { FileListData } from '@/api/files/types'
 import { listFiles } from '@/api/files'
 import { ElMessage } from 'element-plus'
+import request from '@/axios'
 
-export function useWorkspaceTreeState() {
+/**
+ * 调用容器内文件 API，将响应转换为与 listFiles 相同的 FileListData 格式。
+ * 仅在 ROOT 模式（Dry Run）下使用。
+ */
+async function listContainerFiles(path: string): Promise<{ code: number; data: FileListData }> {
+  const res = await request.get<{
+    path: string
+    items: Array<{
+      name: string
+      is_dir: boolean
+      size: number
+      modified_at: number
+      permissions: string
+    }>
+  }>({
+    url: '/api/v1/teachers/dry-run-tools/files/list',
+    params: { path }
+  })
+
+  const rawItems = res.data?.items ?? []
+  const base = path.replace(/\/$/, '')
+
+  const directories = rawItems
+    .filter((item) => item.is_dir)
+    .map((item) => ({
+      name: item.name,
+      path: base === '' ? `/${item.name}` : `${base}/${item.name}`,
+      file_count: 0
+    }))
+
+  const files = rawItems
+    .filter((item) => !item.is_dir)
+    .map((item) => {
+      const ext = item.name.includes('.') ? `.${item.name.split('.').pop()}` : ''
+      return {
+        name: item.name,
+        path: base === '' ? `/${item.name}` : `${base}/${item.name}`,
+        size: item.size,
+        modified: item.modified_at * 1000,
+        extension: ext
+      }
+    })
+
+  return { code: 0, data: { path, files, directories } }
+}
+
+export function useWorkspaceTreeState(rootFileMode: Ref<boolean> = ref(false)) {
+  /** 根据当前模式调用对应的文件列表 API */
+  async function fetchFileList(path: string) {
+    return rootFileMode.value ? listContainerFiles(path) : listFiles(path)
+  }
   const treeData = ref<TreeNode[]>([])
   const loading = ref(false)
   const currentPath = ref('.')
@@ -51,14 +103,20 @@ export function useWorkspaceTreeState() {
     return nodes
   }
 
-  // 加载根目录
-  async function loadTree(path = '.', expandedPathSet: Set<string> = getExpandedPathSet()) {
+  // 加载根目录（ROOT 模式下 path 为 '/'，普通模式下为 '.'）
+  async function loadTree(path?: string, expandedPathSet: Set<string> = getExpandedPathSet()) {
+    const rootPath = path ?? (rootFileMode.value ? '/' : '.')
     loading.value = true
     try {
-      const res = await listFiles(path)
+      const res = await fetchFileList(rootPath)
       if (res.code === 0 && res.data) {
-        treeData.value = buildTreeNodes(res.data.directories, res.data.files, path, expandedPathSet)
-        currentPath.value = path
+        treeData.value = buildTreeNodes(
+          res.data.directories,
+          res.data.files,
+          rootPath,
+          expandedPathSet
+        )
+        currentPath.value = rootPath
       }
     } catch (e: any) {
       ElMessage.error(`加载文件列表失败: ${e.message ?? e}`)
@@ -91,7 +149,7 @@ export function useWorkspaceTreeState() {
       if (!node.childrenLoaded) {
         node.isLoading = true
         try {
-          const res = await listFiles(node.path)
+          const res = await fetchFileList(node.path)
           if (res.code === 0 && res.data) {
             node.children = buildTreeNodes(
               res.data.directories,
@@ -185,7 +243,7 @@ export function useWorkspaceTreeState() {
     if (node && node.type === 'directory') {
       node.isLoading = true
       try {
-        const res = await listFiles(node.path)
+        const res = await fetchFileList(node.path)
         if (res.code === 0 && res.data) {
           node.children = buildTreeNodes(
             res.data.directories,

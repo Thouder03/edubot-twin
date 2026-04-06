@@ -318,10 +318,10 @@ export const startDryRunApi = (
   })
 }
 
-export const stopDryRunApi = (containerId: string): Promise<IResponse<null>> => {
-  return request.delete({ url: `/api/v1/teachers/env-bundles/dry-run/${containerId}` })
+export const getDryRunDockerLogsApi = (lines = 500): Promise<IResponse<{ logs: string; lines_requested: number }>> => {
+  return request.get({ url: '/api/v1/teachers/dry-run-tools/docker-logs', params: { lines } })
 }
 
-export const cleanupMyDryRunsApi = (): Promise<IResponse<null>> => {
-  return request.delete({ url: '/api/v1/teachers/env-bundles/dry-run/mine/all' })
+export const getDryRunFailureReviewApi = (): Promise<IResponse<{ container: Record<string, unknown>; task: Record<string, unknown> | null }>> => {
+  return request.get({ url: '/api/v1/teachers/dry-run-tools/failure-review' })
 }

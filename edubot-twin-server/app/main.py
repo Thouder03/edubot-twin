@@ -12,7 +12,6 @@ from app.crud import container_metrics as crud_metrics
 from app.schemas.container_metrics import ContainerMetricsCreate
 from app.core.logger import log_container_event
 from app.core.container_manager import ensure_edubot_network, remove_container
-from app.core.dry_run_manager import dry_run_manager
 
 logger = logging.getLogger(__name__)
 
@@ -164,9 +163,6 @@ async def lifespan(app: FastAPI):
             await task
         except asyncio.CancelledError:
             pass
-
-    # 兜底清理 Dry Run 容器（内存态会话）
-    await dry_run_manager.cleanup_all(remove_container)
 
     await engine.dispose()
     logger.info("👋 Edubot Twin API 已关闭")

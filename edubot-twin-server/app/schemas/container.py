@@ -21,7 +21,6 @@ class ContainerCreate(BaseModel):
     launch_args: dict[str, str] = Field(default_factory=dict)
     startup_script_path: Optional[str] = Field(default=None, max_length=512)
     env_volumes: dict[str, str] = Field(default_factory=dict)
-    is_dry_run: bool = False
 
     @property
     def student_id(self) -> int:

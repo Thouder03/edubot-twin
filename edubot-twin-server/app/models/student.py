@@ -29,6 +29,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     role_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True, default=DEFAULT_ROLE_ID)
     role_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, default=DEFAULT_ROLE_CODE)
+    is_shadow: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    shadow_owner_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False

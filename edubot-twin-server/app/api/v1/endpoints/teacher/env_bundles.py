@@ -3,24 +3,21 @@
 
 端点前缀：/api/v1/teachers/env-bundles
 """
-import os
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.container_manager import create_container as create_docker_container
-from app.core.container_manager import remove_container
-from app.core.dry_run_manager import DryRunSession, dry_run_manager
-from app.core.port_allocator import allocate_ports
 from app.core.readiness_checker import check_gzweb_ready, check_rosbridge_ready
-from app.core.security import get_current_teacher
+from app.core.security import create_access_token, get_current_teacher
 from app.core.system_entrypoint import create_env_bundle_startup_script
+from app.crud import container as crud_container
 from app.crud import experiment as crud_experiment
+from app.crud.shadow_student import get_or_create_shadow
 from app.db.database import get_db
 from app.schemas.common import ApiResponse
+from app.schemas.container import ContainerCreate
 from app.schemas.experiment import (
     EnvBundleCreate,
     EnvBundleDryRunByVersionRequest,
@@ -185,7 +182,7 @@ async def delete_env_bundle(
 @router.post(
     "/{env_bundle_id}/dry-run",
     response_model=ApiResponse[EnvBundleDryRunByVersionResponse],
-    summary="环境包 Dry Run 试运行（SDD §6.2）",
+    summary="环境包 Dry Run 试运行（Shadow 学生方案）",
 )
 async def dry_run_env_bundle(
     env_bundle_id: int,
@@ -194,10 +191,12 @@ async def dry_run_env_bundle(
     teacher_id: int = Depends(get_current_teacher),
 ):
     """
-    启动 Dry Run 容器并执行就绪检测。
+    启动 Dry Run 容器。
 
-    从 version_id 对应的版本配置读取 image_name、launch_file_path、launch_args_template。
-    返回 {container_id, simulation_url}，前端直接跳转复用学生仿真页面。
+    采用 Shadow 学生身份方案：为教师创建/复用一个 Shadow 学生账号，
+    在该账号下创建容器（写入 DB），签发 Shadow JWT 返回给前端。
+    前端使用 Shadow JWT 访问所有学生 API，获得与学生完全一致的体验。
+    支持草稿状态（publish_status != published）的实验版本。
     """
     env_bundle = await _get_env_bundle_or_404(db, env_bundle_id, teacher_id)
 
@@ -205,7 +204,7 @@ async def dry_run_env_bundle(
     if not Path(startup_script_path).exists():
         raise HTTPException(status_code=409, detail="MISSING_STARTUP_SCRIPT")
 
-    # 从 version 读取启动配置
+    # 从 version 读取启动配置（不检查 publish_status，教师可访问草稿版本）
     version = await crud_experiment.get_version(db, data.version_id)
     if not version:
         raise HTTPException(status_code=404, detail="VERSION_NOT_FOUND")
@@ -213,109 +212,60 @@ async def dry_run_env_bundle(
     image_name = version.image_name or "gzweb_sim:v1"
     launch_file_path = version.launch_file_path
     launch_args = dict(version.launch_args_template) if version.launch_args_template else {}
-    readiness_timeout_seconds = 60.0
-
-    # 配额检查（单教师最多 3 个 Dry Run 容器）
-    if dry_run_manager.count_for_teacher(teacher_id) >= 3:
-        raise HTTPException(status_code=429, detail="DRY_RUN_RESOURCE_EXHAUSTED")
-
-    gz_port, ros_port = await allocate_ports(db)
     env_volumes = {env_bundle.storage_root: env_bundle.container_target_dir}
 
+    # 获取或创建 Shadow 学生
+    shadow = await get_or_create_shadow(db, teacher_id)
+
+    # force_recreate：若 Shadow 学生已有容器则先销毁（同一时间只允许 1 个）
+    existing = await crud_container.get_container_by_user(db, shadow.id)
+    if existing:
+        await crud_container.delete_container(db, existing)
+
+    # 以 Shadow 学生身份创建容器（写入 DB）
     try:
-        container_id = await create_docker_container(
-            image=image_name,
-            student_id=teacher_id,
-            gz_port=gz_port,
-            ros_port=ros_port,
-            launch_file_path=(
-                launch_file_path
-                or "/home/ubuntu20/catkin_ws/src/bingda_tutorials/launch/simulation_robot.launch"
+        container = await crud_container.create_container(
+            db,
+            ContainerCreate(
+                user_id=shadow.id,
+                image_name=image_name,
+                current_version_id=version.id,
+                launch_file_path=launch_file_path,
+                launch_args=launch_args,
+                startup_script_path=startup_script_path,
+                env_volumes=env_volumes,
             ),
-            launch_args=launch_args,
-            startup_script_path=startup_script_path,
-            env_volumes=env_volumes,
-            is_dry_run=True,
         )
-
-        dry_run_manager.register(
-            DryRunSession(
-                container_id=container_id,
-                env_bundle_id=env_bundle_id,
-                teacher_id=teacher_id,
-                gzbridge_port=gz_port,
-                rosbridge_port=ros_port,
-                created_at=datetime.utcnow(),
-            )
-        )
-
-        gz_ok, _ = await check_gzweb_ready(gz_port, timeout_s=readiness_timeout_seconds)
-        ros_ok, _ = await check_rosbridge_ready(ros_port, timeout_s=readiness_timeout_seconds)
-        if not gz_ok or not ros_ok:
-            await remove_container(container_id)
-            dry_run_manager.unregister(container_id)
-            raise HTTPException(status_code=504, detail="DRY_RUN_READINESS_TIMEOUT")
-
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DRY_RUN_START_FAILED: {e}")
 
-    host = os.getenv("SERVER_HOST", "localhost")
-    gzbridge_url = f"http://{host}:{gz_port}"
-    rosbridge_url = f"ws://{host}:{ros_port}"
+    if container.status.value == "error":
+        raise HTTPException(status_code=500, detail=f"DRY_RUN_START_FAILED: {container.error_message}")
+
+    # 就绪检测
+    gz_port = container.gzbridge_port
+    ros_port = container.rosbridge_port
+    if gz_port and ros_port:
+        gz_ok, _ = await check_gzweb_ready(gz_port, timeout_s=60.0)
+        ros_ok, _ = await check_rosbridge_ready(ros_port, timeout_s=60.0)
+        if not gz_ok or not ros_ok:
+            await crud_container.delete_container(db, container)
+            raise HTTPException(status_code=504, detail="DRY_RUN_READINESS_TIMEOUT")
+
+    # 签发 Shadow JWT（role="student" 使所有学生 API 正常通过认证）
+    shadow_token = create_access_token({
+        "sub": shadow.username,
+        "user_id": shadow.id,
+        "role": "student",
+        "role_id": "10",
+        "is_shadow": True,
+        "shadow_owner_id": teacher_id,
+    })
+
     return ApiResponse(data=EnvBundleDryRunByVersionResponse(
-        container_id=container_id,
-        simulation_url=gzbridge_url,
-        rosbridge_url=rosbridge_url,
+        shadow_token=shadow_token,
+        container_id=container.container_id or "",
     ))
-
-
-@router.delete(
-    "/dry-run/mine/all",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="清理当前教师的所有 Dry Run 容器（解除资源配额阻塞）",
-)
-async def cleanup_my_dry_runs(
-    teacher_id: int = Depends(get_current_teacher),
-):
-    """清理当前教师名下所有残留的 Dry Run 会话，用于解除 429 配额阻塞。"""
-    container_ids = [
-        s.container_id
-        for s in list(dry_run_manager._sessions.values())
-        if s.teacher_id == teacher_id
-    ]
-    for container_id in container_ids:
-        try:
-            await remove_container(container_id)
-        except Exception:
-            pass
-        finally:
-            dry_run_manager.unregister(container_id)
-
-
-@router.delete(
-    "/dry-run/{container_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="停止并清理 Dry Run 容器",
-)
-async def stop_dry_run_container(
-    container_id: str,
-    teacher_id: int = Depends(get_current_teacher),
-):
-    """停止并删除 Dry Run 容器（仅创建者可操作）。"""
-    session = dry_run_manager.get(container_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="DRY_RUN_NOT_FOUND")
-    if session.teacher_id != teacher_id:
-        raise HTTPException(status_code=403, detail="FORBIDDEN")
-
-    try:
-        await remove_container(container_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DRY_RUN_REMOVE_FAILED: {e}")
-    finally:
-        dry_run_manager.unregister(container_id)
 
 
 # ─── 环境包文件操作 ───────────────────────────────────────────────────────────────

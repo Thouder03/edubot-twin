@@ -42,14 +42,18 @@ def _is_rate_limited(student_id: int, now: float) -> tuple[bool, int]:
 async def terminal_ws(
     websocket: WebSocket,
     token: str = Query(..., description="JWT Token（WebSocket 无法自定义 Header）"),
+    root: str = Query(default="0", description="root=1 以 root 身份执行（仅 Shadow 学生/Dry Run 可用）"),
 ):
     """
     容器终端 WebSocket。
 
     鉴权：token 放在 query string 中（WebSocket 规范限制）。
     建连后，双向透传学生容器的 docker exec 会话。
+
+    root=1：以容器 root 用户（uid=0）执行，仅限 is_shadow=True 的 Shadow 学生（Dry Run 模式）。
     """
     client = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"
+    use_root = root == "1"
 
     # ── 1. 验证 Token / 角色 / 频控 ─────────────────────────────────
     payload = verify_token(token)
@@ -60,10 +64,18 @@ async def terminal_ws(
 
     student_id = payload.get("user_id")
     role = payload.get("role")
+    is_shadow = bool(payload.get("is_shadow", False))
+
     if not student_id or role != "student":
         logger.warning(
             f"[Terminal] 拒绝连接: 非学生或缺少 user_id, role={role}, user_id={student_id}, client={client}"
         )
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    # root 模式仅限 Shadow 学生（Dry Run）
+    if use_root and not is_shadow:
+        logger.warning(f"[Terminal] 拒绝 root 模式: 非 Shadow 学生, student={student_id}, client={client}")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -125,17 +137,31 @@ async def terminal_ws(
     import shlex
     safe_container_id = shlex.quote(container_id)
     proc: Optional[asyncio.subprocess.Process] = None
+
+    if use_root:
+        # Root 模式（仅 Shadow 学生/Dry Run）：uid=0，工作目录 /
+        exec_user = "0"
+        exec_workdir = "/"
+        exec_home = "/root"
+        exec_ps1_user = "root"
+    else:
+        # 普通模式：uid=1000（student 用户）
+        exec_user = "1000"
+        exec_workdir = "/home/student/workspace"
+        exec_home = "/home/student"
+        exec_ps1_user = safe_terminal_username
+
     try:
         proc = await asyncio.create_subprocess_exec(
             "script",
             "-qc",
-            f"docker exec -it -u 1000 -w /home/student/workspace "
-            f"-e TERM=xterm -e USER={safe_terminal_username} -e LOGNAME={safe_terminal_username} "
-            f"-e HOME=/home/student "
+            f"docker exec -it -u {exec_user} -w {exec_workdir} "
+            f"-e TERM=xterm -e USER={exec_ps1_user} -e LOGNAME={exec_ps1_user} "
+            f"-e HOME={exec_home} "
             f"{safe_container_id} /bin/bash -lc \""
             f"source /opt/ros/noetic/setup.bash && "
             f"source /home/ubuntu20/catkin_ws/devel/setup.bash && "
-            f"export PS1='{safe_terminal_username}@\\h: \\w\\$ ' && "
+            f"export PS1='{exec_ps1_user}@\\h: \\w\\$ ' && "
             f"exec /bin/bash --noprofile --norc -i"
             f"\"",
             "/dev/null",

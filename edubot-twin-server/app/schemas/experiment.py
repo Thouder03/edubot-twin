@@ -300,10 +300,9 @@ class EnvBundleDryRunByVersionRequest(BaseModel):
 
 
 class EnvBundleDryRunByVersionResponse(BaseModel):
-    """环境包 Dry Run 响应体（SDD §6.2）"""
-    container_id: str = Field(..., description="Dry Run 容器 ID（用于停止时传入 DELETE 端点）")
-    simulation_url: str = Field(..., description="GzWeb 仿真地址，前端直接跳转复用学生仿真页面")
-    rosbridge_url: str = Field(..., description="ROS bridge WebSocket 地址，供仿真页面 ROS3D 接入")
+    """环境包 Dry Run 响应体（Shadow 学生方案）"""
+    shadow_token: str = Field(..., description="Shadow 学生 JWT，前端用于仿真页面的所有 API 调用")
+    container_id: str = Field(..., description="容器 ID（用于 Docker Logs 等工具调用）")
 
 
 # ── 兼容旧实现（内部使用，后续清理） ─────────────────────────────────────────

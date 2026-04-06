@@ -6,6 +6,9 @@ const request = (option: AxiosConfig) => {
   const { url, method, params, data, headers, responseType } = option
 
   const userStore = useUserStoreWithOut()
+  // Dry Run 标签页中，simulation_token（Shadow 学生 JWT）优先于用户自身 token
+  const simulationToken = sessionStorage.getItem('simulation_token')
+  const token = simulationToken || userStore.getToken
   return service.request({
     url: url,
     method,
@@ -14,9 +17,7 @@ const request = (option: AxiosConfig) => {
     responseType: responseType,
     headers: {
       'Content-Type': CONTENT_TYPE,
-      [userStore.getTokenKey ?? 'Authorization']: userStore.getToken
-        ? `Bearer ${userStore.getToken}`
-        : '',
+      [userStore.getTokenKey ?? 'Authorization']: token ? `Bearer ${token}` : '',
       ...headers
     }
   })

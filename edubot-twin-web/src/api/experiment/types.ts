@@ -225,9 +225,8 @@ export interface EnvBundleDetail extends EnvBundleListItem {
 }
 
 export interface DryRunStartResponse {
+  shadow_token: string
   container_id: string
-  simulation_url: string
-  rosbridge_url: string
 }
 
 // ─── 版本验证相关类型（SDD §6.3 / §15.3）────────────────────────────────────

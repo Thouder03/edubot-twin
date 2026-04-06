@@ -16,7 +16,6 @@ import {
   getEnvBundleListApi,
   patchEnvBundleApi,
   startDryRunApi,
-  cleanupMyDryRunsApi,
   readEnvBundleFileApi,
   saveEnvBundleFileApi
 } from '@/api/experiment'
@@ -437,49 +436,29 @@ const startDryRun = async () => {
       dryRunSelectedVersionId.value
     )
     dryRunDialogVisible.value = false
-    const { simulation_url, container_id, rosbridge_url } = res.data
-    ElMessage.success('测试容器已就绪，正在跳转仿真工作台...')
+    const { shadow_token } = res.data
     const url = router.resolve({
       name: 'Simulation',
       query: {
-        dry_run: '1',
-        container_id,
-        simulation_url,
-        rosbridge_url,
+        simulation_token: shadow_token,
         env_bundle_name: selectedEnvBundle.value.name
       }
     }).href
-    window.open(url, '_blank')
+    const newWindow = window.open(url, '_blank')
+    if (newWindow) {
+      ElMessage.success('测试容器已就绪，正在跳转仿真工作台...')
+    } else {
+      // 浏览器弹窗拦截：提示用户手动点击链接
+      await ElMessageBox.alert(
+        `<div>容器已就绪，请点击下方链接打开仿真工作台：</div>
+         <a href="${url}" target="_blank" style="word-break:break-all;color:#409eff">${url}</a>`,
+        '请手动打开仿真页面',
+        { dangerouslyUseHTMLString: true, confirmButtonText: '好的' }
+      ).catch(() => {})
+    }
   } catch (e: any) {
     const detail = e?.response?.data?.detail
-    if (detail === 'DRY_RUN_RESOURCE_EXHAUSTED') {
-      // 残留会话（通常因页面异常退出导致清理未执行），自动清理后重试一次
-      try {
-        await cleanupMyDryRunsApi()
-        const res = await startDryRunApi(
-          selectedEnvBundle.value!.env_bundle_id,
-          dryRunSelectedVersionId.value!
-        )
-        dryRunDialogVisible.value = false
-        const { simulation_url, container_id, rosbridge_url } = res.data
-        ElMessage.success('测试容器已就绪，正在跳转仿真工作台...')
-        const url = router.resolve({
-          name: 'Simulation',
-          query: {
-            dry_run: '1',
-            container_id,
-            simulation_url,
-            rosbridge_url,
-            env_bundle_name: selectedEnvBundle.value!.name
-          }
-        }).href
-        window.open(url, '_blank')
-      } catch {
-        ElMessage.error('残留容器清理失败，请刷新页面后重试')
-      }
-    } else {
-      ElMessage.error('启动失败：' + (detail || '未知错误'))
-    }
+    ElMessage.error('启动失败：' + (detail || '未知错误'))
   } finally {
     dryRunLoading.value = false
   }

@@ -118,27 +118,23 @@ async def create_container(
     startup_script_path: Optional[str] = None,
     # ── 文件挂载（10-S1-7）──────────────────────────────────────────
     env_volumes: Optional[dict[str, str]] = None,
-    # ── 运行模式（10-S1-7）──────────────────────────────────────────
-    is_dry_run: bool = False,
 ) -> str:
     """
     创建并启动 Docker 容器（10-S1-7 重构：动态 launch 注入 + 系统常驻入口脚本）
 
-    按四组数据分层实现：
+    按三组数据分层实现：
     1. 镜像 / 端口：image, student_id, gz_port, ros_port
     2. 启动配置：launch_file_path, launch_args, startup_script_path
     3. 文件挂载：env_volumes
-    4. 运行模式：is_dry_run（标签区分正式仿真 vs Dry Run）
 
     :param image: 镜像名（如 gzweb_sim:v1）
-    :param student_id: 学生 ID（用于容器命名和标签）
+    :param student_id: 学生/Shadow学生 ID（用于容器命名和标签）
     :param gz_port: 宿主机 gzweb 映射端口
     :param ros_port: 宿主机 rosbridge 映射端口
-    :param launch_file_path: ROS launch 文件路径（仅在无 startup_script_path 时作为默认 entrypoint）
+    :param launch_file_path: ROS launch 文件路径
     :param launch_args: launch 参数字典（格式化为 LAUNCH_ARGS 环境变量注入容器）
     :param startup_script_path: 教师自定义启动脚本宿主机路径（来自 env_bundle.storage_root/startup.sh）
     :param env_volumes: 额外 Volume 挂载映射 {host_path: container_path}（环境文件）
-    :param is_dry_run: True 表示 Dry Run 试运行容器（添加 dry-run 标签，停止后立即清理）
     :returns: 容器 short_id（12 位 hex）
 
     向后兼容：所有新增参数有默认值，现有调用方无需修改即可继续工作。
@@ -153,10 +149,6 @@ async def create_container(
         client = get_docker_client()
         # ── 1. 镜像 / 端口配置 ─────────────────────────────────────────────────
         container_name = f"edubot-sim-{student_id}"
-        if is_dry_run:
-            # Dry Run 容器使用独立命名，避免与正式仿真容器冲突
-            import time
-            container_name = f"edubot-dryrun-{student_id}-{int(time.time())}"
 
         # ── 2. 启动配置：LAUNCH_ARGS 格式化 + 环境变量注入 ──────────────────────
         # launch_args 格式化为 roslaunch 参数字符串（教师 startup.sh 中通过 $LAUNCH_ARGS 引用）
@@ -214,10 +206,9 @@ async def create_container(
                 volumes[host_path] = {"bind": container_path, "mode": "ro"}
                 logger.info(f"环境文件 Volume 挂载: {host_path} → {container_path}")
 
-        # ── 4. 运行模式：标签区分容器类型 ─────────────────────────────────────────
         labels = {
             "edubot.student_id": str(student_id),
-            "edubot.type": "dry-run" if is_dry_run else "simulation",
+            "edubot.type": "simulation",
         }
 
         # 清理同名残留容器（防止 name conflict）
@@ -255,7 +246,7 @@ async def create_container(
         )
         logger.info(
             f"容器已创建: {container.short_id} name={container_name} "
-            f"gz_port={gz_port} ros_port={ros_port} dry_run={is_dry_run}"
+            f"gz_port={gz_port} ros_port={ros_port}"
         )
         return container.short_id
 

@@ -22,6 +22,16 @@ import { buildSettingsTree, createActionHandler } from './settings'
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('workspace-panel')
 
+// ─── Dry Run ROOT 模式
+const isDryRunMode = computed(() => !!sessionStorage.getItem('simulation_token'))
+const rootFileMode = ref(false)
+
+function toggleRootFileMode() {
+  rootFileMode.value = !rootFileMode.value
+  // 切换后重新加载文件树（loadTree 内部会根据 rootFileMode 决定 path 和 API）
+  loadTree(undefined)
+}
+
 // ─── Props（面板集成时可传入 panelId 显示状态）
 interface Props {
   panelId?: string
@@ -29,7 +39,7 @@ interface Props {
 const props = defineProps<Props>()
 
 // ─── Composables
-const workspace = useWorkspace()
+const workspace = useWorkspace(rootFileMode)
 // 为了保持局部名称简短，解构需要的字段
 const {
   treeData,
@@ -256,6 +266,23 @@ onUnmounted(() => {
         <el-tooltip content="格式化代码" placement="top">
           <el-button text size="small" :disabled="!currentFile" @click="formatCode">
             <Icon icon="vi-carbon:code" />
+          </el-button>
+        </el-tooltip>
+
+        <!-- ROOT 文件模式切换（仅 Dry Run 可见）-->
+        <el-tooltip
+          v-if="isDryRunMode"
+          :content="rootFileMode ? '切换回学生工作区' : '切换到容器 ROOT 文件系统'"
+          placement="top"
+        >
+          <el-button
+            text
+            size="small"
+            :type="rootFileMode ? 'danger' : 'default'"
+            @click="toggleRootFileMode"
+          >
+            <Icon icon="vi-carbon:tree-view" />
+            {{ rootFileMode ? 'ROOT' : 'USR' }}
           </el-button>
         </el-tooltip>
 
