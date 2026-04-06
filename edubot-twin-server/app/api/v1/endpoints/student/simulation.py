@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +14,9 @@ from app.core.security import get_current_student_id
 from app.core.readiness_checker import (
     check_gzweb_ready,
     check_rosbridge_ready,
+    check_port_ready,
 )
+from app.core import container_manager
 from app.crud import container as crud_container
 from app.crud import experiment as crud_experiment
 from app.crud import simulation_task as crud_task
@@ -29,6 +32,7 @@ from app.schemas.experiment import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> None:
@@ -110,8 +114,53 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
                     stage=SimulationTaskStage.CHECKING_GZWEB,
                     status="IN_PROGRESS", elapsed_ms=0,
                 )
-                gzweb_ok, gzweb_ms = await check_gzweb_ready(gz_port)
+                gzweb_ok = False
+                gzweb_ms = 0.0
+                gz_start = time.perf_counter()
+                while (time.perf_counter() - gz_start) < 60.0:
+                    state = (
+                        await container_manager.inspect_container_state(container.container_id)
+                        if container.container_id else None
+                    )
+                    if state and state.get("status") in ("exited", "dead"):
+                        logs_tail = (
+                            await container_manager.get_container_logs_tail(container.container_id, tail=80)
+                            if container.container_id else None
+                        )
+                        logger.error(
+                            "[SimStartDiag] container exited during CHECKING_GZWEB task_id=%s docker_id=%s container_state=%s logs_tail=%s",
+                            task_id,
+                            container.container_id,
+                            state,
+                            (logs_tail[-2000:] if logs_tail else None),
+                        )
+                        raise RuntimeError("CONTAINER_EXITED_BEFORE_GZWEB_READY")
+
+                    probe_ok, probe_ms = await check_port_ready(
+                        "127.0.0.1", gz_port, timeout_s=2.0, interval_s=0.5
+                    )
+                    gzweb_ms = (time.perf_counter() - gz_start) * 1000
+                    if probe_ok:
+                        gzweb_ok = True
+                        break
+
                 if not gzweb_ok:
+                    failed_state = (
+                        await container_manager.inspect_container_state(container.container_id)
+                        if container.container_id else None
+                    )
+                    logs_tail = (
+                        await container_manager.get_container_logs_tail(container.container_id, tail=60)
+                        if container.container_id else None
+                    )
+                    logger.error(
+                        "[SimStartDiag] GZWEB_NOT_READY task_id=%s docker_id=%s elapsed_ms=%s container_state=%s logs_tail=%s",
+                        task_id,
+                        container.container_id,
+                        int(gzweb_ms),
+                        failed_state,
+                        (logs_tail[-2000:] if logs_tail else None),
+                    )
                     raise RuntimeError("GZWEB_NOT_READY")
                 await crud_task.mark_stage(
                     db, task=task,
@@ -128,6 +177,22 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
                 )
                 ros_ok, ros_ms = await check_rosbridge_ready(ros_port)
                 if not ros_ok:
+                    failed_state = (
+                        await container_manager.inspect_container_state(container.container_id)
+                        if container.container_id else None
+                    )
+                    logs_tail = (
+                        await container_manager.get_container_logs_tail(container.container_id, tail=60)
+                        if container.container_id else None
+                    )
+                    logger.error(
+                        "[SimStartDiag] ROSBRIDGE_NOT_READY task_id=%s docker_id=%s elapsed_ms=%s container_state=%s logs_tail=%s",
+                        task_id,
+                        container.container_id,
+                        int(ros_ms),
+                        failed_state,
+                        (logs_tail[-2000:] if logs_tail else None),
+                    )
                     raise RuntimeError("ROSBRIDGE_NOT_READY")
                 await crud_task.mark_stage(
                     db, task=task,

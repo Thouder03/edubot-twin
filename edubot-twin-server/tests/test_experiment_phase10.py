@@ -830,3 +830,93 @@ async def test_rebuild_task_fails_when_health_check_fails(db_session, test_stude
     assert task.status == SimulationTaskStatus.FAILED
     assert task.retryable is True
     assert task.error_code == "CONTAINER_REBUILD_FAILED"
+
+
+@pytest.mark.asyncio
+async def test_rebuild_task_fails_immediately_when_container_exits_before_gz_ready(
+    db_session, test_student, monkeypatch
+):
+    """Error Path：容器在 GZWEB 检测期间已退出，应立即失败，不等待端口超时。"""
+    from contextlib import asynccontextmanager
+    import app.api.v1.endpoints.student.simulation as simulation_module
+
+    exp = await experiment_crud.create_experiment(
+        db_session,
+        name="容器提前退出实验",
+        code="container_exit_before_gz",
+        description=None,
+        created_by=1,
+    )
+    version = await experiment_crud.create_version(
+        db_session,
+        experiment_id=exp.id,
+        version_name="v1.0.0",
+        environment_key="ros-exit-before-gz",
+        image_name="gzweb_sim:v1",
+        launch_file_path="/launch/nav.launch",
+        launch_args_template={},
+        startup_script_ref=None,
+        file_bundle_id=None,
+        is_visible=True,
+    )
+    await experiment_crud.publish_version(
+        db_session, experiment_id=exp.id, version=version, operator_id=1, note=None
+    )
+
+    task = await simulation_task_crud.create_task(
+        db_session, student_id=test_student.id, target_version_id=version.id, container_id=None
+    )
+
+    running_container = SimContainer(
+        user_id=test_student.id,
+        image_name=version.image_name,
+        status=ContainerStatus.RUNNING,
+        gzbridge_port=38081,
+        rosbridge_port=39091,
+        container_id="fake_running_container",
+    )
+
+    async def fake_get_container_by_user(*args, **kwargs):
+        return None
+
+    async def fake_delete_container(*args, **kwargs):
+        return True
+
+    async def fake_create_container(*args, **kwargs):
+        return running_container
+
+    async def fake_inspect_container_state(*args, **kwargs):
+        return {
+            "status": "exited",
+            "exit_code": 1,
+            "error": "",
+            "oom_killed": False,
+            "finished_at": "2026-01-01T00:00:00Z",
+        }
+
+    async def fake_get_logs_tail(*args, **kwargs):
+        return "[entrypoint] startup failed: launch file missing"
+
+    async def fake_check_port_ready(*args, **kwargs):
+        return False, 0.0
+
+    monkeypatch.setattr(simulation_module.crud_container, "get_container_by_user", fake_get_container_by_user)
+    monkeypatch.setattr(simulation_module.crud_container, "delete_container", fake_delete_container)
+    monkeypatch.setattr(simulation_module.crud_container, "create_container", fake_create_container)
+    monkeypatch.setattr(simulation_module.container_manager, "inspect_container_state", fake_inspect_container_state)
+    monkeypatch.setattr(simulation_module.container_manager, "get_container_logs_tail", fake_get_logs_tail)
+    monkeypatch.setattr(simulation_module, "check_port_ready", fake_check_port_ready)
+
+    @asynccontextmanager
+    async def fake_session():
+        yield db_session
+
+    monkeypatch.setattr(simulation_module, "AsyncSessionLocal", fake_session)
+
+    await simulation_module._run_rebuild_task(task.task_id, test_student.id, version.id)
+
+    await db_session.refresh(task)
+    assert task.status == SimulationTaskStatus.FAILED
+    assert task.retryable is True
+    assert task.error_code == "CONTAINER_REBUILD_FAILED"
+    assert task.error_message == "CONTAINER_EXITED_BEFORE_GZWEB_READY"
