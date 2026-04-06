@@ -11,7 +11,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from docker.errors import NotFound, APIError
 
@@ -315,6 +315,45 @@ async def inspect_container(container_id: str) -> Optional[str]:
             container = client.containers.get(container_id)
             container.reload()
             return container.status
+        except NotFound:
+            return None
+
+    return await _run_in_executor(_sync)
+
+
+async def inspect_container_state(container_id: str) -> Optional[dict[str, Any]]:
+    """查询容器详细状态（含 exit_code / error）。"""
+
+    def _sync() -> Optional[dict[str, Any]]:
+        client = get_docker_client()
+        try:
+            container = client.containers.get(container_id)
+            container.reload()
+            state = container.attrs.get("State", {})
+            return {
+                "status": state.get("Status"),
+                "exit_code": state.get("ExitCode"),
+                "error": state.get("Error"),
+                "oom_killed": state.get("OOMKilled"),
+                "finished_at": state.get("FinishedAt"),
+            }
+        except NotFound:
+            return None
+
+    return await _run_in_executor(_sync)
+
+
+async def get_container_logs_tail(container_id: str, tail: int = 80) -> Optional[str]:
+    """读取容器最近 N 行日志（UTF-8 容错解码）。"""
+
+    def _sync() -> Optional[str]:
+        client = get_docker_client()
+        try:
+            container = client.containers.get(container_id)
+            raw = container.logs(tail=tail, stdout=True, stderr=True)
+            if isinstance(raw, bytes):
+                return raw.decode("utf-8", errors="replace")
+            return str(raw)
         except NotFound:
             return None
 

@@ -52,6 +52,16 @@ async def get_active_task_by_student(db: AsyncSession, student_id: int) -> Optio
     return result.scalar_one_or_none()
 
 
+async def get_latest_task_by_student(db: AsyncSession, student_id: int) -> Optional[SimulationTask]:
+    result = await db.execute(
+        select(SimulationTask)
+        .where(SimulationTask.student_id == student_id)
+        .order_by(SimulationTask.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 async def mark_stage(
     db: AsyncSession,
     *,

@@ -15,7 +15,6 @@ import {
   deleteEnvBundleApi,
   getEnvBundleListApi,
   patchEnvBundleApi,
-  startDryRunApi,
   readEnvBundleFileApi,
   saveEnvBundleFileApi
 } from '@/api/experiment'
@@ -381,7 +380,7 @@ const dryRunVersions = ref<ExperimentVersionResponse[]>([])
 const dryRunSelectedExperimentId = ref<number | undefined>(undefined)
 const dryRunSelectedVersionId = ref<number | undefined>(undefined)
 const dryRunDialogVisible = ref(false)
-const dryRunLoading = ref(false)
+
 const dryRunExperimentsLoading = ref(false)
 
 const loadExperimentsForDryRun = async () => {
@@ -429,38 +428,39 @@ const startDryRun = async () => {
     ElMessage.warning('请选择关联的实验版本')
     return
   }
-  dryRunLoading.value = true
-  try {
-    const res = await startDryRunApi(
-      selectedEnvBundle.value.env_bundle_id,
-      dryRunSelectedVersionId.value
-    )
-    dryRunDialogVisible.value = false
-    const { shadow_token } = res.data
-    const url = router.resolve({
-      name: 'Simulation',
-      query: {
-        simulation_token: shadow_token,
-        env_bundle_name: selectedEnvBundle.value.name
-      }
-    }).href
-    const newWindow = window.open(url, '_blank')
-    if (newWindow) {
-      ElMessage.success('测试容器已就绪，正在跳转仿真工作台...')
-    } else {
-      // 浏览器弹窗拦截：提示用户手动点击链接
-      await ElMessageBox.alert(
-        `<div>容器已就绪，请点击下方链接打开仿真工作台：</div>
-         <a href="${url}" target="_blank" style="word-break:break-all;color:#409eff">${url}</a>`,
-        '请手动打开仿真页面',
-        { dangerouslyUseHTMLString: true, confirmButtonText: '好的' }
-      ).catch(() => {})
+
+  // 立即关闭对话框并打开新标签页
+  // API 调用（startDryRunApi）由 DryRunSimulation.vue 页面自行处理
+  dryRunDialogVisible.value = false
+
+  const envName = selectedEnvBundle.value.name
+  const experimentName =
+    dryRunExperiments.value.find((e) => e.experiment_id === dryRunSelectedExperimentId.value)
+      ?.name ?? ''
+  const versionName =
+    dryRunVersions.value.find((v) => v.version_id === dryRunSelectedVersionId.value)
+      ?.version_name ?? ''
+
+  const url = router.resolve({
+    name: 'DryRunSimulation',
+    query: {
+      env_bundle_id: String(selectedEnvBundle.value.env_bundle_id),
+      version_id: String(dryRunSelectedVersionId.value),
+      env_bundle_name: envName,
+      experiment_name: experimentName,
+      version_name: versionName
     }
-  } catch (e: any) {
-    const detail = e?.response?.data?.detail
-    ElMessage.error('启动失败：' + (detail || '未知错误'))
-  } finally {
-    dryRunLoading.value = false
+  }).href
+
+  const newWindow = window.open(url, '_blank')
+  if (!newWindow) {
+    // 浏览器弹窗拦截：提示用户手动点击链接
+    await ElMessageBox.alert(
+      `<div>浏览器阻止了弹窗，请点击下方链接手动打开：</div>
+       <a href="${url}" target="_blank" style="word-break:break-all;color:#409eff">${url}</a>`,
+      '请手动打开 Dry Run 仿真页面',
+      { dangerouslyUseHTMLString: true, confirmButtonText: '好的' }
+    ).catch(() => {})
   }
 }
 </script>
@@ -740,9 +740,7 @@ const startDryRun = async () => {
     </ElForm>
     <template #footer>
       <ElButton @click="dryRunDialogVisible = false">取消</ElButton>
-      <ElButton type="warning" :loading="dryRunLoading" @click="startDryRun">
-        🧪 开始试运行
-      </ElButton>
+      <ElButton type="warning" @click="startDryRun"> 🧪 开始试运行 </ElButton>
     </template>
   </ElDialog>
 </template>

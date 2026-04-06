@@ -78,6 +78,17 @@ export const constantRouterMap: AppRouteRecordRaw[] = [
     }
   },
   {
+    path: '/dry-run-simulation',
+    component: () => import('@/views/Simulation/DryRunSimulation.vue'),
+    name: 'DryRunSimulation',
+    meta: {
+      hidden: true,
+      title: 'Dry Run 仿真',
+      noTagsView: true,
+      noCache: true
+    }
+  },
+  {
     path: '/404',
     component: () => import('@/views/Error/404.vue'),
     name: 'NoFind',

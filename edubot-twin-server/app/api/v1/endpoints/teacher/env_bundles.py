@@ -3,20 +3,23 @@
 
 端点前缀：/api/v1/teachers/env-bundles
 """
+import asyncio
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.container_manager import inspect_container_state, get_container_logs_tail
 from app.core.readiness_checker import check_gzweb_ready, check_rosbridge_ready
 from app.core.security import create_access_token, get_current_teacher
 from app.core.system_entrypoint import create_env_bundle_startup_script
 from app.crud import container as crud_container
 from app.crud import experiment as crud_experiment
 from app.crud.shadow_student import get_or_create_shadow
-from app.db.database import get_db
+from app.db.database import AsyncSessionLocal, get_db
 from app.schemas.common import ApiResponse
+from app.models.container import ContainerStatus
 from app.schemas.container import ContainerCreate
 from app.schemas.experiment import (
     EnvBundleCreate,
@@ -49,6 +52,80 @@ ENV_BUNDLES_BASE_DIR = Path("data/env_bundles").resolve()
 PROTECTED_PATHS = {"startup.sh"}
 
 router = APIRouter()
+
+
+DRY_RUN_READINESS_TIMEOUT_S = 25.0
+
+
+async def _probe_dry_run_readiness(
+    container_db_id: int,
+    gz_port: Optional[int],
+    ros_port: Optional[int],
+) -> None:
+    """后台探测 Dry Run 端口就绪，回写容器状态（creating -> running/error）。"""
+    if not gz_port and not ros_port:
+        async with AsyncSessionLocal() as db:
+            container = await crud_container.get_container(db, container_db_id)
+            if container:
+                container.status = ContainerStatus.ERROR
+                container.error_message = "DRY_RUN_PORT_MAPPING_MISSING"
+                await db.commit()
+        return
+
+    checks: list[tuple[str, asyncio.Future]] = []
+    if gz_port:
+        checks.append(("GZWEB", check_gzweb_ready(gz_port, timeout_s=DRY_RUN_READINESS_TIMEOUT_S)))
+    if ros_port:
+        checks.append(("ROSBRIDGE", check_rosbridge_ready(ros_port, timeout_s=DRY_RUN_READINESS_TIMEOUT_S)))
+
+    names = [name for name, _ in checks]
+    coroutines = [coro for _, coro in checks]
+    results = await asyncio.gather(*coroutines, return_exceptions=True)
+
+    failures: list[str] = []
+    for name, result in zip(names, results):
+        if isinstance(result, Exception):
+            failures.append(f"{name}_CHECK_EXCEPTION: {result}")
+            continue
+        ok, _elapsed_ms = result
+        if not ok:
+            failures.append(f"{name}_NOT_READY")
+
+    async with AsyncSessionLocal() as db:
+        container = await crud_container.get_container(db, container_db_id)
+        if not container:
+            return
+
+        if failures:
+            detail_parts = list(failures)
+
+            if container.container_id:
+                state = await inspect_container_state(container.container_id)
+                if state:
+                    docker_status = state.get("status")
+                    exit_code = state.get("exit_code")
+                    state_error = state.get("error")
+                    detail_parts.append(f"DOCKER_STATUS={docker_status}")
+                    if exit_code is not None:
+                        detail_parts.append(f"EXIT_CODE={exit_code}")
+                    if state_error:
+                        detail_parts.append(f"DOCKER_ERROR={state_error}")
+
+                    if docker_status in {"exited", "dead"}:
+                        tail_logs = await get_container_logs_tail(container.container_id, tail=50)
+                        if tail_logs and tail_logs.strip():
+                            compact_logs = " | ".join(
+                                line.strip() for line in tail_logs.splitlines() if line.strip()
+                            )
+                            if compact_logs:
+                                detail_parts.append(f"LOG_TAIL={compact_logs[:500]}")
+
+            container.status = ContainerStatus.ERROR
+            container.error_message = "DRY_RUN_READINESS_FAILED: " + " | ".join(detail_parts)
+        else:
+            container.status = ContainerStatus.RUNNING
+            container.error_message = None
+        await db.commit()
 
 
 def _get_service(env_bundle) -> BundleFileService:
@@ -242,17 +319,18 @@ async def dry_run_env_bundle(
     if container.status.value == "error":
         raise HTTPException(status_code=500, detail=f"DRY_RUN_START_FAILED: {container.error_message}")
 
-    # 就绪检测
-    gz_port = container.gzbridge_port
-    ros_port = container.rosbridge_port
-    if gz_port and ros_port:
-        gz_ok, _ = await check_gzweb_ready(gz_port, timeout_s=60.0)
-        ros_ok, _ = await check_rosbridge_ready(ros_port, timeout_s=60.0)
-        if not gz_ok or not ros_ok:
-            await crud_container.delete_container(db, container)
-            raise HTTPException(status_code=504, detail="DRY_RUN_READINESS_TIMEOUT")
+    # 回退到 creating，避免前端误判“已就绪”提前移除覆盖层
+    container.status = ContainerStatus.CREATING
+    container.error_message = None
+    await db.commit()
+
+    # 异步就绪探测：成功置 running，失败置 error + 失败原因
+    asyncio.create_task(
+        _probe_dry_run_readiness(container.id, container.gzbridge_port, container.rosbridge_port)
+    )
 
     # 签发 Shadow JWT（role="student" 使所有学生 API 正常通过认证）
+    # 注意：容器实际就绪由后台探测 + 前端轮询决定
     shadow_token = create_access_token({
         "sub": shadow.username,
         "user_id": shadow.id,

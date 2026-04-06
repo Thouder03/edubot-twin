@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import get_current_user_id, verify_token
 from app.crud import container as crud_container
 from app.crud.shadow_student import is_shadow_user
-from app.crud.simulation_task import get_active_task_by_student
+from app.crud.simulation_task import get_active_task_by_student, get_latest_task_by_student
 from app.db.database import get_db
 from app.schemas.common import ApiResponse
 
@@ -85,6 +85,8 @@ async def get_failure_review(
     container = await _get_shadow_container(db, user_id)
 
     task = await get_active_task_by_student(db, user_id)
+    if not task:
+        task = await get_latest_task_by_student(db, user_id)
 
     return ApiResponse(data={
         "container": {

@@ -19,13 +19,12 @@
  * 所有 API 调用通过请求拦截器自动使用 sessionStorage 中的 simulation_token
  * isDryRunMode 仅用于控制 DryRunToolbar 可见性，不影响任何业务逻辑
  */
-import { ref, onMounted, onBeforeUnmount, provide, readonly } from 'vue'
+import { ref, onMounted, onBeforeUnmount, provide, readonly, inject } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { LayoutConfig, type ResolvedLayoutConfig } from 'golden-layout'
 import { useRoute, useRouter } from 'vue-router'
 
 import SimulationHeader from './components/SimulationHeader.vue'
-import DryRunToolbar from './components/DryRunToolbar.vue'
 import GLayout from './components/GLayout.vue'
 import SettingsSidebar from './components/SettingsSidebar.vue'
 import { defaultLayout } from './config/predefined-layouts'
@@ -52,8 +51,9 @@ const experimentContext = ref<{
   environment_key?: string
 } | null>(null)
 
-// ---------- Dry Run 模式标记（仅用于工具栏可见性，不影响业务逻辑）----------
-const isDryRunMode = ref(!!sessionStorage.getItem('simulation_token'))
+// ---------- Dry Run 上下文（由 DryRunSimulation.vue 通过 provide 注入）----------
+// 默认 false：学生端直接使用 Simulation.vue 时行为完全不变
+const isDryRunContext = inject<boolean>('isDryRunContext', false)
 
 // ---------- GzWeb 通信（页面级初始化）----------
 const { initialize: initGzBridge, dispose: disposeGzBridge } = useGzBridge()
@@ -205,28 +205,37 @@ async function checkContainerOnReactivation() {
     }
 
     if (status === 'stopped') {
-      await handleContainerStopped()
+      if (!isDryRunContext) await handleContainerStopped()
+      return
     } else if (status) {
       if (isAlertShowing) return
       isAlertShowing = true
       // error / creating / removing → 提示异常
-      await ElMessageBox.alert('仿真容器状态异常，请返回首页重新操作。', '容器异常', {
-        confirmButtonText: '返回首页',
-        type: 'error'
-      }).catch(() => {})
-      isAlertShowing = false
-      navigateToHome()
+      if (!isDryRunContext) {
+        await ElMessageBox.alert('仿真容器状态异常，请返回首页重新操作。', '容器异常', {
+          confirmButtonText: '返回首页',
+          type: 'error'
+        }).catch(() => {})
+        isAlertShowing = false
+        navigateToHome()
+      } else {
+        isAlertShowing = false
+      }
     }
   } catch (err: any) {
     if (err?.response?.status === 404) {
       if (isAlertShowing) return
       isAlertShowing = true
-      await ElMessageBox.alert('您的仿真容器已被管理员回收，请返回首页重新申请。', '容器已回收', {
-        confirmButtonText: '返回首页',
-        type: 'warning'
-      }).catch(() => {})
-      isAlertShowing = false
-      navigateToHome()
+      if (!isDryRunContext) {
+        await ElMessageBox.alert('您的仿真容器已被管理员回收，请返回首页重新申请。', '容器已回收', {
+          confirmButtonText: '返回首页',
+          type: 'warning'
+        }).catch(() => {})
+        isAlertShowing = false
+        navigateToHome()
+      } else {
+        isAlertShowing = false
+      }
     } else {
       ElMessage.warning('网络连接异常，请检查网络')
     }
@@ -234,6 +243,8 @@ async function checkContainerOnReactivation() {
 }
 
 async function handleContainerStopped() {
+  // Dry Run 模式：容器关闭不弹窗不跳转，保持页面
+  if (isDryRunContext) return
   if (isAlertShowing) return
   isAlertShowing = true
   try {
@@ -318,17 +329,7 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   return event.returnValue
 }
 
-// ─── simulation_token 接收与 URL 清理 ────────────────────
-function handleSimulationToken() {
-  const simToken = route.query.simulation_token
-  if (typeof simToken === 'string') {
-    sessionStorage.setItem('simulation_token', simToken)
-    isDryRunMode.value = true
-    // 从 URL 移除 token，防止泄露到浏览器历史
-    const { simulation_token: _, ...restQuery } = route.query
-    router.replace({ ...route, query: restQuery })
-  }
-}
+// ─── simulation_token 已由 DryRunSimulation.vue 处理，此处不再接收 ──────────
 
 // ---------- 局部暗色模式 ----------
 let originalDarkClass = false
@@ -345,9 +346,7 @@ onMounted(async () => {
   window.addEventListener('beforeunload', handleBeforeUnload)
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  // 接收 Shadow JWT（Dry Run 场景），存入 sessionStorage 并清除 URL
-  handleSimulationToken()
-
+  // 接收实验上下文信息（Dry Run 时由 DryRunSimulation.vue 的路由 query 传入）
   const experimentName =
     typeof route.query.experiment_name === 'string' ? route.query.experiment_name : undefined
   const versionName =
@@ -397,13 +396,14 @@ onBeforeUnmount(() => {
   saveLayoutToStorage()
   disposeGzBridge()
 
-  // 用 sendBeacon 通知后端停止容器（Shadow 学生用 simulation_token，普通学生用自身 token）
+  // stopOnExitApi：
+  // - 学生端：userStore.getToken（普通学生 JWT）
+  // - Dry Run 端：sessionStorage 中的 shadow_token（Shadow JWT，由拦截器注入）
+  // sessionStorage 是 per-tab 的，tab 关闭时自动清理，无需手动 removeItem
   const token = sessionStorage.getItem('simulation_token') || userStore.getToken
   if (token) {
     stopOnExitApi(token)
   }
-
-  sessionStorage.removeItem('simulation_token')
 
   if (!originalDarkClass) {
     document.documentElement.classList.remove('dark')
@@ -442,7 +442,6 @@ async function handleBack() {
         @settings-toggle="handleSettingsToggle"
       />
     </div>
-    <DryRunToolbar v-if="isDryRunMode" />
   </div>
 </template>
 
