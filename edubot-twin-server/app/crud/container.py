@@ -58,6 +58,8 @@ async def create_container(
         container.container_id = docker_id
         container.status = ContainerStatus.RUNNING
         container.error_message = None
+        # 避免“容器刚启动、首个前端心跳未到”被定时任务误判为超时
+        container.last_heartbeat_at = datetime.utcnow()
     except (DockerConnectionError, Exception) as e:
         container.status = ContainerStatus.ERROR
         container.error_message = str(e)
@@ -129,6 +131,8 @@ async def start_container(
         await container_manager.start_container(container.container_id)
         container.status = ContainerStatus.RUNNING
         container.error_message = None
+        # 重启后给首个前端心跳预留窗口，避免被立即判定 stale
+        container.last_heartbeat_at = datetime.utcnow()
     except Exception as e:
         container.status = ContainerStatus.ERROR
         container.error_message = str(e)
@@ -188,9 +192,10 @@ async def find_stale_containers(
     result = await db.execute(
         select(SimContainer).where(
             SimContainer.status == ContainerStatus.RUNNING,
-            # last_heartbeat_at 为 NULL 或早于 cutoff
-            (SimContainer.last_heartbeat_at == None)  # noqa: E711
-            | (SimContainer.last_heartbeat_at < cutoff),
+            # 已有心跳：按心跳时间判定
+            # 无心跳：按创建时间判定（给新容器首心跳留出超时窗口）
+            ((SimContainer.last_heartbeat_at != None) & (SimContainer.last_heartbeat_at < cutoff))  # noqa: E711
+            | ((SimContainer.last_heartbeat_at == None) & (SimContainer.created_at < cutoff)),  # noqa: E711
         )
     )
     return list(result.scalars().all())
