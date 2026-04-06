@@ -10,13 +10,15 @@ import {
   ElDropdownMenu,
   ElDropdownItem,
   ElDivider,
-  ElMessageBox
+  ElMessage,
+  ElMessageBox,
+  ElLoading
 } from 'element-plus'
 import { Icon } from '@/components/Icon'
 import { layoutPresets, availablePanels } from '../config/predefined-layouts'
 import SimControlBar from './SimControlBar.vue'
 import type { LayoutConfig } from 'golden-layout'
-import { stopMyContainerApi } from '@/api/container'
+import { stopMyContainerApi, heartbeatApi } from '@/api/container'
 
 interface ExperimentContext {
   experiment_name?: string
@@ -27,7 +29,7 @@ interface ExperimentContext {
 interface Emits {
   (e: 'layoutChange', config: LayoutConfig): void
   (e: 'addPanel', type: string, title: string): void
-  (e: 'back'): void
+  (e: 'back', mode: 'temporary' | 'stopAndExit'): void
 }
 
 const props = defineProps<{
@@ -36,20 +38,41 @@ const props = defineProps<{
 
 const emit = defineEmits<Emits>()
 
+const TEMP_EXIT_DESTROY_SECONDS = 120
+
 async function handleBack() {
   try {
-    await ElMessageBox.confirm('退出将关闭仿真容器，确定要离开吗？', '退出确认', {
-      confirmButtonText: '确定退出',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    // 用户确认退出 → 放开阻塞立即 emit back
-    stopMyContainerApi().catch(() => {
-      // 容器停止失败不管，后端会有心跳超时兜底
-    })
-    emit('back')
-  } catch {
-    // 用户点击取消 → 不操作
+    await ElMessageBox.confirm(
+      `请选择退出方式：\n\n- 临时退出：保持容器运行，约 ${TEMP_EXIT_DESTROY_SECONDS} 秒无心跳后自动销毁\n- 暂停容器后退出：等待容器停止完成再离开`,
+      '退出确认',
+      {
+        confirmButtonText: '暂停容器后退出（等待）',
+        cancelButtonText: `临时退出（${TEMP_EXIT_DESTROY_SECONDS} 秒后自动销毁）`,
+        type: 'warning',
+        distinguishCancelAndClose: true,
+        closeOnClickModal: true,
+        closeOnPressEscape: true
+      }
+    )
+
+    const loading = ElLoading.service({ text: '正在暂停容器，请稍候...' })
+    try {
+      await stopMyContainerApi()
+      emit('back', 'stopAndExit')
+    } finally {
+      loading.close()
+    }
+  } catch (action) {
+    if (action === 'cancel') {
+      try {
+        await heartbeatApi()
+      } catch {
+        // 网络异常不阻断临时退出
+      }
+      ElMessage.info(`已临时退出，若 ${TEMP_EXIT_DESTROY_SECONDS} 秒内未恢复心跳，容器将自动销毁`)
+      emit('back', 'temporary')
+    }
+    // action === 'close' 时视为取消，不执行退出
   }
 }
 

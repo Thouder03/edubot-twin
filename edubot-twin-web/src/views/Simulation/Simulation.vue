@@ -333,6 +333,7 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
 
 // ---------- 局部暗色模式 ----------
 let originalDarkClass = false
+let skipStopOnExit = false
 
 // ---------- 生命周期 ----------
 onMounted(async () => {
@@ -401,7 +402,7 @@ onBeforeUnmount(() => {
   // - Dry Run 端：sessionStorage 中的 shadow_token（Shadow JWT，由拦截器注入）
   // sessionStorage 是 per-tab 的，tab 关闭时自动清理，无需手动 removeItem
   const token = sessionStorage.getItem('simulation_token') || userStore.getToken
-  if (token) {
+  if (!skipStopOnExit && token) {
     stopOnExitApi(token)
   }
 
@@ -417,8 +418,9 @@ onBeforeUnmount(() => {
 })
 
 // ---------- 退出（来自 SimulationHeader 的 back 事件）----------
-async function handleBack() {
-  // SimulationHeader 已自行弹窗确认并停止容器，这里只需关闭标签页
+async function handleBack(_mode: 'temporary' | 'stopAndExit') {
+  // 通过顶部返回按钮离开时，退出策略已在 Header 内处理，避免重复 stopOnExit
+  skipStopOnExit = true
   window.close()
   setTimeout(() => {
     router.push('/student/home')

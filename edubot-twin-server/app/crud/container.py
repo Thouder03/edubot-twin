@@ -145,7 +145,11 @@ async def start_container(
 async def stop_container(
     db: AsyncSession, container: SimContainer
 ) -> SimContainer:
-    """停止运行中的容器"""
+    """停止运行中的容器。先标记 stopping，再执行 Docker stop，避免启动/停止竞态。"""
+    container.status = ContainerStatus.STOPPING
+    container.updated_at = datetime.utcnow()
+    await db.commit()
+
     try:
         await container_manager.stop_container(container.container_id)
         container.status = ContainerStatus.STOPPED
@@ -153,6 +157,7 @@ async def stop_container(
     except Exception as e:
         container.status = ContainerStatus.ERROR
         container.error_message = str(e)
+
     container.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(container)

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import pytest
+from app.core.port_allocator import allocate_ports
 from app.crud import container as container_crud
 from app.models.container import ContainerStatus, SimContainer
 
@@ -57,3 +58,26 @@ async def test_find_stale_containers_flags_old_running_without_heartbeat(db_sess
     stale_ids = {c.container_id for c in stale}
 
     assert "old-no-heartbeat" in stale_ids
+
+
+@pytest.mark.asyncio
+async def test_allocate_ports_skips_stopping_container_ports(db_session):
+    """回归测试：stopping 容器仍应占用端口，避免新容器复用到竞态端口。"""
+    now = datetime.utcnow()
+    stopping_container = SimContainer(
+        container_id="stopping-port-holder",
+        user_id=1,
+        image_name="edubot/gazebo-ros:latest",
+        status=ContainerStatus.STOPPING,
+        gzbridge_port=9000,
+        rosbridge_port=9500,
+        created_at=now,
+        updated_at=now,
+    )
+    db_session.add(stopping_container)
+    await db_session.commit()
+
+    gz_port, ros_port = await allocate_ports(db_session)
+
+    assert gz_port != 9000
+    assert ros_port != 9500

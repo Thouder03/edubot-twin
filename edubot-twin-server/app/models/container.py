@@ -12,6 +12,7 @@ class ContainerStatus(str, enum.Enum):
     """容器生命周期状态"""
     CREATING = "creating"      # Docker 正在创建容器
     RUNNING = "running"        # 容器运行中，gzbridge 可用
+    STOPPING = "stopping"      # 正在停止（避免启动/停止竞态）
     STOPPED = "stopped"        # 容器已停止
     ERROR = "error"            # 创建/运行出错
     REMOVING = "removing"      # 正在删除容器

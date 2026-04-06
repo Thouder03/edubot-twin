@@ -21,6 +21,7 @@ from app.crud import container as crud_container
 from app.crud import experiment as crud_experiment
 from app.crud import simulation_task as crud_task
 from app.db.database import AsyncSessionLocal, get_db
+from app.models.container import ContainerStatus
 from app.models.simulation_task import SimulationTaskStage, SimulationTaskStatus
 from app.schemas.common import ApiResponse
 from app.schemas.container import ContainerCreate
@@ -404,11 +405,27 @@ async def start_simulation(
 
     existing = await crud_container.get_container_by_user(db, student_id)
 
+    # 若容器处于 stopping，先等待其完成，避免“启动即被上一轮 stop 打断”竞态
+    if existing and existing.status == ContainerStatus.STOPPING:
+        for _ in range(12):
+            await asyncio.sleep(1)
+            await db.refresh(existing)
+            existing = await crud_container.get_container_by_user(db, student_id)
+            if not existing:
+                break
+            if existing.status in (ContainerStatus.STOPPED, ContainerStatus.ERROR):
+                break
+            if existing.status == ContainerStatus.RUNNING:
+                # stop 尚未完成但状态回到 running，继续走下方复用判断
+                break
+        if existing and existing.status == ContainerStatus.STOPPING:
+            raise HTTPException(status_code=409, detail="CONTAINER_STOPPING_IN_PROGRESS")
+
     if (
         existing
         and not data.force_recreate
         and existing.current_version_id == version.id
-        and existing.status.value == "running"
+        and existing.status == ContainerStatus.RUNNING
     ):
         return ApiResponse(
             data=StudentSimulationStartResponse(

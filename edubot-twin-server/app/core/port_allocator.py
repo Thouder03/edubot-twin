@@ -18,7 +18,7 @@ GZBRIDGE_PORT_RANGE = (9000, 9499)
 ROSBRIDGE_PORT_RANGE = (9500, 9999)
 
 # 活跃状态（占用端口）
-_ACTIVE_STATUSES = (ContainerStatus.CREATING, ContainerStatus.RUNNING)
+_ACTIVE_STATUSES = (ContainerStatus.CREATING, ContainerStatus.RUNNING, ContainerStatus.STOPPING)
 
 
 class PortExhaustedError(Exception):

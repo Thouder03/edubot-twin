@@ -4,6 +4,7 @@ import { usePanelConfig } from '../../../composables/usePanelConfig'
 import { usePanelState } from '../../../stores/panelState'
 import { DEFAULT_CONFIG, applyAction, buildNodes } from '../settings'
 import type { ContainerStatus } from '@/api/container/types'
+import { getContainerStatusText } from '../../../constants/containerStatus'
 
 interface CompressedImageMessage {
   format?: string
@@ -15,18 +16,7 @@ export function useCamera(panelId: string) {
   const containerStatus = inject<Ref<ContainerStatus | null>>('containerStatus', ref(null))
 
   const isRunning = computed(() => containerStatus.value === 'running')
-  const statusText = computed(() => {
-    const s = containerStatus.value
-    if (!s) return '容器状态未知，请稍候...'
-    const map: Record<ContainerStatus, string> = {
-      running: '运行中',
-      stopped: '容器已停止，请返回首页重启后使用',
-      creating: '容器启动中，请稍候...',
-      removing: '容器删除中',
-      error: '容器异常，请联系管理员'
-    }
-    return map[s] ?? s
-  })
+  const statusText = computed(() => getContainerStatusText(containerStatus.value))
 
   const { config } = usePanelConfig(panelId, DEFAULT_CONFIG, buildNodes, applyAction)
   const { registerPanel, unregisterPanel } = usePanelState()

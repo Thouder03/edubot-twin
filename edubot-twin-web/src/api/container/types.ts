@@ -5,7 +5,7 @@
  */
 
 /** 容器状态枚举 */
-export type ContainerStatus = 'creating' | 'running' | 'stopped' | 'error' | 'removing'
+export type ContainerStatus = 'creating' | 'running' | 'stopping' | 'stopped' | 'error' | 'removing'
 
 /** 容器完整信息（教师端 / 创建响应） */
 export interface ContainerResponse {
