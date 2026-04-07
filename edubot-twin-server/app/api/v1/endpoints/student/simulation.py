@@ -6,6 +6,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy.orm import object_session
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +36,41 @@ from app.schemas.experiment import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _container_status_value(container) -> str | None:
+    status = getattr(container, "status", None)
+    return getattr(status, "value", status)
+
+
+async def _sync_container_runtime_state(db: AsyncSession, container) -> object:
+    if not container:
+        return container
+    if _container_status_value(container) != ContainerStatus.RUNNING.value:
+        return container
+    if not getattr(container, "container_id", None):
+        return container
+
+    state = await container_manager.inspect_container_state(container.container_id)
+    if state is None:
+        container.status = ContainerStatus.STOPPED
+        container.error_message = "DOCKER_CONTAINER_NOT_FOUND"
+    elif state.get("status") in ("exited", "dead"):
+        exit_code = state.get("exit_code")
+        state_error = state.get("error")
+        container.status = ContainerStatus.STOPPED
+        container.error_message = (
+            f"docker_status={state.get('status')} exit_code={exit_code}"
+            + (f" error={state_error}" if state_error else "")
+        )
+    else:
+        return container
+
+    container.updated_at = datetime.utcnow()
+    if object_session(container) is not None:
+        await db.commit()
+        await db.refresh(container)
+    return container
 
 
 async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> None:
@@ -215,6 +252,20 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
                 retryable=False,
             )
         except Exception as e:
+            failed_container = locals().get("container")
+            if failed_container is None:
+                failed_container = await crud_container.get_container_by_user(db, student_id)
+            failed_container = await _sync_container_runtime_state(db, failed_container)
+            logger.error(
+                "[SimStartDiag] rebuild_failed task_id=%s student_id=%s error=%s failed_container_id=%s failed_container_status=%s failed_container_version_id=%s failed_container_error=%s",
+                task_id,
+                student_id,
+                str(e),
+                (getattr(failed_container, "container_id", None) if failed_container else None),
+                (_container_status_value(failed_container) if failed_container else None),
+                (getattr(failed_container, "current_version_id", None) if failed_container else None),
+                (getattr(failed_container, "error_message", None) if failed_container else None),
+            )
             await crud_task.mark_stage(
                 db,
                 task=task,
@@ -404,29 +455,49 @@ async def start_simulation(
             raise HTTPException(status_code=409, detail="MISSING_STARTUP_SCRIPT")
 
     existing = await crud_container.get_container_by_user(db, student_id)
+    logger.info(
+        "[SimStartDiag] start_simulation request student_id=%s version_id=%s force_recreate=%s existing_container_id=%s existing_status=%s existing_version_id=%s existing_error=%s",
+        student_id,
+        version.id,
+        data.force_recreate,
+        (getattr(existing, "container_id", None) if existing else None),
+        (_container_status_value(existing) if existing else None),
+        (getattr(existing, "current_version_id", None) if existing else None),
+        (getattr(existing, "error_message", None) if existing else None),
+    )
 
     # 若容器处于 stopping，先等待其完成，避免“启动即被上一轮 stop 打断”竞态
-    if existing and existing.status == ContainerStatus.STOPPING:
+    if existing and _container_status_value(existing) == ContainerStatus.STOPPING.value:
         for _ in range(12):
             await asyncio.sleep(1)
             await db.refresh(existing)
             existing = await crud_container.get_container_by_user(db, student_id)
             if not existing:
                 break
-            if existing.status in (ContainerStatus.STOPPED, ContainerStatus.ERROR):
+            if _container_status_value(existing) in (ContainerStatus.STOPPED.value, ContainerStatus.ERROR.value):
                 break
-            if existing.status == ContainerStatus.RUNNING:
+            if _container_status_value(existing) == ContainerStatus.RUNNING.value:
                 # stop 尚未完成但状态回到 running，继续走下方复用判断
                 break
-        if existing and existing.status == ContainerStatus.STOPPING:
+        if existing and _container_status_value(existing) == ContainerStatus.STOPPING.value:
             raise HTTPException(status_code=409, detail="CONTAINER_STOPPING_IN_PROGRESS")
+
+    existing = await _sync_container_runtime_state(db, existing)
 
     if (
         existing
         and not data.force_recreate
         and existing.current_version_id == version.id
-        and existing.status == ContainerStatus.RUNNING
+        and _container_status_value(existing) == ContainerStatus.RUNNING.value
     ):
+        logger.warning(
+            "[SimStartDiag] reuse_running_container_without_readiness_check student_id=%s version_id=%s docker_id=%s status=%s error_message=%s",
+            student_id,
+            version.id,
+            getattr(existing, "container_id", None),
+            _container_status_value(existing),
+            getattr(existing, "error_message", None),
+        )
         return ApiResponse(
             data=StudentSimulationStartResponse(
                 task_id=None,

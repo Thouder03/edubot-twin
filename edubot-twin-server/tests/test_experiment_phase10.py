@@ -916,7 +916,86 @@ async def test_rebuild_task_fails_immediately_when_container_exits_before_gz_rea
     await simulation_module._run_rebuild_task(task.task_id, test_student.id, version.id)
 
     await db_session.refresh(task)
+    assert running_container.status == ContainerStatus.STOPPED
+    assert "docker_status=exited" in (running_container.error_message or "")
     assert task.status == SimulationTaskStatus.FAILED
     assert task.retryable is True
     assert task.error_code == "CONTAINER_REBUILD_FAILED"
     assert task.error_message == "CONTAINER_EXITED_BEFORE_GZWEB_READY"
+
+
+@pytest.mark.asyncio
+async def test_start_simulation_does_not_reuse_exited_running_container(db_session, test_student, monkeypatch):
+    """即使 DB 里还是 running，只要 Docker 实际已退出，也不能直接复用。"""
+    import app.api.v1.endpoints.student.simulation as simulation_module
+
+    exp = await experiment_crud.create_experiment(
+        db_session,
+        name="退出容器复用保护实验",
+        code="reuse_exited_guard_exp",
+        description=None,
+        created_by=1,
+    )
+    version = await experiment_crud.create_version(
+        db_session,
+        experiment_id=exp.id,
+        version_name="v1.0.0",
+        environment_key="ros-reuse-exited-guard",
+        image_name="gzweb_sim:v1",
+        launch_file_path="/launch/nav.launch",
+        launch_args_template={},
+        startup_script_ref=None,
+        file_bundle_id=None,
+        is_visible=True,
+    )
+    await experiment_crud.publish_version(
+        db_session, experiment_id=exp.id, version=version, operator_id=1, note=None
+    )
+
+    stale_running_container = SimContainer(
+        user_id=test_student.id,
+        image_name=version.image_name,
+        status=ContainerStatus.RUNNING,
+        gzbridge_port=38082,
+        rosbridge_port=39092,
+        container_id="fake_stale_running_container",
+        current_version_id=version.id,
+    )
+
+    async def fake_get_container_by_user(*args, **kwargs):
+        return stale_running_container
+
+    async def fake_inspect_container_state(*args, **kwargs):
+        return {
+            "status": "exited",
+            "exit_code": 1,
+            "error": "",
+            "oom_killed": False,
+            "finished_at": "2026-01-01T00:00:00Z",
+        }
+
+    def fake_create_task(coro):
+        coro.close()
+
+        class _DummyTask:
+            pass
+
+        return _DummyTask()
+
+    monkeypatch.setattr(simulation_module.crud_container, "get_container_by_user", fake_get_container_by_user)
+    monkeypatch.setattr(simulation_module.container_manager, "inspect_container_state", fake_inspect_container_state)
+    monkeypatch.setattr(simulation_module.asyncio, "create_task", fake_create_task)
+
+    res = await simulation_module.start_simulation(
+        StudentSimulationStartRequest(version_id=version.id, force_recreate=False),
+        db=db_session,
+        student_id=test_student.id,
+    )
+
+    assert res.status_code == 202
+    payload = json.loads(res.body.decode("utf-8"))
+    assert payload["code"] == 0
+    assert payload["data"]["container_status"] == "creating"
+    assert payload["data"]["task_id"] is not None
+    assert stale_running_container.status == ContainerStatus.STOPPED
+    assert stale_running_container.error_message == "docker_status=exited exit_code=1"
