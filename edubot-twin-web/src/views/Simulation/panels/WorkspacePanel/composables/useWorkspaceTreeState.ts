@@ -1,64 +1,33 @@
 import { ref, type Ref } from 'vue'
 import type { TreeNode } from '@/api/files/types'
 import type { FileListData } from '@/api/files/types'
-import { listFiles } from '@/api/files'
+import { createFilesApiClient, FILES_API_BASE } from '@/api/files'
 import { ElMessage } from 'element-plus'
-import request from '@/axios'
 
 /**
- * 调用容器内文件 API，将响应转换为与 listFiles 相同的 FileListData 格式。
- * 仅在 ROOT 模式（Dry Run）下使用。
+ * useWorkspaceTreeState
+ *
+ * @param fileApiBase  当前文件 API 的 base URL（可响应式切换）
+ *                     - FILES_API_BASE: 服务器端学生工作区（相对路径）
+ *                     - CONTAINER_FILES_API_BASE: 学生容器 Sidecar
+ *                     - SHADOW_CONTAINER_FILES_API_BASE: Shadow Dry-Run 容器 Sidecar
+ * @param defaultRootPath  初始加载路径，不同 base 有不同约定
+ *                         - 服务器端工作区: '.'
+ *                         - 容器 Sidecar: '/' 或 '/home/student'
  */
-async function listContainerFiles(path: string): Promise<{ code: number; data: FileListData }> {
-  const res = await request.get<{
-    path: string
-    items: Array<{
-      name: string
-      is_dir: boolean
-      size: number
-      modified_at: number
-      permissions: string
-    }>
-  }>({
-    url: '/api/v1/teachers/dry-run-tools/files/list',
-    params: { path }
-  })
-
-  const rawItems = res.data?.items ?? []
-  const base = path.replace(/\/$/, '')
-
-  const directories = rawItems
-    .filter((item) => item.is_dir)
-    .map((item) => ({
-      name: item.name,
-      path: base === '' ? `/${item.name}` : `${base}/${item.name}`,
-      file_count: 0
-    }))
-
-  const files = rawItems
-    .filter((item) => !item.is_dir)
-    .map((item) => {
-      const ext = item.name.includes('.') ? `.${item.name.split('.').pop()}` : ''
-      return {
-        name: item.name,
-        path: base === '' ? `/${item.name}` : `${base}/${item.name}`,
-        size: item.size,
-        modified: item.modified_at * 1000,
-        extension: ext
-      }
-    })
-
-  return { code: 0, data: { path, files, directories } }
-}
-
-export function useWorkspaceTreeState(rootFileMode: Ref<boolean> = ref(false)) {
-  /** 根据当前模式调用对应的文件列表 API */
-  async function fetchFileList(path: string) {
-    return rootFileMode.value ? listContainerFiles(path) : listFiles(path)
+export function useWorkspaceTreeState(
+  fileApiBase: Ref<string> = ref(FILES_API_BASE),
+  defaultRootPath: Ref<string> = ref('.')
+) {
+  /** 根据当前 base 调用文件列表 API */
+  async function fetchFileList(path: string): Promise<{ code: number; data: FileListData }> {
+    const client = createFilesApiClient(fileApiBase.value)
+    return client.listFiles(path) as Promise<{ code: number; data: FileListData }>
   }
+
   const treeData = ref<TreeNode[]>([])
   const loading = ref(false)
-  const currentPath = ref('.')
+  const currentPath = ref(defaultRootPath.value)
   const expandedPaths = ref<Set<string>>(new Set())
 
   // 将后端数据转换为 TreeNode
@@ -103,9 +72,9 @@ export function useWorkspaceTreeState(rootFileMode: Ref<boolean> = ref(false)) {
     return nodes
   }
 
-  // 加载根目录（ROOT 模式下 path 为 '/'，普通模式下为 '.'）
+  // 加载根目录（切换 base 或手动刷新时调用）
   async function loadTree(path?: string, expandedPathSet: Set<string> = getExpandedPathSet()) {
-    const rootPath = path ?? (rootFileMode.value ? '/' : '.')
+    const rootPath = path ?? defaultRootPath.value
     loading.value = true
     try {
       const res = await fetchFileList(rootPath)
@@ -145,7 +114,6 @@ export function useWorkspaceTreeState(rootFileMode: Ref<boolean> = ref(false)) {
 
     if (node.isExpanded) {
       expandedPaths.value.add(node.path)
-      // 处理懒加载
       if (!node.childrenLoaded) {
         node.isLoading = true
         try {
@@ -186,7 +154,6 @@ export function useWorkspaceTreeState(rootFileMode: Ref<boolean> = ref(false)) {
         }
       }
     }
-
     walk(nodes)
     return paths
   }
@@ -205,26 +172,23 @@ export function useWorkspaceTreeState(rootFileMode: Ref<boolean> = ref(false)) {
 
   function remapExpandedPaths(oldPrefix: string, newPrefix: string) {
     if (!oldPrefix || oldPrefix === newPrefix) return
-
     const nextExpandedPaths = new Set<string>()
-
     getExpandedPathSet().forEach((path) => {
       if (path === oldPrefix || path.startsWith(`${oldPrefix}/`)) {
         nextExpandedPaths.add(`${newPrefix}${path.slice(oldPrefix.length)}`)
         return
       }
-
       nextExpandedPaths.add(path)
     })
-
     expandedPaths.value = nextExpandedPaths
   }
 
   async function refreshExpandedDirectories() {
     const expandedPathSet = getExpandedPathSet()
-    await refreshNode('.', expandedPathSet)
-
-    const paths = getExpandedDirectoryPathsSorted(expandedPathSet).filter((path) => path !== '.')
+    await refreshNode(currentPath.value, expandedPathSet)
+    const paths = getExpandedDirectoryPathsSorted(expandedPathSet).filter(
+      (path) => path !== currentPath.value && path !== '.'
+    )
     for (const path of paths) {
       await refreshNode(path, expandedPathSet)
     }
@@ -239,7 +203,6 @@ export function useWorkspaceTreeState(rootFileMode: Ref<boolean> = ref(false)) {
     }
 
     const node = findNodeByPath(treeData.value, path)
-
     if (node && node.type === 'directory') {
       node.isLoading = true
       try {
@@ -268,14 +231,13 @@ export function useWorkspaceTreeState(rootFileMode: Ref<boolean> = ref(false)) {
     if (node) node.isRenaming = true
   }
 
-  // 完成重命名 (取消或成功)
+  // 完成重命名
   function completeRename(path: string, newName?: string) {
     const node = findNodeByPath(treeData.value, path)
     if (node) {
       if (newName) {
         node.name = newName
         node.label = newName
-        // 注：这里只更新了节点显示，它的 path 尚未更新。真实交互会通过刷新目录树或精确回写解决（Phase 3）。
       }
       node.isRenaming = false
     }

@@ -5,7 +5,11 @@
  * 左侧: FileTree（文件树）
  * 右侧: MonacoEditor（代码编辑器）
  *
- * 可作为仿真页面 Golden Layout 面板，也可内嵌到独立页面。
+ * 能力模型（三种身份）：
+ *   shadow + USR  — 服务器端学生工作区（FILES_API_BASE，相对路径）
+ *   shadow + ROOT — 容器全文件系统 Sidecar（SHADOW_CONTAINER_FILES_API_BASE，绝对路径）
+ *   student       — 容器 Sidecar，student_limited scope（CONTAINER_FILES_API_BASE，绝对路径）
+ *                   通过路径预设按钮切换当前根目录
  */
 import { onMounted, ref, computed, onUnmounted, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
@@ -18,18 +22,58 @@ import { useDesign } from '@/hooks/web/useDesign'
 import { Icon } from '@/components/Icon'
 import { usePanelState } from '@/views/Simulation/stores/panelState'
 import { buildSettingsTree, createActionHandler } from './settings'
+import {
+  FILES_API_BASE,
+  CONTAINER_FILES_API_BASE,
+  SHADOW_CONTAINER_FILES_API_BASE
+} from '@/api/files'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('workspace-panel')
 
-// ─── Dry Run ROOT 模式
+// ─── 身份判断
 const isDryRunMode = computed(() => !!sessionStorage.getItem('simulation_token'))
+
+// ─── Shadow ROOT 模式开关
 const rootFileMode = ref(false)
+
+// ─── 学生容器路径预设（student_limited scope）
+const STUDENT_PATH_PRESETS = [
+  { label: '/home/student', path: '/home/student', writeable: true },
+  { label: '/home', path: '/home', writeable: false },
+  { label: '/root', path: '/root', writeable: false }
+]
+const selectedStudentPath = ref('/home/student')
+
+// ─── 动态 API base 和根路径（根据身份 + 模式切换）
+const fileApiBase = computed<string>(() => {
+  if (isDryRunMode.value && rootFileMode.value) {
+    return SHADOW_CONTAINER_FILES_API_BASE
+  }
+  if (isDryRunMode.value) {
+    return FILES_API_BASE // Shadow USR = 服务器端工作区
+  }
+  return CONTAINER_FILES_API_BASE // 学生仿真页 = 容器 Sidecar
+})
+
+const defaultRootPath = computed<string>(() => {
+  if (isDryRunMode.value && rootFileMode.value) {
+    return '/' // ROOT 模式从容器根开始
+  }
+  if (isDryRunMode.value) {
+    return '.' // USR 模式服务器端工作区相对路径
+  }
+  return selectedStudentPath.value // 学生模式当前预设路径
+})
 
 function toggleRootFileMode() {
   rootFileMode.value = !rootFileMode.value
-  // 切换后重新加载文件树（loadTree 内部会根据 rootFileMode 决定 path 和 API）
   loadTree(undefined)
+}
+
+function selectStudentPath(path: string) {
+  selectedStudentPath.value = path
+  loadTree(path)
 }
 
 // ─── Props（面板集成时可传入 panelId 显示状态）
@@ -39,8 +83,7 @@ interface Props {
 const props = defineProps<Props>()
 
 // ─── Composables
-const workspace = useWorkspace(rootFileMode)
-// 为了保持局部名称简短，解构需要的字段
+const workspace = useWorkspace(fileApiBase, defaultRootPath)
 const {
   treeData,
   loading,
@@ -86,7 +129,7 @@ watch(
 )
 
 // ─── 可拖拽分隔线
-const splitRatio = ref(25) // 左侧宽度百分比
+const splitRatio = ref(25)
 const isResizing = ref(false)
 const panelRef = ref<HTMLDivElement>()
 
@@ -123,8 +166,10 @@ function triggerUpload() {
 async function onFileInputChange(e: Event) {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
+  // 上传到当前根目录
+  const targetDir = defaultRootPath.value === '.' ? '.' : defaultRootPath.value
   for (const file of files) {
-    await uploadExternalCommand(file, '.')
+    await uploadExternalCommand(file, targetDir)
   }
   input.value = ''
 }
@@ -138,7 +183,6 @@ function formatCode() {
 
 // ─── 键盘快捷键监听
 function handleKeyDown(e: KeyboardEvent) {
-  // 如果焦点在输入框内部（如重命名 input，或者 Monaco Editor），不拦截快捷键
   const target = e.target as HTMLElement
   if (target.tagName.match(/INPUT|TEXTAREA/i) || target.closest('.monaco-editor')) {
     return
@@ -155,14 +199,12 @@ function handleKeyDown(e: KeyboardEvent) {
     workspace.cutCommand(paths)
   } else if (e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey)) {
     if (paths.length === 1) {
-      // 找到选中项的父路径或者如果在目录上就贴到目录里
       const node =
         workspace.treeData.value?.find((n) => n.path === paths[0]) ||
         workspace.findNodeByPath(workspace.treeData.value, paths[0])
       const targetDir = node?.type === 'directory' ? node.path : (node?.parentPath ?? '.')
       workspace.pasteCommand(targetDir)
     } else {
-      // 如果多选，默认贴到根目录
       workspace.pasteCommand('.')
     }
   } else if (e.key === 'F2') {
@@ -170,7 +212,7 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 }
 
-// ─── 脏数据拦截 (Dirty Data Guard)
+// ─── 脏数据拦截
 function hasDirtyFiles() {
   for (const dirty of Object.values(workspace.dirtyMap)) {
     if (dirty) return true
@@ -193,12 +235,8 @@ onBeforeRouteLeave((_to, _from, next) => {
         cancelButtonText: '取消',
         type: 'warning'
       })
-        .then(() => {
-          next()
-        })
-        .catch(() => {
-          next(false) // cancel
-        })
+        .then(() => next())
+        .catch(() => next(false))
     })
   } else {
     next()
@@ -269,7 +307,7 @@ onUnmounted(() => {
           </el-button>
         </el-tooltip>
 
-        <!-- ROOT 文件模式切换（仅 Dry Run 可见）-->
+        <!-- Shadow 模式：USR / ROOT 切换 -->
         <el-tooltip
           v-if="isDryRunMode"
           :content="rootFileMode ? '切换回学生工作区' : '切换到容器 ROOT 文件系统'"
@@ -285,6 +323,25 @@ onUnmounted(() => {
             {{ rootFileMode ? 'ROOT' : 'USR' }}
           </el-button>
         </el-tooltip>
+
+        <!-- 学生模式：路径预设切换 -->
+        <template v-if="!isDryRunMode">
+          <el-tooltip
+            v-for="preset in STUDENT_PATH_PRESETS"
+            :key="preset.path"
+            :content="preset.writeable ? '可读写' : '只读'"
+            placement="top"
+          >
+            <el-button
+              text
+              size="small"
+              :type="selectedStudentPath === preset.path ? 'primary' : 'default'"
+              @click="selectStudentPath(preset.path)"
+            >
+              {{ preset.label }}
+            </el-button>
+          </el-tooltip>
+        </template>
 
         <!-- 保存 -->
         <el-button

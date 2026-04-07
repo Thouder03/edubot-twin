@@ -12,6 +12,7 @@ import logging
 import os
 import stat
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,12 @@ SYSTEM_ENTRYPOINT_PATH = SYSTEM_SCRIPTS_DIR / "system_entrypoint.sh"
 CONTAINER_STARTUP_SCRIPT = "/tmp/startup.sh"
 # 系统常驻启动脚本在容器内的固定挂载路径
 CONTAINER_SYSTEM_ENTRYPOINT = "/tmp/system_entrypoint.sh"
+
+# Sidecar 文件服务宿主机路径和容器内路径
+SIDECAR_SCRIPT_HOST = Path("data/system/agent/mini_file_server.py").resolve()
+SIDECAR_SCRIPT_CONTAINER = "/opt/edubot/agent/mini_file_server.py"
+# Sidecar 监听端口（容器内，仅 Docker bridge 网络可达）
+SIDECAR_PORT = 8010
 
 # startup.sh 模板内容（10-S1-3: 启动脚本以文件形式存储在环境包根目录）
 STARTUP_SCRIPT_TEMPLATE = """\
@@ -78,7 +85,7 @@ SYSTEM_ENTRYPOINT_TEMPLATE = """\
 #!/bin/bash
 # ============================================================
 # system_entrypoint.sh — 系统常驻启动脚本（平台自动挂载，教师不可修改）
-# 功能：统一前台守护入口，拉起教师 startup.sh、rosbridge、gzweb
+# 功能：统一前台守护入口，拉起教师 startup.sh、rosbridge、gzweb、Sidecar
 # 端口通过环境变量注入：ROSBRIDGE_PORT, GZWEB_PORT
 # LAUNCH_ARGS 由平台注入版本配置中的 launch_args_template 参数
 # ============================================================
@@ -101,45 +108,54 @@ else
     echo "[system_entrypoint] 未挂载教师启动脚本，跳过"
 fi
 
-# ── 2. 启动 rosbridge_server（后台运行）─────────────────────
+# ── 2. 启动 mini_file_server Sidecar（后台运行，仅 Docker bridge 可达）──
+SIDECAR_SCRIPT="/opt/edubot/agent/mini_file_server.py"
+if [ -f "$SIDECAR_SCRIPT" ]; then
+    echo "[system_entrypoint] 正在启动文件服务 Sidecar (port=8010)..."
+    mkdir -p /opt/edubot/agent
+    python3 -m uvicorn mini_file_server:app --host 0.0.0.0 --port 8010 --app-dir /opt/edubot/agent &
+    SIDECAR_PID=$!
+    echo "[system_entrypoint] Sidecar 已启动 (PID=$SIDECAR_PID)"
+else
+    echo "[system_entrypoint] 未挂载 Sidecar 脚本，跳过"
+    SIDECAR_PID=""
+fi
+
+# ── 3. 启动 rosbridge_server（后台运行）─────────────────────
 echo "[system_entrypoint] 正在启动 rosbridge (port=${ROSBRIDGE_PORT})..."
 roslaunch rosbridge_server rosbridge_websocket.launch port:=${ROSBRIDGE_PORT} &
 ROSBRIDGE_PID=$!
 sleep 2
 
-# ── 3. 启动 gzweb（前台运行，作为唯一前台进程使容器存活）────────
+# ── 4. 启动 gzweb（后台运行）────────────────────────────────
 echo "[system_entrypoint] 正在启动 gzweb (port=${GZWEB_PORT})..."
 cd $GZWEB_DIR
 GZWEB_PORT=${GZWEB_PORT} npm start &
 GZWEB_PID=$!
 
-# ── 4. 等待任一关键进程退出，容器进入失败态 ──────────────────
+# ── 5. 等待任一关键进程退出，容器进入失败态 ──────────────────
 wait -n $ROSBRIDGE_PID $GZWEB_PID
 EXIT_CODE=$?
 echo "[system_entrypoint] 关键进程退出（exit_code=${EXIT_CODE}），容器即将终止"
-kill $ROSBRIDGE_PID $GZWEB_PID 2>/dev/null
+kill $ROSBRIDGE_PID $GZWEB_PID $SIDECAR_PID 2>/dev/null
 exit $EXIT_CODE
 """
 
 
 def ensure_system_entrypoint() -> Path:
     """
-    确保系统常驻启动脚本存在于宿主机指定路径。
-    如果不存在则自动创建，保持幂等。
+    确保系统常驻启动脚本存在且为最新版本。
+    始终写入最新模板（幂等），保证 Sidecar 等新功能生效。
 
     :returns: 脚本文件的绝对路径
     """
     SYSTEM_SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    if not SYSTEM_ENTRYPOINT_PATH.exists():
-        SYSTEM_ENTRYPOINT_PATH.write_text(SYSTEM_ENTRYPOINT_TEMPLATE, encoding="utf-8")
-        # 赋予可执行权限
-        SYSTEM_ENTRYPOINT_PATH.chmod(
-            SYSTEM_ENTRYPOINT_PATH.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-        )
-        logger.info(f"系统常驻启动脚本已创建: {SYSTEM_ENTRYPOINT_PATH}")
-    else:
-        logger.debug(f"系统常驻启动脚本已存在: {SYSTEM_ENTRYPOINT_PATH}")
+    SYSTEM_ENTRYPOINT_PATH.write_text(SYSTEM_ENTRYPOINT_TEMPLATE, encoding="utf-8")
+    SYSTEM_ENTRYPOINT_PATH.chmod(
+        SYSTEM_ENTRYPOINT_PATH.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    )
+    logger.debug(f"系统常驻启动脚本已同步: {SYSTEM_ENTRYPOINT_PATH}")
 
     return SYSTEM_ENTRYPOINT_PATH
 
@@ -171,3 +187,16 @@ def get_system_entrypoint_volume() -> tuple[str, str]:
     """
     host_path = str(ensure_system_entrypoint())
     return host_path, CONTAINER_SYSTEM_ENTRYPOINT
+
+
+def get_sidecar_volume() -> Optional[tuple[str, str]]:
+    """
+    获取 Sidecar 文件服务脚本的宿主机路径和容器内挂载路径。
+    若脚本文件不存在则返回 None（宽容降级）。
+
+    :returns: (host_path, container_path) 或 None
+    """
+    if not SIDECAR_SCRIPT_HOST.exists():
+        logger.warning(f"Sidecar 脚本不存在: {SIDECAR_SCRIPT_HOST}，跳过挂载")
+        return None
+    return str(SIDECAR_SCRIPT_HOST), SIDECAR_SCRIPT_CONTAINER

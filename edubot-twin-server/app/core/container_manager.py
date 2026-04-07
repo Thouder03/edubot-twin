@@ -141,6 +141,7 @@ async def create_container(
     """
     from app.core.system_entrypoint import (
         ensure_system_entrypoint,
+        get_sidecar_volume,
         CONTAINER_STARTUP_SCRIPT,
         CONTAINER_SYSTEM_ENTRYPOINT,
     )
@@ -199,6 +200,13 @@ async def create_container(
                 "mode": "ro",
             }
             logger.info(f"教师启动脚本已挂载: {startup_script_path} → {CONTAINER_STARTUP_SCRIPT}")
+
+        # Sidecar 文件服务脚本（data/system/agent/mini_file_server.py）
+        sidecar_vol = get_sidecar_volume()
+        if sidecar_vol:
+            sidecar_host, sidecar_container = sidecar_vol
+            volumes[sidecar_host] = {"bind": sidecar_container, "mode": "ro"}
+            logger.info(f"Sidecar 脚本已挂载: {sidecar_host} → {sidecar_container}")
 
         # 额外环境文件 Volume（env_bundle 文件）
         if env_volumes:
@@ -418,6 +426,37 @@ async def get_container_stats(container_id: str) -> Optional[ContainerStats]:
             )
         except (NotFound, KeyError, ZeroDivisionError) as e:
             logger.debug(f"get_container_stats({container_id}) 异常: {e}")
+            return None
+
+    return await _run_in_executor(_sync)
+
+
+# ─── 容器 IP 查询 ─────────────────────────────────────────────
+
+async def get_container_ip(container_id: str, network_name: str = EDUBOT_NETWORK) -> Optional[str]:
+    """
+    获取容器在指定 Docker 网络中的 IP 地址。
+
+    用于宿主机反向代理到容器内 Sidecar 服务。
+
+    Args:
+        container_id: Docker 容器 ID 或 short_id
+        network_name:  Docker 网络名，默认 edubot_network
+
+    Returns:
+        容器 IP 字符串（如 "172.18.0.3"），不存在或未连接网络时返回 None
+    """
+    def _sync() -> Optional[str]:
+        client = get_docker_client()
+        try:
+            container = client.containers.get(container_id)
+            container.reload()
+            networks = container.attrs.get("NetworkSettings", {}).get("Networks", {})
+            net_info = networks.get(network_name) or next(iter(networks.values()), None)
+            if net_info:
+                return net_info.get("IPAddress") or None
+            return None
+        except NotFound:
             return None
 
     return await _run_in_executor(_sync)

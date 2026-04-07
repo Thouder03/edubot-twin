@@ -1,6 +1,6 @@
 import { ref, reactive } from 'vue'
 import type { FileReadData } from '@/api/files/types'
-import { readFile, saveFile } from '@/api/files'
+import type { FilesApiClient } from '@/api/files'
 import { ElMessage } from 'element-plus'
 
 type WorkspaceFileData = FileReadData & { extension?: string }
@@ -12,7 +12,7 @@ function extractExtension(path: string): string {
   return fileName.slice(dotIndex)
 }
 
-export function useWorkspacePreview() {
+export function useWorkspacePreview(getFilesApi: () => FilesApiClient) {
   const previewPath = ref<string | null>(null)
   const activePath = ref<string | null>(null)
   const pinnedTabs = ref<string[]>([])
@@ -27,20 +27,19 @@ export function useWorkspacePreview() {
 
   // 打开文件
   async function openFile(path: string, asPreview: boolean = true) {
-    // 检查缓存
     let fileData = fileCache[path]
 
     if (!fileData) {
       loading.value = true
       try {
-        const res = await readFile(path)
+        const res = await getFilesApi().readFile(path)
         if (res.code === 0 && res.data) {
           fileData = {
             ...res.data,
             path,
             extension: extractExtension(res.data.path || path)
           }
-          fileCache[path] = fileData // reactive 对象赋值，Vue 可追踪
+          fileCache[path] = fileData
         } else {
           throw new Error('Load failed')
         }
@@ -52,11 +51,9 @@ export function useWorkspacePreview() {
       }
     }
 
-    // 如果是以 preview 模式打开
     if (asPreview && !pinnedTabs.value.includes(path)) {
       previewPath.value = path
     } else {
-      // 变更为 pinned
       if (previewPath.value === path) {
         previewPath.value = null
       }
@@ -76,7 +73,7 @@ export function useWorkspacePreview() {
     if (!fileData) return
 
     try {
-      const res = await saveFile({
+      const res = await getFilesApi().saveFile({
         path,
         content,
         encoding: fileData.encoding || 'utf-8'
@@ -95,7 +92,6 @@ export function useWorkspacePreview() {
   // 标记 Dirty
   function markDirty(path: string, dirty: boolean) {
     dirtyMap[path] = dirty
-    // 自动固定
     if (dirty && previewPath.value === path) {
       previewPath.value = null
       if (!pinnedTabs.value.includes(path)) {
@@ -115,11 +111,9 @@ export function useWorkspacePreview() {
       }
     }
 
-    // 清理缓存和脏状态
     delete fileCache[path]
     delete dirtyMap[path]
 
-    // 如果关闭的是当前激活的 Tab，则需要重定向焦点
     if (activePath.value === path) {
       if (pinnedTabs.value.length > 0) {
         activePath.value = pinnedTabs.value[pinnedTabs.value.length - 1]
