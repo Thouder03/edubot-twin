@@ -38,12 +38,12 @@ def _is_rate_limited(student_id: int, now: float) -> tuple[bool, int]:
     return current_count > MAX_CONNECTION_ATTEMPTS, current_count
 
 
-async def _ensure_experiment_dir_permissions(container_id: str) -> None:
-    """确保容器内 /home/student/experiment 目录可被 student(uid=1000) 正常读写。"""
+async def _ensure_student_dir_permissions(container_id: str) -> None:
+    """确保容器内 /home/student 目录可被 student(uid=1000) 正常读写。"""
     cmd = (
         "mkdir -p /home/student/experiment && "
-        "chown -R 1000:1000 /home/student/experiment && "
-        "chmod -R u+rwX,g+rwX /home/student/experiment"
+        "chown -R 1000:1000 /home/student && "
+        "chmod -R u+rwX,g+rwX /home/student"
     )
 
     proc = await asyncio.create_subprocess_exec(
@@ -152,9 +152,9 @@ async def terminal_ws(
 
     container_id = container.container_id
 
-    # ── 3. 终端前置权限修复（避免 /home/student/experiment 因历史 owner 导致 Permission denied）
+    # ── 3. 终端前置权限修复（避免 /home/student 因历史 owner 导致 Permission denied）
     try:
-        await _ensure_experiment_dir_permissions(container_id)
+        await _ensure_student_dir_permissions(container_id)
     except Exception as e:
         logger.error(
             f"[Terminal] 权限预修复失败: student={student_id}, container={container_id[:12]}, "
@@ -259,17 +259,33 @@ async def terminal_ws(
             logger.warning(f"[Terminal] write_to_docker 异常: {e}")
 
     # 并发运行双向透传
+    # 注意：不能简单 FIRST_COMPLETED 后直接杀进程。
+    # 在部分场景（如 catkin_make 长输出）read_task 可能先异常/暂时结束，
+    # 若此时容器内 shell 仍存活，直接 kill 会导致“执行中途断连”。
     read_task = asyncio.create_task(read_from_docker())
     write_task = asyncio.create_task(write_to_docker())
 
-    _, pending = await asyncio.wait(
-        [read_task, write_task],
-        return_when=asyncio.FIRST_COMPLETED,
-    )
+    while True:
+        done, pending = await asyncio.wait(
+            [read_task, write_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # 客户端侧断开或写入协程结束：结束会话
+        if write_task in done:
+            break
+
+        # 输出协程结束：如果进程还活着，重建 read_task 继续透传
+        if read_task in done:
+            if proc.returncode is None and websocket.client_state == WebSocketState.CONNECTED:
+                read_task = asyncio.create_task(read_from_docker())
+                continue
+            break
 
     # 清理
-    for task in pending:
-        task.cancel()
+    for task in (read_task, write_task):
+        if not task.done():
+            task.cancel()
 
     if proc.returncode is None:
         try:

@@ -38,6 +38,8 @@ from app.schemas.experiment import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# 活跃重建任务超过该阈值视为孤儿任务，允许在 start 接口自愈回收
+REBUILD_TASK_STALE_SECONDS = 300
 
 def _container_status_value(container) -> str | None:
     status = getattr(container, "status", None)
@@ -80,10 +82,32 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
         task = await crud_task.get_task(db, task_id)
         version = await crud_experiment.get_version(db, version_id)
         if not task or not version:
+            logger.error(
+                "[SimStartDiag] rebuild_task_bootstrap_missing task_id=%s student_id=%s has_task=%s has_version=%s",
+                task_id,
+                student_id,
+                bool(task),
+                bool(version),
+            )
             return
+
+        logger.info(
+            "[SimStartDiag] rebuild_task_started task_id=%s student_id=%s version_id=%s task_status=%s task_stage=%s",
+            task_id,
+            student_id,
+            version_id,
+            getattr(task.status, "value", task.status),
+            getattr(task.current_stage, "value", task.current_stage),
+        )
 
         try:
             await crud_task.mark_task_running(db, task=task)
+            logger.info(
+                "[SimStartDiag] stage_enter task_id=%s stage=%s status=%s",
+                task_id,
+                SimulationTaskStage.PREPARING_CONFIG.value,
+                SimulationTaskStatus.IN_PROGRESS.value,
+            )
 
             await crud_task.mark_stage(
                 db,
@@ -95,6 +119,13 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
 
             existing = await crud_container.get_container_by_user(db, student_id)
             stop_start = time.perf_counter()
+            logger.info(
+                "[SimStartDiag] stage_enter task_id=%s stage=%s existing_container_id=%s existing_status=%s",
+                task_id,
+                SimulationTaskStage.STOPPING_OLD_CONTAINER.value,
+                (getattr(existing, "container_id", None) if existing else None),
+                (_container_status_value(existing) if existing else None),
+            )
             if existing:
                 await crud_container.delete_container(db, existing)
             await crud_task.mark_stage(
@@ -105,7 +136,20 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
                 elapsed_ms=int((time.perf_counter() - stop_start) * 1000),
             )
 
+            logger.info(
+                "[SimStartDiag] stage_exit task_id=%s stage=%s elapsed_ms=%s",
+                task_id,
+                SimulationTaskStage.STOPPING_OLD_CONTAINER.value,
+                int((time.perf_counter() - stop_start) * 1000),
+            )
+
             create_start = time.perf_counter()
+            logger.info(
+                "[SimStartDiag] stage_enter task_id=%s stage=%s version_id=%s",
+                task_id,
+                SimulationTaskStage.CREATING_NEW_CONTAINER.value,
+                version_id,
+            )
             startup_script_path = None
             env_volumes: dict[str, str] = {}
             if version.env_bundle_id:
@@ -138,6 +182,14 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
                 stage=SimulationTaskStage.CREATING_NEW_CONTAINER,
                 status="SUCCEEDED",
                 elapsed_ms=int((time.perf_counter() - create_start) * 1000),
+            )
+            logger.info(
+                "[SimStartDiag] stage_exit task_id=%s stage=%s elapsed_ms=%s new_container_id=%s new_status=%s",
+                task_id,
+                SimulationTaskStage.CREATING_NEW_CONTAINER.value,
+                int((time.perf_counter() - create_start) * 1000),
+                getattr(container, "container_id", None),
+                _container_status_value(container),
             )
 
             health_start = time.perf_counter()
@@ -252,6 +304,39 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
                 elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                 retryable=False,
             )
+            logger.info(
+                "[SimStartDiag] rebuild_task_succeeded task_id=%s student_id=%s total_elapsed_ms=%s final_container_id=%s final_container_status=%s",
+                task_id,
+                student_id,
+                int((time.perf_counter() - started_at) * 1000),
+                getattr(container, "container_id", None),
+                _container_status_value(container),
+            )
+        except asyncio.CancelledError:
+            logger.error(
+                "[SimStartDiag] rebuild_task_cancelled task_id=%s student_id=%s task_status=%s task_stage=%s",
+                task_id,
+                student_id,
+                (getattr(task.status, "value", task.status) if task else None),
+                (getattr(task.current_stage, "value", task.current_stage) if task else None),
+            )
+            try:
+                await crud_task.finish_task(
+                    db,
+                    task=task,
+                    status=SimulationTaskStatus.FAILED,
+                    elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+                    retryable=True,
+                    error_code="CONTAINER_REBUILD_CANCELLED",
+                    error_message="rebuild task cancelled before completion",
+                )
+            except Exception as finish_err:
+                logger.error(
+                    "[SimStartDiag] rebuild_task_cancelled_finish_failed task_id=%s error=%s",
+                    task_id,
+                    str(finish_err),
+                )
+            raise
         except Exception as e:
             failed_container = locals().get("container")
             if failed_container is None:
@@ -643,6 +728,54 @@ async def start_simulation(
 
     active_task = await crud_task.get_active_task_by_student(db, student_id)
     if active_task:
+        updated_at = getattr(active_task, "updated_at", None)
+        task_age_seconds = (
+            (datetime.utcnow() - updated_at).total_seconds()
+            if updated_at is not None
+            else None
+        )
+
+        # 自愈：活跃任务超过阈值视为孤儿任务，自动回收后继续启动
+        if task_age_seconds is not None and task_age_seconds > REBUILD_TASK_STALE_SECONDS:
+            logger.warning(
+                "[SimStartDiag] stale_active_task_auto_recovered student_id=%s version_id=%s task_id=%s task_age_seconds=%.2f status=%s stage=%s",
+                student_id,
+                version.id,
+                active_task.task_id,
+                task_age_seconds,
+                getattr(active_task.status, "value", active_task.status),
+                getattr(active_task.current_stage, "value", active_task.current_stage),
+            )
+            await crud_task.finish_task(
+                db,
+                task=active_task,
+                status=SimulationTaskStatus.FAILED,
+                elapsed_ms=getattr(active_task, "elapsed_ms", 0) or 0,
+                retryable=True,
+                error_code="ORPHAN_TASK_RECOVERED",
+                error_message=(
+                    f"检测到活跃任务超时未结束（>{REBUILD_TASK_STALE_SECONDS}s），"
+                    "已自动回收为失败，可重试"
+                ),
+            )
+            active_task = None
+
+    if active_task:
+        latest_task = await crud_task.get_latest_task_by_student(db, student_id)
+        logger.error(
+            "[SimStartDiag] blocked_by_active_task student_id=%s version_id=%s active_task_id=%s active_status=%s active_stage=%s active_updated_at=%s latest_task_id=%s latest_status=%s latest_updated_at=%s existing_container_id=%s existing_status=%s",
+            student_id,
+            version.id,
+            active_task.task_id,
+            getattr(active_task.status, "value", active_task.status),
+            getattr(active_task.current_stage, "value", active_task.current_stage),
+            getattr(active_task, "updated_at", None),
+            (latest_task.task_id if latest_task else None),
+            (getattr(latest_task.status, "value", latest_task.status) if latest_task else None),
+            (getattr(latest_task, "updated_at", None) if latest_task else None),
+            (getattr(existing, "container_id", None) if existing else None),
+            (_container_status_value(existing) if existing else None),
+        )
         raise HTTPException(status_code=409, detail="CONTAINER_REBUILD_IN_PROGRESS")
 
     task = await crud_task.create_task(
@@ -650,6 +783,14 @@ async def start_simulation(
         student_id=student_id,
         target_version_id=version.id,
         container_id=getattr(existing, "id", None) if existing else None,
+    )
+
+    logger.info(
+        "[SimStartDiag] rebuild_task_created task_id=%s student_id=%s version_id=%s existing_container_id=%s",
+        task.task_id,
+        student_id,
+        version.id,
+        (getattr(existing, "container_id", None) if existing else None),
     )
 
     asyncio.create_task(_run_rebuild_task(task.task_id, student_id, version.id))
