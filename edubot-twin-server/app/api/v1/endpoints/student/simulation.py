@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shlex
 import time
 from datetime import datetime
 from pathlib import Path
@@ -298,17 +299,107 @@ def _validate_selected_paths(selected_paths: list[str], manifest: list) -> None:
             raise HTTPException(status_code=400, detail="PATH_NOT_IN_MANIFEST")
 
 
+async def _run_docker_cmd(*args: str, timeout: float = 30.0) -> tuple[int, str]:
+    """异步执行 docker 子命令，返回 (returncode, output)。"""
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        return 124, "docker command timeout"
+
+    output = ((stdout or b"") + (stderr or b"")).decode("utf-8", errors="replace").strip()
+    return proc.returncode or 0, output
+
+
 async def _do_file_distribute(files: list, student_id: int) -> None:
-    """实际文件分发操作（可被 monkeypatch 替换用于测试）。
-    生产实现：docker cp 或通过挂载卷拷贝。"""
-    # 本期主链路占位实现；真实分发在后续期次中接入 Docker SDK
-    pass
+    """实际文件分发操作：将文件包中的文件复制进学生容器。"""
+    async with AsyncSessionLocal() as db:
+        container = await crud_container.get_container_by_user(db, student_id)
+
+    if not container or not getattr(container, "container_id", None):
+        logger.warning("[FileDistributeDiag] skip distribute: no running container student_id=%s", student_id)
+        return
+
+    container_id = container.container_id
+    target_root = "/home/student/experiment"
+
+    logger.info(
+        "[FileDistributeDiag] distribute begin student_id=%s docker_id=%s file_count=%s",
+        student_id,
+        container_id,
+        len(files),
+    )
+
+    rc, out = await _run_docker_cmd(
+        "docker", "exec", container_id, "mkdir", "-p", target_root,
+        timeout=20.0,
+    )
+    if rc != 0:
+        raise RuntimeError(f"prepare target dir failed: {out}")
+
+    for item in files:
+        relative_path = str(item.get("relative_path", ""))
+        source_abs_path = item.get("source_abs_path")
+
+        if not relative_path or not source_abs_path:
+            logger.warning(
+                "[FileDistributeDiag] skip file due to missing source metadata relative_path=%s source=%s",
+                relative_path,
+                source_abs_path,
+            )
+            continue
+
+        rel_path = Path(relative_path)
+        target_file = f"{target_root}/{rel_path.as_posix()}"
+        target_parent = str(Path(target_file).parent)
+
+        rc, out = await _run_docker_cmd(
+            "docker",
+            "exec",
+            container_id,
+            "bash",
+            "-lc",
+            f"mkdir -p {shlex.quote(target_parent)}",
+            timeout=20.0,
+        )
+        if rc != 0:
+            raise RuntimeError(f"mkdir target parent failed for {relative_path}: {out}")
+
+        rc, out = await _run_docker_cmd(
+            "docker",
+            "cp",
+            str(source_abs_path),
+            f"{container_id}:{target_file}",
+            timeout=30.0,
+        )
+        if rc != 0:
+            raise RuntimeError(f"docker cp failed for {relative_path}: {out}")
 
 
 async def _do_set_permissions(student_id: int) -> None:
-    """设置容器内 /home/student/experiment 权限（可被 monkeypatch 替换）。
-    生产实现：docker exec chmod/chown。"""
-    pass
+    """设置容器内 /home/student/experiment 权限。"""
+    async with AsyncSessionLocal() as db:
+        container = await crud_container.get_container_by_user(db, student_id)
+
+    if not container or not getattr(container, "container_id", None):
+        logger.warning("[FileDistributeDiag] skip chmod: no running container student_id=%s", student_id)
+        return
+
+    container_id = container.container_id
+    cmd = (
+        "mkdir -p /home/student/experiment && "
+        "chown -R 1000:1000 /home/student/experiment && "
+        "chmod -R u+rwX,g+rwX /home/student/experiment"
+    )
+    rc, out = await _run_docker_cmd("docker", "exec", container_id, "bash", "-lc", cmd, timeout=30.0)
+    if rc != 0:
+        raise RuntimeError(f"set permissions failed: {out}")
 
 
 async def _run_distribute_task(task_id: str, student_id: int, files: list) -> None:
@@ -316,8 +407,15 @@ async def _run_distribute_task(task_id: str, student_id: int, files: list) -> No
     async with AsyncSessionLocal() as db:
         task = await crud_task.get_task(db, task_id)
         if not task:
+            logger.warning("[FileDistributeDiag] task missing task_id=%s student_id=%s", task_id, student_id)
             return
         try:
+            logger.info(
+                "[FileDistributeDiag] task started task_id=%s student_id=%s file_count=%s",
+                task_id,
+                student_id,
+                len(files),
+            )
             await crud_task.mark_task_running(db, task=task)
 
             await crud_task.mark_stage(
@@ -351,6 +449,12 @@ async def _run_distribute_task(task_id: str, student_id: int, files: list) -> No
                 retryable=False,
             )
         except Exception as e:
+            logger.error(
+                "[FileDistributeDiag] task failed task_id=%s student_id=%s error=%s",
+                task_id,
+                student_id,
+                str(e),
+            )
             await crud_task.mark_stage(
                 db, task=task,
                 stage=task.current_stage,
@@ -378,6 +482,14 @@ async def distribute_files(
     db: AsyncSession = Depends(get_db),
     student_id: int = Depends(get_current_student_id),
 ):
+    logger.info(
+        "[FileDistributeDiag] distribute request student_id=%s version_id=%s mode=%s selected_paths_count=%s",
+        student_id,
+        data.version_id,
+        data.mode,
+        len(data.selected_paths),
+    )
+
     # 10-S1-12: 可见性过滤同步移除 is_visible 条件
     version = await crud_experiment.get_version(db, data.version_id)
     if not version or version.publish_status.value != "published":
@@ -397,22 +509,41 @@ async def distribute_files(
 
     manifest: list = bundle.file_manifest or []
 
+    bundle_root = Path(bundle.storage_root)
+    if not bundle_root.exists():
+        raise HTTPException(status_code=409, detail="FILE_BUNDLE_STORAGE_MISSING")
+
     # 路径安全校验（仅在 selected_paths 非空时逐项校验）
     if data.selected_paths:
         _validate_selected_paths(data.selected_paths, manifest)
-        files_to_distribute = [
-            item for item in manifest
-            if item["relative_path"] in set(data.selected_paths)
-        ]
+        selected_set = set(data.selected_paths)
+        files_to_distribute = [item for item in manifest if item["relative_path"] in selected_set]
     else:
         # selected_paths=[] 表示全选清单所有文件
         files_to_distribute = list(manifest)
+
+    # 将源文件绝对路径附带到任务参数，避免后台任务再次查询 bundle
+    files_to_distribute = [
+        {
+            **item,
+            "source_abs_path": str((bundle_root / item["relative_path"]).resolve()),
+        }
+        for item in files_to_distribute
+    ]
 
     task = await crud_task.create_task(
         db,
         student_id=student_id,
         target_version_id=version.id,
         container_id=None,
+    )
+
+    logger.info(
+        "[FileDistributeDiag] task created task_id=%s student_id=%s manifest_count=%s distribute_count=%s",
+        task.task_id,
+        student_id,
+        len(manifest),
+        len(files_to_distribute),
     )
 
     asyncio.create_task(_run_distribute_task(task.task_id, student_id, files_to_distribute))

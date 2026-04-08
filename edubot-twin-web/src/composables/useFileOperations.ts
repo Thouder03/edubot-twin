@@ -27,7 +27,7 @@ export function useFileOperations(apiPrefix: Ref<string>, options: FileOperation
   const fileList = ref<BundleFileItem[]>([])
   const currentPath = ref<string>('')
   const fileContent = ref<string>('')
-  const fileContentModifiedAt = ref<string | undefined>(undefined)
+  const fileContentModifiedAt = ref<number | undefined>(undefined)
   const openedFilePath = ref<string | undefined>(undefined)
   const hasUnsavedChanges = ref(false)
   const loading = ref(false)

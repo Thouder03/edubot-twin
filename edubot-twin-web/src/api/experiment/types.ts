@@ -135,6 +135,19 @@ export interface StudentSimulationStartResponse {
   }
 }
 
+export interface FileDistributeRequest {
+  version_id: number
+  selected_paths: string[]
+  mode?: 'pull' | 'refresh' | 'retry'
+}
+
+export interface FileDistributeResponse {
+  task_id: string
+  task_status: SimulationTaskStatus
+  accepted_at: string
+  target_dir: string
+}
+
 // ─── 文件包（FileBundle）相关类型 ────────────────────────────────────────────
 
 export interface FileBundleCreateRequest {

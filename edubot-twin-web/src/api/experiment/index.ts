@@ -25,6 +25,8 @@ import type {
   FileBundleListItem,
   FileBundleListResponse,
   FileBundlePatchResponse,
+  FileDistributeRequest,
+  FileDistributeResponse,
   StudentAvailableVersionItem,
   StudentSimulationStartRequest,
   StudentSimulationStartResponse,
@@ -130,6 +132,12 @@ export const getSimulationTaskApi = (
   taskId: string
 ): Promise<IResponse<StudentSimulationTaskResponse>> => {
   return request.get({ url: `/api/v1/students/tasks/${taskId}` })
+}
+
+export const distributeSimulationFilesApi = (
+  data: FileDistributeRequest
+): Promise<IResponse<FileDistributeResponse>> => {
+  return request.post({ url: '/api/v1/students/simulation/files/distribute', data })
 }
 
 // ─── 文件包（FileBundle）API ──────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getStudentHomeDataApi } from '@/api/student'
 import {
+  distributeSimulationFilesApi,
   getAvailableExperimentsApi,
   getSimulationTaskApi,
   startSimulationApi
@@ -119,6 +120,9 @@ const stageTextMap: Record<string, string> = {
   CREATING_NEW_CONTAINER: '正在创建仿真容器...',
   CHECKING_GZWEB: '等待 Gazebo 仿真引擎启动...',
   CHECKING_ROSBRIDGE: '等待 ROS 通信桥启动...',
+  VALIDATING_MANIFEST: '正在校验实验文件清单...',
+  DISTRIBUTING_FILES: '正在分发实验文件到容器...',
+  SETTING_PERMISSIONS: '正在设置实验目录权限...',
   SUCCEEDED: '仿真环境就绪，正在打开...',
   FAILED: '启动失败'
 }
@@ -192,6 +196,32 @@ const handleStartSimulation = async () => {
       }
     }
 
+    loadingInstance.setText('正在分发实验文件...')
+    const distRes = await distributeSimulationFilesApi({
+      version_id: version.version_id,
+      selected_paths: [],
+      mode: 'pull'
+    })
+    const distData = distRes.data
+    if (distData?.task_id) {
+      const distTask = await pollTaskUntilDone(distData.task_id, loadingInstance)
+      if (distTask.task_status === 'FAILED') {
+        loadingInstance.close()
+        await ElMessageBox.confirm(
+          distTask.error_message || '实验文件分发失败，请重试',
+          '文件分发失败',
+          {
+            confirmButtonText: '重试',
+            cancelButtonText: '关闭',
+            type: 'error'
+          }
+        )
+          .then(() => handleStartSimulation())
+          .catch(() => {})
+        return
+      }
+    }
+
     // SUCCEEDED：延迟 500ms 后跳转（SDD §15.1）
     loadingInstance.setText('仿真环境就绪，正在打开...')
     await new Promise((resolve) => setTimeout(resolve, 500))
@@ -206,6 +236,16 @@ const handleStartSimulation = async () => {
 
     if (detail === 'CONTAINER_REBUILD_IN_PROGRESS') {
       ElMessage.warning('已有重建任务进行中，请稍后重试')
+      return
+    }
+
+    if (detail === 'NO_FILE_BUNDLE_ATTACHED') {
+      ElMessage.error('该实验版本未绑定文件包，请联系教师配置')
+      return
+    }
+
+    if (detail === 'FILE_BUNDLE_NOT_VALID') {
+      ElMessage.error('实验文件包未通过校验，请联系教师修复')
       return
     }
 
