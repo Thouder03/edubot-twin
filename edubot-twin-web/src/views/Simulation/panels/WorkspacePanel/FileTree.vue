@@ -229,6 +229,7 @@ async function onManualRefresh() {
           :tree-data="filteredTreeData"
           :loading="loading"
           :selected-paths="props.workspace.selectedPaths.value"
+          :get-files-api="props.workspace.getFilesApi"
           @select-file="onSelectFile"
           @open-file-pinned="onOpenFilePinned"
           @node-contextmenu="onNodeContextMenu"

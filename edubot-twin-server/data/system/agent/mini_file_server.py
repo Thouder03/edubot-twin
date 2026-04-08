@@ -203,14 +203,10 @@ async def list_files(
                     "extension": entry.suffix.lower(),
                 })
             elif entry.is_dir():
-                try:
-                    file_count = sum(1 for _ in entry.iterdir() if _.is_file())
-                except PermissionError:
-                    file_count = 0
+                # 性能优化：不再返回 file_count，避免目录列表阶段的额外磁盘扫描。
                 directories.append({
                     "name": entry.name,
                     "path": entry_path,
-                    "file_count": file_count,
                 })
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=f"无权访问: {e}")

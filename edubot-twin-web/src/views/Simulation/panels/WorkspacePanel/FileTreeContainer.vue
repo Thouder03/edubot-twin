@@ -4,8 +4,8 @@ import { Draggable, dragContext } from '@he-tree/vue'
 import '@he-tree/vue/style/default.css'
 import FileTreeNodeRenderer from './FileTreeNodeRenderer.vue'
 import { useDesign } from '@/hooks/web/useDesign'
-import { listFiles } from '@/api/files'
 import { ElMessage } from 'element-plus'
+import type { FilesApiClient } from '@/api/files'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('file-tree-container')
@@ -14,6 +14,7 @@ const props = defineProps<{
   treeData: any[]
   loading?: boolean
   selectedPaths: Set<string>
+  getFilesApi: () => FilesApiClient
 }>()
 
 const emit = defineEmits<{
@@ -122,7 +123,7 @@ async function loadAndInsert(node: any, stat: any) {
   if (node.childrenLoaded || !draggableRef.value) return
   node.isLoading = true
   try {
-    const res = await listFiles(node.path)
+    const res = await props.getFilesApi().listFiles(node.path)
     if (res.code === 0 && res.data) {
       const children = buildNodes(res.data.directories, res.data.files, node.path)
       node.children = children

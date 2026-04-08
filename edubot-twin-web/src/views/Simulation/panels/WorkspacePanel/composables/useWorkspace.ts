@@ -30,6 +30,7 @@ export function useWorkspace(
     ...selectionState,
     ...clipboardState,
     ...previewState,
-    ...commands
+    ...commands,
+    getFilesApi
   }
 }

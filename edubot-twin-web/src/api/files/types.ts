@@ -11,7 +11,7 @@ export interface FileItem {
 export interface DirectoryItem {
   name: string
   path: string // 相对于 workspace 的路径
-  file_count: number
+  file_count?: number
 }
 
 export interface FileListData {

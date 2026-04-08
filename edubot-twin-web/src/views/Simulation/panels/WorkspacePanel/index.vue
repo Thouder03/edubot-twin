@@ -12,7 +12,7 @@
  *                   通过路径预设按钮切换当前根目录
  */
 import { onMounted, ref, computed, onUnmounted, watch } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { ElButton, ElTooltip } from 'element-plus'
 import FileTree from './FileTree.vue'
 import EditorWorkbench from './EditorWorkbench.vue'
@@ -32,7 +32,12 @@ const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('workspace-panel')
 
 // ─── 身份判断
-const isDryRunMode = computed(() => !!sessionStorage.getItem('simulation_token'))
+// 仅当处于 DryRunSimulation 路由且存在 simulation_token 时，才认定为 Dry Run。
+// 避免学生仿真页（/simulation）因 token 残留误判为 Dry Run，错误走 FILES_API_BASE。
+const route = useRoute()
+const isDryRunMode = computed(
+  () => route.name === 'DryRunSimulation' && !!sessionStorage.getItem('simulation_token')
+)
 
 // ─── Shadow ROOT 模式开关
 const rootFileMode = ref(false)
@@ -66,9 +71,41 @@ const defaultRootPath = computed<string>(() => {
   return selectedStudentPath.value // 学生模式当前预设路径
 })
 
+const rootSwitchLoading = ref(false)
+
 function toggleRootFileMode() {
-  rootFileMode.value = !rootFileMode.value
+  if (rootSwitchLoading.value) return
+
+  const nextMode = !rootFileMode.value
+  console.info('[WorkspacePanel] toggleRootFileMode start', {
+    from: rootFileMode.value ? 'ROOT' : 'USR',
+    to: nextMode ? 'ROOT' : 'USR',
+    apiBaseBefore: fileApiBase.value,
+    rootPathBefore: defaultRootPath.value
+  })
+  const startTs = performance.now()
+
+  rootSwitchLoading.value = true
+  rootFileMode.value = nextMode
   loadTree(undefined)
+    .then(() => {
+      console.info('[WorkspacePanel] toggleRootFileMode done', {
+        mode: rootFileMode.value ? 'ROOT' : 'USR',
+        apiBaseAfter: fileApiBase.value,
+        rootPathAfter: defaultRootPath.value,
+        elapsedMs: Math.round(performance.now() - startTs)
+      })
+    })
+    .catch((err) => {
+      console.error('[WorkspacePanel] toggleRootFileMode failed', {
+        mode: rootFileMode.value ? 'ROOT' : 'USR',
+        elapsedMs: Math.round(performance.now() - startTs),
+        err
+      })
+    })
+    .finally(() => {
+      rootSwitchLoading.value = false
+    })
 }
 
 function selectStudentPath(path: string) {
@@ -317,6 +354,8 @@ onUnmounted(() => {
             text
             size="small"
             :type="rootFileMode ? 'danger' : 'default'"
+            :loading="rootSwitchLoading"
+            :disabled="rootSwitchLoading"
             @click="toggleRootFileMode"
           >
             <Icon icon="vi-carbon:tree-view" />

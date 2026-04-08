@@ -29,6 +29,7 @@ export function useWorkspaceTreeState(
   const loading = ref(false)
   const currentPath = ref(defaultRootPath.value)
   const expandedPaths = ref<Set<string>>(new Set())
+  let loadTreeRequestSeq = 0
 
   // 将后端数据转换为 TreeNode
   function buildTreeNodes(
@@ -75,9 +76,13 @@ export function useWorkspaceTreeState(
   // 加载根目录（切换 base 或手动刷新时调用）
   async function loadTree(path?: string, expandedPathSet: Set<string> = getExpandedPathSet()) {
     const rootPath = path ?? defaultRootPath.value
+    const reqSeq = ++loadTreeRequestSeq
     loading.value = true
     try {
       const res = await fetchFileList(rootPath)
+      if (reqSeq !== loadTreeRequestSeq) {
+        return
+      }
       if (res.code === 0 && res.data) {
         treeData.value = buildTreeNodes(
           res.data.directories,
@@ -88,9 +93,13 @@ export function useWorkspaceTreeState(
         currentPath.value = rootPath
       }
     } catch (e: any) {
-      ElMessage.error(`加载文件列表失败: ${e.message ?? e}`)
+      if (reqSeq === loadTreeRequestSeq) {
+        ElMessage.error(`加载文件列表失败: ${e.message ?? e}`)
+      }
     } finally {
-      loading.value = false
+      if (reqSeq === loadTreeRequestSeq) {
+        loading.value = false
+      }
     }
   }
 

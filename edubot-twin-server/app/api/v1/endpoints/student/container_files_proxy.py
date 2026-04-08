@@ -53,9 +53,13 @@ def _build_forward_headers(request: Request) -> dict[str, str]:
     return headers
 
 
-async def _stream_response(response: httpx.Response) -> AsyncIterator[bytes]:
-    async for chunk in response.aiter_bytes(chunk_size=65536):
-        yield chunk
+async def _stream_response(response: httpx.Response, client: httpx.AsyncClient) -> AsyncIterator[bytes]:
+    try:
+        async for chunk in response.aiter_bytes(chunk_size=65536):
+            yield chunk
+    finally:
+        await response.aclose()
+        await client.aclose()
 
 
 @router.api_route("/{action:path}", methods=["GET", "POST", "DELETE", "PUT", "PATCH"])
@@ -75,16 +79,37 @@ async def proxy_to_container(
     headers = _build_forward_headers(request)
     params = dict(request.query_params)
 
+    logger.info(
+        "[student_container_proxy] forward start action=%s method=%s target=%s params=%s",
+        action,
+        request.method,
+        target_url,
+        params,
+    )
+
+    client = httpx.AsyncClient(timeout=60.0)
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            req = client.build_request(
-                method=request.method,
-                url=target_url,
-                headers=headers,
-                params=params,
-                content=request.stream(),
+        req = client.build_request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            params=params,
+            content=request.stream(),
+        )
+        response = await client.send(req, stream=True)
+
+        logger.info(
+            "[student_container_proxy] forward response action=%s status=%s content_type=%s",
+            action,
+            response.status_code,
+            response.headers.get("content-type"),
+        )
+        if response.status_code == 404:
+            logger.warning(
+                "[student_container_proxy] upstream 404 action=%s target=%s (possible route mismatch)",
+                action,
+                target_url,
             )
-            response = await client.send(req, stream=True)
 
         forward_headers = {
             k: v for k, v in response.headers.items()
@@ -92,15 +117,18 @@ async def proxy_to_container(
         }
 
         return StreamingResponse(
-            _stream_response(response),
+            _stream_response(response, client),
             status_code=response.status_code,
             headers=forward_headers,
             media_type=response.headers.get("content-type"),
         )
     except httpx.ConnectError:
+        await client.aclose()
         raise HTTPException(status_code=503, detail="Sidecar 服务未就绪，请等待容器完全启动")
     except httpx.TimeoutException:
+        await client.aclose()
         raise HTTPException(status_code=504, detail="Sidecar 响应超时")
     except Exception as e:
+        await client.aclose()
         logger.warning("[student_container_proxy] 转发失败 action=%s: %s", action, e)
         raise HTTPException(status_code=502, detail=f"代理转发失败: {e}")
