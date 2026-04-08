@@ -31,7 +31,8 @@ import shutil
 import zipfile
 import tarfile
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Optional, List
+from typing_extensions import Literal   # 需要 pip install typing-extensions
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.responses import StreamingResponse
@@ -146,28 +147,28 @@ class FileRenameRequest(BaseModel):
     new_name: str
 
 class FileMoveRequest(BaseModel):
-    source_paths: list[str]
+    source_paths: List[str]
     target_dir: str
 
 class FileCopyRequest(BaseModel):
-    source_paths: list[str]
+    source_paths: List[str]
     target_dir: str
 
 class BatchDeleteRequest(BaseModel):
-    paths: list[str]
+    paths: List[str]
 
 class ExtractRequest(BaseModel):
     path: str
     target_dir: Optional[str] = None
 
 class CompressRequest(BaseModel):
-    paths: list[str]
+    paths: List[str]
     archive_name: str
     format: Literal["zip", "tar.gz"] = "zip"
     target_dir: Optional[str] = None
 
 class DownloadMultipleRequest(BaseModel):
-    paths: list[str]
+    paths: List[str]
     archive_name: Optional[str] = None
 
 
