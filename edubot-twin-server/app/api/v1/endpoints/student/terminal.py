@@ -38,6 +38,32 @@ def _is_rate_limited(student_id: int, now: float) -> tuple[bool, int]:
     return current_count > MAX_CONNECTION_ATTEMPTS, current_count
 
 
+async def _ensure_experiment_dir_permissions(container_id: str) -> None:
+    """确保容器内 /home/student/experiment 目录可被 student(uid=1000) 正常读写。"""
+    cmd = (
+        "mkdir -p /home/student/experiment && "
+        "chown -R 1000:1000 /home/student/experiment && "
+        "chmod -R u+rwX,g+rwX /home/student/experiment"
+    )
+
+    proc = await asyncio.create_subprocess_exec(
+        "docker",
+        "exec",
+        container_id,
+        "bash",
+        "-lc",
+        cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    stdout, stderr = await proc.communicate()
+    output = ((stdout or b"") + (stderr or b"")).decode("utf-8", errors="replace").strip()
+
+    if (proc.returncode or 0) != 0:
+        raise RuntimeError(output or "set experiment permissions failed")
+
+
 @router.websocket("/ws")
 async def terminal_ws(
     websocket: WebSocket,
@@ -126,14 +152,29 @@ async def terminal_ws(
 
     container_id = container.container_id
 
-    # ── 3. 接受 WebSocket 连接 ────────────────────────────────────
+    # ── 3. 终端前置权限修复（避免 /home/student/experiment 因历史 owner 导致 Permission denied）
+    try:
+        await _ensure_experiment_dir_permissions(container_id)
+    except Exception as e:
+        logger.error(
+            f"[Terminal] 权限预修复失败: student={student_id}, container={container_id[:12]}, "
+            f"client={client}, error={e}"
+        )
+        await websocket.accept()
+        await websocket.send_text(
+            "\r\n[错误] 初始化实验目录权限失败，请稍后重试或联系管理员。\r\n"
+        )
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        return
+
+    # ── 4. 接受 WebSocket 连接 ────────────────────────────────────
     await websocket.accept()
     session_start = asyncio.get_running_loop().time()
     logger.info(
         f"[Terminal] 会话开始: student={student_id}, container={container_id[:12]}, client={client}"
     )
 
-    # ── 4. 启动 docker exec ──────────────────────────────────────
+    # ── 5. 启动 docker exec ──────────────────────────────────────
     import shlex
     safe_container_id = shlex.quote(container_id)
     proc: Optional[asyncio.subprocess.Process] = None
@@ -147,7 +188,7 @@ async def terminal_ws(
     else:
         # 普通模式：uid=1000（student 用户）
         exec_user = "1000"
-        exec_workdir = "/home/student/workspace"
+        exec_workdir = "/home/student"
         exec_home = "/home/student"
         exec_ps1_user = safe_terminal_username
 
@@ -186,7 +227,7 @@ async def terminal_ws(
         await websocket.close()
         return
 
-    # ── 5. 双向透传 ──────────────────────────────────────────────
+    # ── 6. 双向透传 ──────────────────────────────────────────────
     async def read_from_docker():
         """从 docker stdout 读数据 → 发到 WebSocket"""
         try:
