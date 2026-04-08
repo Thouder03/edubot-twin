@@ -9,6 +9,7 @@ from app.db.database import engine, AsyncSessionLocal
 from app.db.base import Base
 from app.crud import container as crud_container
 from app.crud import container_metrics as crud_metrics
+from app.crud import simulation_task as crud_simulation_task
 from app.schemas.container_metrics import ContainerMetricsCreate
 from app.core.logger import log_container_event
 from app.core.container_manager import ensure_edubot_network, remove_container
@@ -145,6 +146,17 @@ async def lifespan(app: FastAPI):
     """FastAPI lifespan：启动 → yield → 关闭"""
     await ensure_edubot_network()
 
+    # 启动时回收孤儿任务：开发环境 reload 会中断后台协程，所有活跃任务均应标记失败可重试
+    try:
+        async with AsyncSessionLocal() as db:
+            recovered = await crud_simulation_task.recover_orphan_tasks(db, stale_minutes=0)
+            if recovered:
+                logger.warning("[启动自愈] 已回收孤儿仿真任务 %s 条", recovered)
+            else:
+                logger.info("[启动自愈] 未发现孤儿仿真任务")
+    except Exception as e:
+        logger.error("[启动自愈] 孤儿任务回收失败: %s", e)
+
     # 启动后台任务
     cleanup_task = asyncio.create_task(_stale_container_cleanup_loop())
     metrics_task = asyncio.create_task(_metrics_collection_loop())
@@ -201,5 +213,12 @@ if __name__ == "__main__":
         "app.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True
+        reload=True,
+        reload_excludes=[
+            "data/students/*",
+            "data/students/**/*",
+            "edubot-twin-server/data/students/*",
+            "edubot-twin-server/data/*",
+            "edubot-twin-server/data/students/**/*",
+        ],
     )
