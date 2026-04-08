@@ -50,7 +50,7 @@ const showSettings = ref(false)
 
     <!-- WorkspacePanel 主体 -->
     <div :class="`${prefixCls}__body`">
-      <WorkspacePanel />
+      <WorkspacePanel :force-server-workspace="true" />
     </div>
 
     <!-- 设置抽屉（与 WorkspacePanel 面板共享同一配置 key） -->

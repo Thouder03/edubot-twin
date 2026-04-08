@@ -50,13 +50,26 @@ const STUDENT_PATH_PRESETS = [
 ]
 const selectedStudentPath = ref('/home/student')
 
+// ─── Props（面板集成时可传入 panelId 显示状态）
+interface Props {
+  panelId?: string
+  forceServerWorkspace?: boolean
+}
+const props = withDefaults(defineProps<Props>(), {
+  forceServerWorkspace: false
+})
+
 // ─── 动态 API base 和根路径（根据身份 + 模式切换）
+const isServerWorkspaceMode = computed<boolean>(
+  () => isDryRunMode.value || props.forceServerWorkspace
+)
+
 const fileApiBase = computed<string>(() => {
   if (isDryRunMode.value && rootFileMode.value) {
     return SHADOW_CONTAINER_FILES_API_BASE
   }
-  if (isDryRunMode.value) {
-    return FILES_API_BASE // Shadow USR = 服务器端工作区
+  if (isServerWorkspaceMode.value) {
+    return FILES_API_BASE // Shadow USR + 独立文件管理页 = 服务器端工作区
   }
   return CONTAINER_FILES_API_BASE // 学生仿真页 = 容器 Sidecar
 })
@@ -65,8 +78,8 @@ const defaultRootPath = computed<string>(() => {
   if (isDryRunMode.value && rootFileMode.value) {
     return '/' // ROOT 模式从容器根开始
   }
-  if (isDryRunMode.value) {
-    return '.' // USR 模式服务器端工作区相对路径
+  if (isServerWorkspaceMode.value) {
+    return '.' // 服务器端工作区相对路径
   }
   return selectedStudentPath.value // 学生模式当前预设路径
 })
@@ -112,12 +125,6 @@ function selectStudentPath(path: string) {
   selectedStudentPath.value = path
   loadTree(path)
 }
-
-// ─── Props（面板集成时可传入 panelId 显示状态）
-interface Props {
-  panelId?: string
-}
-const props = defineProps<Props>()
 
 // ─── Composables
 const workspace = useWorkspace(fileApiBase, defaultRootPath)
@@ -364,7 +371,7 @@ onUnmounted(() => {
         </el-tooltip>
 
         <!-- 学生模式：路径预设切换 -->
-        <template v-if="!isDryRunMode">
+        <template v-if="!isServerWorkspaceMode">
           <el-tooltip
             v-for="preset in STUDENT_PATH_PRESETS"
             :key="preset.path"
