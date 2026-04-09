@@ -241,6 +241,51 @@ class FileSaveRequest(BaseModel):
     modified_at: Optional[float] = Field(default=None, description="客户端持有的修改时间戳（用于冲突检测）")
 
 
+# ─── 文件包 / 环境包 - 文件操作 Request Schemas ──────────────────────────────
+
+class BundleMkdirRequest(BaseModel):
+    """新建目录请求体"""
+    path: str = Field(..., description="目录相对路径（支持多级）")
+
+
+class BundleRenameRequest(BaseModel):
+    """重命名文件/目录请求体"""
+    path: str = Field(..., description="原相对路径")
+    new_name: str = Field(..., description="新名称（不含路径分隔符）")
+
+
+class BundleMoveRequest(BaseModel):
+    """移动文件/目录请求体"""
+    source_paths: list[str] = Field(..., description="源相对路径列表")
+    target_dir: str = Field(..., description="目标目录相对路径（'.' 表示根）")
+
+
+class BundleCopyRequest(BaseModel):
+    """复制文件/目录请求体"""
+    source_paths: list[str] = Field(..., description="源相对路径列表")
+    target_dir: str = Field(..., description="目标目录相对路径（'.' 表示根）")
+
+
+class BundleExtractRequest(BaseModel):
+    """解压请求体"""
+    path: str = Field(..., description="压缩文件相对路径")
+    target_dir: Optional[str] = Field(default=None, description="解压目标目录，默认为压缩文件所在目录")
+
+
+class BundleCompressRequest(BaseModel):
+    """压缩请求体"""
+    paths: list[str] = Field(..., description="要压缩的相对路径列表")
+    archive_name: str = Field(..., description="输出压缩包文件名（含扩展名）")
+    format: Literal["zip", "tar.gz"] = Field(default="zip", description="压缩格式")
+    target_dir: Optional[str] = Field(default=None, description="输出目录，默认为第一个源路径的父目录")
+
+
+class BundleOpResponse(BaseModel):
+    """批量操作响应体（移动 / 复制）"""
+    success: list[str] = Field(default_factory=list)
+    failed: list[dict] = Field(default_factory=list)
+
+
 # ─── 环境包 Schema（10-S1-4 新增）────────────────────────────────────────────
 
 class EnvBundleCreate(BaseModel):

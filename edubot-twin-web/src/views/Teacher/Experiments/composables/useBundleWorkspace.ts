@@ -506,22 +506,34 @@ export function useBundleWorkspace(apiPrefixRef: Ref<string>, protectedPathNames
 
   async function downloadCommand(paths: string[]) {
     if (!paths.length) return
+    if (paths.length > 1) {
+      ElMessage.info('批量下载请使用压缩后下载')
+      return
+    }
     const userStore = useUserStoreWithOut()
     const token = userStore.getToken ?? ''
     const tokenKey = userStore.getTokenKey ?? 'Authorization'
     const prefix = apiPrefixRef.value
-
-    if (paths.length === 1) {
-      const url = `${prefix}/download?path=${encodeURIComponent(paths[0])}`
-      const a = document.createElement('a')
-      a.href = url
-      a.setAttribute(tokenKey, `Bearer ${token}`)
-      a.download = getBaseName(paths[0])
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-    } else {
-      ElMessage.info('批量下载请使用压缩后下载')
+    const url = `${import.meta.env.VITE_API_BASE_PATH}${prefix}/download?path=${encodeURIComponent(paths[0])}`
+    try {
+      const res = await fetch(url, {
+        headers: { [tokenKey]: token ? `Bearer ${token}` : '' }
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}) as any)
+        throw new Error(json?.detail ?? `下载失败 (${res.status})`)
+      }
+      const blob = await res.blob()
+      const cd = res.headers.get('Content-Disposition') ?? ''
+      const match = cd.match(/filename="?([^"\s]+)"?/)
+      const filename = match?.[1] ?? getBaseName(paths[0])
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(link.href)
+    } catch (e: any) {
+      ElMessage.error(`下载失败: ${e?.message ?? e}`)
     }
   }
 

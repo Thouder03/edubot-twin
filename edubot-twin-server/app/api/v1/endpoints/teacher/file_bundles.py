@@ -3,11 +3,14 @@
 
 端点前缀：/api/v1/teachers/file-bundles
 """
+import io
 import os
+import zipfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, File, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_teacher
@@ -15,6 +18,13 @@ from app.crud import experiment as crud_experiment
 from app.db.database import get_db
 from app.schemas.common import ApiResponse
 from app.schemas.experiment import (
+    BundleCompressRequest,
+    BundleCopyRequest,
+    BundleExtractRequest,
+    BundleMkdirRequest,
+    BundleMoveRequest,
+    BundleOpResponse,
+    BundleRenameRequest,
     FileBundleCreate,
     FileBundleListItem,
     FileBundleListResponse,
@@ -166,6 +176,7 @@ async def delete_file_bundle(
 async def upload_file_to_bundle(
     bundle_id: int,
     file: UploadFile = File(...),
+    path: Optional[str] = Form(default=None),
     db: AsyncSession = Depends(get_db),
     teacher_id: int = Depends(get_current_teacher),
 ):
@@ -179,7 +190,7 @@ async def upload_file_to_bundle(
 
     file_data = await file.read()
     try:
-        svc.save_uploaded_file(file.filename or "upload", file_data)
+        svc.save_uploaded_file(file.filename or "upload", file_data, target_dir=path)
     except FileSizeExceededError as e:
         _handle_bundle_error(e)
     except PathTraversalError as e:
@@ -288,6 +299,180 @@ async def delete_bundle_file(
         file_count=file_count,
         total_size_bytes=total_size,
         file_manifest=manifest,
+    )
+
+
+async def _refresh_stats(db: AsyncSession, bundle, svc: BundleFileService) -> None:
+    """重新扫描目录并写入 file_count / total_size / file_manifest。"""
+    file_count, total_size, manifest = svc.scan_directory()
+    await crud_experiment.update_bundle_stats(
+        db, bundle=bundle,
+        file_count=file_count,
+        total_size_bytes=total_size,
+        file_manifest=manifest,
+    )
+
+
+@router.post("/{bundle_id}/files/mkdir", response_model=ApiResponse[dict], summary="新建目录")
+async def mkdir_bundle(
+    bundle_id: int,
+    data: BundleMkdirRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    bundle = await _get_bundle_or_404(db, bundle_id, teacher_id)
+    svc = _get_service(bundle)
+    try:
+        target = svc.mkdir(data.path)
+    except BundleFileError as e:
+        _handle_bundle_error(e)
+    return ApiResponse(data={"path": str(target.relative_to(svc.storage_root).as_posix())})
+
+
+@router.post("/{bundle_id}/files/rename", response_model=ApiResponse[dict], summary="重命名文件/目录")
+async def rename_bundle_file(
+    bundle_id: int,
+    data: BundleRenameRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    bundle = await _get_bundle_or_404(db, bundle_id, teacher_id)
+    svc = _get_service(bundle)
+    try:
+        target = svc.rename(data.path, data.new_name)
+    except BundleFileError as e:
+        _handle_bundle_error(e)
+    await _refresh_stats(db, bundle, svc)
+    return ApiResponse(data={"new_path": str(target.relative_to(svc.storage_root).as_posix())})
+
+
+@router.post("/{bundle_id}/files/move", response_model=ApiResponse[BundleOpResponse], summary="移动文件/目录")
+async def move_bundle_files(
+    bundle_id: int,
+    data: BundleMoveRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    bundle = await _get_bundle_or_404(db, bundle_id, teacher_id)
+    svc = _get_service(bundle)
+    try:
+        success, failed = svc.move(data.source_paths, data.target_dir)
+    except BundleFileError as e:
+        _handle_bundle_error(e)
+    if not success and failed:
+        raise HTTPException(status_code=400, detail=failed[0]["reason"])
+    await _refresh_stats(db, bundle, svc)
+    return ApiResponse(data=BundleOpResponse(success=success, failed=failed))
+
+
+@router.post("/{bundle_id}/files/copy", response_model=ApiResponse[BundleOpResponse], summary="复制文件/目录")
+async def copy_bundle_files(
+    bundle_id: int,
+    data: BundleCopyRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    bundle = await _get_bundle_or_404(db, bundle_id, teacher_id)
+    svc = _get_service(bundle)
+    try:
+        success, failed = svc.copy(data.source_paths, data.target_dir)
+    except BundleFileError as e:
+        _handle_bundle_error(e)
+    if not success and failed:
+        raise HTTPException(status_code=400, detail=failed[0]["reason"])
+    await _refresh_stats(db, bundle, svc)
+    return ApiResponse(data=BundleOpResponse(success=success, failed=failed))
+
+
+@router.post("/{bundle_id}/files/extract", response_model=ApiResponse[dict], summary="解压文件")
+async def extract_bundle_archive(
+    bundle_id: int,
+    data: BundleExtractRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    bundle = await _get_bundle_or_404(db, bundle_id, teacher_id)
+    svc = _get_service(bundle)
+    try:
+        out_dir = svc.extract(data.path, data.target_dir)
+    except BundleFileError as e:
+        _handle_bundle_error(e)
+    await _refresh_stats(db, bundle, svc)
+    return ApiResponse(data={"target_dir": str(out_dir.relative_to(svc.storage_root).as_posix() or ".")})
+
+
+@router.post("/{bundle_id}/files/compress", response_model=ApiResponse[dict], summary="压缩文件")
+async def compress_bundle_files(
+    bundle_id: int,
+    data: BundleCompressRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    bundle = await _get_bundle_or_404(db, bundle_id, teacher_id)
+    svc = _get_service(bundle)
+    try:
+        out_path = svc.compress(
+            paths=data.paths,
+            archive_name=data.archive_name,
+            format=data.format,
+            target_dir=data.target_dir,
+        )
+    except BundleFileError as e:
+        _handle_bundle_error(e)
+    await _refresh_stats(db, bundle, svc)
+    return ApiResponse(data={"archive_path": str(out_path.relative_to(svc.storage_root).as_posix())})
+
+
+@router.get("/{bundle_id}/files/download", summary="下载文件或目录")
+async def download_bundle_file(
+    bundle_id: int,
+    path: str = Query(..., description="文件或目录相对路径"),
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    """单文件流式返回；目录即时打包为 zip 流式返回。"""
+    bundle = await _get_bundle_or_404(db, bundle_id, teacher_id)
+    svc = _get_service(bundle)
+    try:
+        target = svc.resolve_for_download(path)
+    except BundleFileError as e:
+        _handle_bundle_error(e)
+
+    if target.is_file():
+        file_size = target.stat().st_size
+        filename = target.name
+
+        def file_generator():
+            with open(target, "rb") as f:
+                while chunk := f.read(65536):
+                    yield chunk
+
+        return StreamingResponse(
+            file_generator(),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(file_size),
+            },
+        )
+
+    # 目录打包为 zip
+    zip_name = target.name + ".zip"
+
+    def zip_generator():
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for file in target.rglob("*"):
+                if file.is_file():
+                    zf.write(file, target.name + "/" + str(file.relative_to(target)))
+        buf.seek(0)
+        while chunk := buf.read(65536):
+            yield chunk
+
+    return StreamingResponse(
+        zip_generator(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
     )
 
 
