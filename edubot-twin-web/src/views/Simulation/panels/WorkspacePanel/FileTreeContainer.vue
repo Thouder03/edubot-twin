@@ -141,10 +141,26 @@ async function loadAndInsert(node: any, stat: any) {
   }
 }
 
-// ─── 节点点击：只负责将节点路径和 MouseEvent 上报交父组件处理选区
+// ─── 严格双击检测（150ms 窗口，比系统默认更严格，减少误操作）
+const DBLCLICK_MS = 150
+const lastClickMap = new Map<string, number>()
+
+// ─── 节点点击：负责将节点路径和 MouseEvent 上报，并内置严格双击检测
 function onNodeClick(node: any, _stat: any, event: MouseEvent) {
-  // 文件和文件夹都可以被选中，由 FileTree.vue 决定是否打开编辑器
-  emit('select-file', node.path, event)
+  const path = node.path
+  const now = Date.now()
+  const last = lastClickMap.get(path) ?? 0
+
+  if (now - last <= DBLCLICK_MS) {
+    // 两次点击间隔 <= DBLCLICK_MS，视为双击 → 打开文件 / 进入目录
+    lastClickMap.delete(path)
+    emit('open-file-pinned', path)
+    return
+  }
+
+  // 单击：选中文件/目录
+  lastClickMap.set(path, now)
+  emit('select-file', path, event)
 }
 
 // ─── he-tree click:node — 只负责目录展开折叠（文件节点不处理）
@@ -272,7 +288,6 @@ defineExpose({ getFlatVisiblePaths })
           :stat="stat"
           :is-selected="selectedPaths.has(node.path)"
           @click="(e) => onNodeClick(node, stat, e)"
-          @dblclick="emit('open-file-pinned', node.path)"
           @contextmenu.prevent="emit('node-contextmenu', node, $event)"
           @toggle-expand="onToggleExpandFromArrow(node, stat)"
           @rename-submit="(newName: string) => emit('rename-submit', node.path, newName)"
