@@ -1,52 +1,19 @@
 # 当前任务状态
 
-## 任务：第10期补充SDD（S2 偏差修复）
+## 最新任务：修复教师端文件树点击报错 (getFilesApi is not a function)
 
-### 状态：✅ 所有 SDD 偏差已修复完毕
-
----
-
-## 偏差修复完成清单
-
-| 偏差 | 描述 | 状态 |
-|---|---|---|
-| 偏差1 | Dry Run 后端端点按 SDD 重构（接受 version_id，返回 simulation_url） | ✅ |
-| 偏差2 | Dry Run 版本选择改为两级联动下拉（实验→版本） | ✅ |
-| 偏差3 | 保存冲突检测协议完整透传（modified_at） | ✅ |
-| 偏差4 | 删除旧 Experiments.vue | ✅ |
+### 状态：✅ 已修复
 
 ---
 
-## 偏差1：Dry Run 后端端点按 SDD 重建（最复杂）
+## 核心工作内容记录
 
-**SDD 要求**（§6.2）：
-```
-POST /api/v1/teachers/env-bundles/{id}/dry-run
-Request:  { version_id: int }
-Response: { container_id: str, simulation_url: str }
-```
+1. **Bug 定位**：
+   - 用户反馈：教师端实验文件和环境管理页，点击文件夹显示“加载目录失败: props.getFilesApi is not a function”。
+   - 追踪发现：教师端复用了学生端的 `FileTreeContainer.vue`，其中目录展开逻辑依赖于传入的 `getFilesApi().listFiles` 方法来实现懒加载。
+   - 问题根源：教师端使用的 `useBundleWorkspace.ts`（扮演了兼容层角色）暴露了与其他模块一致的接口，但缺失了暴露 `getFilesApi` 的 mock。
 
-### 修改文件清单
-
-| 文件 | 变更内容 |
-|---|---|
-| `schemas/experiment.py` | 新增 `EnvBundleDryRunByVersionRequest`（接受 `version_id`）和 `EnvBundleDryRunByVersionResponse`（`container_id + simulation_url + rosbridge_url`）；旧 Schema 保留带废弃注释 |
-| `core/dry_run_manager.py` | 新增 `count_for_teacher(teacher_id)` 方法，用于配额检查（SDD §8：每教师最多3个） |
-| `api/v1/endpoints/teacher/env_bundles.py` | Dry Run 路由完全重写：接受 `version_id`，查版本读取 `image_name/launch_file_path/launch_args_template`，检查配额，启动容器并返回 `{container_id, simulation_url, rosbridge_url}` |
-| `src/api/experiment/types.ts` | `DryRunStartResponse` 增加 `rosbridge_url` 字段 |
-| `src/views/Teacher/Experiments/ExperimentEnvs.vue` | 跳转时传入 `rosbridge_url` query 参数 |
-| `src/views/Simulation/Simulation.vue` | Dry Run 模式下从 `route.query.simulation_url` / `rosbridge_url` 获取 GzBridge 初始化地址，跳过调用学生容器 API |
-
-### 技术决策
-- response 在 SDD 基础上额外增加 `rosbridge_url`（SDD 仅定义 `simulation_url`），因为 Simulation.vue 需要用它初始化 ROS3D 连接，SDD 未覆盖此细节但从完整性考虑是必要的。
-
----
-
-## 偏差2/3/4 已在上一轮会话完成（见 0_archive_context.md）
-
----
-
-## 下一步建议（验收阶段）
-- 按 SDD §11.2/11.3 进行功能验收测试
-- 特别验证 Dry Run 全流程：选择版本 → 启动容器 → 跳转仿真页 → 结束清理
-- 验证文件保存冲突检测：双浏览器同时编辑同一文件，后保存者应收到 409 提示
+2. **代码修改**：
+   - 修改 `edubot-twin-web/src/views/Teacher/Experiments/composables/useBundleWorkspace.ts`。
+   - 在其 `return` 中增加 `getFilesApi` 函数，模拟返回 `listFiles`。
+   - 内部将 `listFiles` 请求代理到 `bundleListFiles` 并按照 `FileTreeContainer` 期望的结构（`{code:0, data: ...}`）返回，彻底解决了文件夹点击报错无法展开的问题。

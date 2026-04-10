@@ -539,6 +539,15 @@ export function useBundleWorkspace(apiPrefixRef: Ref<string>, protectedPathNames
 
   // ── 对外暴露（与 useWorkspace 完全兼容的接口）──────────────────────────────
 
+  function getFilesApi() {
+    return {
+      listFiles: async (path = '.') => {
+        const data = await bundleListFiles(apiPrefixRef.value, path)
+        return { code: 0, data, message: 'success' } as any
+      }
+    } as any
+  }
+
   return {
     // Tree State
     treeData,
@@ -581,6 +590,9 @@ export function useBundleWorkspace(apiPrefixRef: Ref<string>, protectedPathNames
     moveCommand,
     extractCommand,
     compressCommand,
-    downloadCommand
+    downloadCommand,
+    
+    // API Mock (For FileTreeContainer lazy load)
+    getFilesApi
   }
 }

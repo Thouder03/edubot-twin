@@ -166,7 +166,7 @@ const handleStartSimulation = async () => {
 
   const loadingInstance = ElLoading.service({
     text: '正在启动仿真环境...',
-    background: 'rgba(0,0,0,0.5)'
+    background: 'rgba(0,0,0,0.8)'
   })
 
   try {
