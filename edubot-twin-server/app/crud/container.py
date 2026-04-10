@@ -165,9 +165,28 @@ async def stop_container(
 
 
 async def delete_container(db: AsyncSession, container: SimContainer) -> bool:
-    """删除容器记录并移除 Docker 容器"""
+    """
+    删除容器记录并移除 Docker 容器。
+
+    加固点：先将状态切到 REMOVING 落库，再调 Docker 删除。如果 Docker 侧
+    抛异常（daemon 不可达、容器 stuck 等），不再静默吞掉——把 DB 状态
+    标记为 ERROR 后抛出异常给调用方，同时让孤儿容器 reconcile 循环
+    在下一轮扫描时兜底处理（阶段 B / 阶段 C）。
+    """
+    container.status = ContainerStatus.REMOVING
+    container.updated_at = datetime.utcnow()
+    await db.commit()
+
     if container.container_id:
-        await container_manager.remove_container(container.container_id)
+        try:
+            await container_manager.remove_container(container.container_id)
+        except Exception as e:
+            container.status = ContainerStatus.ERROR
+            container.error_message = f"docker remove failed: {e}"[:500]
+            container.updated_at = datetime.utcnow()
+            await db.commit()
+            raise
+
     await db.delete(container)
     await db.commit()
     return True
@@ -204,3 +223,69 @@ async def find_stale_containers(
         )
     )
     return list(result.scalars().all())
+
+
+# ─── 孤儿容器自洗支持查询 ───────────────────────────────────────────────
+
+async def find_zombie_state_containers(
+    db: AsyncSession,
+    timeout_seconds: int = 200,
+) -> list[SimContainer]:
+    """
+    查找状态僵死的容器：处于 CREATING/STOPPING/REMOVING 中间态
+    且 updated_at 超过 timeout_seconds 未推进的记录。
+
+    这些记录很可能是协程异常、reload 中断、宿主机重启等导致链路锁
+    永远无法推进到终态的「死锁」，由孤儿清洗循环阶段 A 负责回收。
+    """
+    cutoff = datetime.utcnow() - timedelta(seconds=timeout_seconds)
+    result = await db.execute(
+        select(SimContainer).where(
+            SimContainer.status.in_(
+                [
+                    ContainerStatus.CREATING,
+                    ContainerStatus.STOPPING,
+                    ContainerStatus.REMOVING,
+                ]
+            ),
+            SimContainer.updated_at < cutoff,
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def find_active_db_containers(db: AsyncSession) -> list[SimContainer]:
+    """
+    查找 DB 中所有「应当存在对应 Docker 容器」的活跃记录，
+    用于孤儿清洗循环阶段 B（DB → Docker 校准）。
+
+    仅返回 container_id 非空、状态为 RUNNING 或 CREATING 的记录。
+    """
+    result = await db.execute(
+        select(SimContainer).where(
+            SimContainer.status.in_(
+                [
+                    ContainerStatus.RUNNING,
+                    ContainerStatus.CREATING,
+                ]
+            ),
+            SimContainer.container_id.isnot(None),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def get_known_container_ids(db: AsyncSession) -> set[str]:
+    """
+    返回 DB 中所有非空 container_id 集合，用于孤儿清洗循环阶段 C
+    （Docker → DB 反向清洗）做差集计算物理孤儿。
+
+    不限制状态：只要 DB 中存在该 container_id 的记录，就不会被
+    视为物理孤儿（哪怕其状态已是 STOPPED / ERROR）。
+    """
+    result = await db.execute(
+        select(SimContainer.container_id).where(
+            SimContainer.container_id.isnot(None)
+        )
+    )
+    return {row[0] for row in result.all() if row[0]}

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +13,14 @@ from app.crud import container_metrics as crud_metrics
 from app.crud import simulation_task as crud_simulation_task
 from app.schemas.container_metrics import ContainerMetricsCreate
 from app.core.logger import log_container_event
-from app.core.container_manager import ensure_edubot_network, remove_container
+from app.core.container_manager import (
+    ensure_edubot_network,
+    remove_container,
+    inspect_container,
+    inspect_container_state,
+    list_edubot_simulation_containers,
+)
+from app.models.container import ContainerStatus
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +30,11 @@ HEARTBEAT_TIMEOUT = 120      # 心跳超时阈值：2 分钟
 METRICS_COLLECT_INTERVAL = 10  # 每 10 秒采集一次性能指标
 METRICS_CLEANUP_INTERVAL = 86400  # 每 24 小时清理一次历史数据
 METRICS_RETENTION_DAYS = 7   # 保留 7 天的历史数据
+
+# ─── 孤儿容器自洗参数 ────────────────────────────────────
+ORPHAN_RECONCILE_INTERVAL = 300   # 每 5 分钟扫描一次
+ZOMBIE_STATE_TIMEOUT = 600        # CREATING/STOPPING/REMOVING 超 10 分钟视为僵死
+ORPHAN_GRACE_SECONDS = 60         # 物理容器创建 60 秒内不视为孤儿（给 DB 落库留窗口）
 
 
 async def _stale_container_cleanup_loop():
@@ -141,6 +154,188 @@ async def _metrics_cleanup_loop():
             logger.error(f"[定时任务] Metrics cleanup error: {e}")
 
 
+# ─── 孤儿容器自洗（双向 reconcile） ────────────────────────
+async def _orphan_container_reconcile_once() -> dict[str, int]:
+    """
+    执行一次完整的孤儿容器 reconcile（三阶段）。
+
+    阶段 A — DB 状态僵死回收：处理 CREATING/STOPPING/REMOVING 长期未推进
+    阶段 B — DB → Docker 校准：活跃记录探活，修正失配状态
+    阶段 C — Docker → DB 反向清洗：物理孤儿容器强制删除
+
+    Returns:
+        {"zombie_recovered": int, "db_corrected": int, "physical_removed": int}
+    """
+    stats = {"zombie_recovered": 0, "db_corrected": 0, "physical_removed": 0}
+
+    async with AsyncSessionLocal() as db:
+        # ── 阶段 A：状态僵死回收 ─────────────────────────────
+        try:
+            zombies = await crud_container.find_zombie_state_containers(
+                db, timeout_seconds=ZOMBIE_STATE_TIMEOUT
+            )
+        except Exception as e:
+            logger.error(f"[孤儿清洗] 阶段 A 查询失败: {e}")
+            zombies = []
+
+        for c in zombies:
+            try:
+                state = (
+                    await inspect_container_state(c.container_id)
+                    if c.container_id
+                    else None
+                )
+                if state is None:
+                    # Docker 中已不存在（含 container_id 为空的情况）：DB 直接删除释放端口
+                    log_container_event(
+                        event_type="orphan_reconcile",
+                        container_id=c.id,
+                        student_id=c.user_id,
+                        message=(
+                            f"zombie {c.status.value} 状态记录回收"
+                            f"（docker 已不存在）"
+                        ),
+                        level="WARNING",
+                    )
+                    await db.delete(c)
+                    stats["zombie_recovered"] += 1
+                elif state.get("status") == "running":
+                    # 罕见：状态卡 STOPPING 但 docker 实际在跑，恢复为 RUNNING
+                    c.status = ContainerStatus.RUNNING
+                    c.error_message = None
+                    c.last_heartbeat_at = datetime.utcnow()
+                    c.updated_at = datetime.utcnow()
+                    log_container_event(
+                        event_type="orphan_reconcile",
+                        container_id=c.id,
+                        student_id=c.user_id,
+                        message="zombie 状态校准为 RUNNING（docker 实际在跑）",
+                        level="WARNING",
+                    )
+                    stats["zombie_recovered"] += 1
+                else:
+                    # exited / dead / created：强制删除 + 清 DB
+                    try:
+                        await remove_container(c.container_id, force=True)
+                    except Exception as re:
+                        logger.error(
+                            f"[孤儿清洗] 阶段 A remove {c.container_id} 失败: {re}"
+                        )
+                    log_container_event(
+                        event_type="orphan_reconcile",
+                        container_id=c.id,
+                        student_id=c.user_id,
+                        message=(
+                            f"zombie {c.status.value} 记录回收"
+                            f"（docker 状态={state.get('status')}）"
+                        ),
+                        level="WARNING",
+                    )
+                    await db.delete(c)
+                    stats["zombie_recovered"] += 1
+            except Exception as e:
+                logger.error(f"[孤儿清洗] 阶段 A 处理 container id={c.id} 失败: {e}")
+
+        try:
+            await db.commit()
+        except Exception as e:
+            logger.error(f"[孤儿清洗] 阶段 A commit 失败: {e}")
+            await db.rollback()
+
+        # ── 阶段 B：DB → Docker 校准 ────────────────────────
+        try:
+            active = await crud_container.find_active_db_containers(db)
+        except Exception as e:
+            logger.error(f"[孤儿清洗] 阶段 B 查询失败: {e}")
+            active = []
+
+        for c in active:
+            try:
+                docker_status = await inspect_container(c.container_id)
+                if docker_status is None:
+                    c.status = ContainerStatus.ERROR
+                    c.error_message = "orphan: docker container missing"
+                    c.updated_at = datetime.utcnow()
+                    log_container_event(
+                        event_type="orphan_reconcile",
+                        container_id=c.id,
+                        student_id=c.user_id,
+                        message="DB 记录孤儿化（docker 已无此容器）",
+                        level="WARNING",
+                    )
+                    stats["db_corrected"] += 1
+                elif docker_status in ("exited", "dead"):
+                    c.status = ContainerStatus.STOPPED
+                    c.updated_at = datetime.utcnow()
+                    log_container_event(
+                        event_type="orphan_reconcile",
+                        container_id=c.id,
+                        student_id=c.user_id,
+                        message=f"DB 状态校准为 STOPPED（docker={docker_status}）",
+                        level="INFO",
+                    )
+                    stats["db_corrected"] += 1
+                # running / created / paused / restarting：保持不动
+            except Exception as e:
+                logger.error(
+                    f"[孤儿清洗] 阶段 B 处理 container id={c.id} 失败: {e}"
+                )
+
+        try:
+            await db.commit()
+        except Exception as e:
+            logger.error(f"[孤儿清洗] 阶段 B commit 失败: {e}")
+            await db.rollback()
+
+        # ── 阶段 C：Docker → DB 反向清洗 ────────────────────
+        try:
+            physical = await list_edubot_simulation_containers()
+            known_ids = await crud_container.get_known_container_ids(db)
+            now = datetime.utcnow()
+            grace = timedelta(seconds=ORPHAN_GRACE_SECONDS)
+            for item in physical:
+                if item["short_id"] in known_ids:
+                    continue
+                if now - item["created_at"] < grace:
+                    continue  # 宽限期内，可能 DB 还没落库
+                try:
+                    await remove_container(item["short_id"], force=True)
+                    log_container_event(
+                        event_type="orphan_reconcile",
+                        message=(
+                            f"物理孤儿容器已清理: {item['name']} "
+                            f"({item['short_id']})"
+                        ),
+                        level="WARNING",
+                        extra={
+                            "docker_status": item["status"],
+                            "labels": item["labels"],
+                        },
+                    )
+                    stats["physical_removed"] += 1
+                except Exception as re:
+                    logger.error(
+                        f"[孤儿清洗] 阶段 C 删除 {item['short_id']} 失败: {re}"
+                    )
+        except Exception as e:
+            logger.error(f"[孤儿清洗] 阶段 C 列表获取失败: {e}")
+
+    if any(stats.values()):
+        logger.warning(f"[孤儿清洗] 完成 reconcile: {stats}")
+    return stats
+
+
+async def _orphan_container_reconcile_loop():
+    """后台循环：定期执行孤儿容器 reconcile（双向校准 + 物理清洗）"""
+    logger.info("[定时任务] 孤儿容器 reconcile 任务已启动")
+    while True:
+        await asyncio.sleep(ORPHAN_RECONCILE_INTERVAL)
+        try:
+            await _orphan_container_reconcile_once()
+        except Exception as e:
+            logger.error(f"[定时任务] 孤儿 reconcile 异常: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan：启动 → yield → 关闭"""
@@ -157,10 +352,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("[启动自愈] 孤儿任务回收失败: %s", e)
 
+    # 启动期主动执行一次孤儿容器 reconcile：
+    # 覆盖宿主机意外重启 / Docker Daemon 被 kill -9 / reload 中断删除链路等场景
+    try:
+        orphan_stats = await _orphan_container_reconcile_once()
+        if any(orphan_stats.values()):
+            logger.warning("[启动自愈] 孤儿容器 reconcile 完成: %s", orphan_stats)
+        else:
+            logger.info("[启动自愈] 未发现孤儿容器")
+    except Exception as e:
+        logger.error("[启动自愈] 孤儿容器 reconcile 失败: %s", e)
+
     # 启动后台任务
     cleanup_task = asyncio.create_task(_stale_container_cleanup_loop())
     metrics_task = asyncio.create_task(_metrics_collection_loop())
     metrics_cleanup_task = asyncio.create_task(_metrics_cleanup_loop())
+    orphan_task = asyncio.create_task(_orphan_container_reconcile_loop())
     logger.info("🚀 Edubot Twin API 启动中...")
     logger.info("📚 API 文档: http://localhost:8000/docs")
 
@@ -170,7 +377,8 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     metrics_task.cancel()
     metrics_cleanup_task.cancel()
-    for task in [cleanup_task, metrics_task, metrics_cleanup_task]:
+    orphan_task.cancel()
+    for task in [cleanup_task, metrics_task, metrics_cleanup_task, orphan_task]:
         try:
             await task
         except asyncio.CancelledError:

@@ -460,3 +460,50 @@ async def get_container_ip(container_id: str, network_name: str = EDUBOT_NETWORK
             return None
 
     return await _run_in_executor(_sync)
+
+
+# ─── 物理孤儿容器列表查询 ─────────────────────────────────────────────
+
+async def list_edubot_simulation_containers() -> list[dict[str, Any]]:
+    """
+    列出宿主机上所有带 edubot.type=simulation 标签的物理容器。
+
+    用于孤儿容器自洗循环的阶段 C（Docker → DB 反向清洗）。
+
+    Returns:
+        list，每个元素含：
+            short_id: str       — 容器 12 位 hex 短 ID
+            name: str           — 容器名
+            status: str         — docker 状态字符串 (running/exited/created/...)
+            created_at: datetime— 容器创建时间（UTC，来自 docker attrs.Created）
+            labels: dict        — 容器标签（含 edubot.student_id 等）
+    """
+    from datetime import datetime as _dt
+
+    def _sync() -> list[dict[str, Any]]:
+        client = get_docker_client()
+        containers = client.containers.list(
+            all=True,
+            filters={"label": "edubot.type=simulation"},
+        )
+        result: list[dict[str, Any]] = []
+        for c in containers:
+            created_str = c.attrs.get("Created", "") or ""
+            # docker 返回形如 "2026-04-10T08:12:34.567890123Z"，截掉纳秒和 Z
+            try:
+                trimmed = created_str.split(".")[0].rstrip("Z")
+                created_at = _dt.fromisoformat(trimmed) if trimmed else _dt.utcnow()
+            except ValueError:
+                created_at = _dt.utcnow()
+            result.append(
+                {
+                    "short_id": c.short_id,
+                    "name": c.name,
+                    "status": c.status,
+                    "created_at": created_at,
+                    "labels": c.labels or {},
+                }
+            )
+        return result
+
+    return await _run_in_executor(_sync)
