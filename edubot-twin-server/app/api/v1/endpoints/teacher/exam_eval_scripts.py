@@ -6,9 +6,10 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.endpoints.common.bundle_files_router import build_bundle_files_router
 from app.core.security import get_current_teacher
 from app.crud import exam_eval_script as crud_script
 from app.db.database import get_db
@@ -20,32 +21,9 @@ from app.schemas.exam import (
     ExamEvalScriptResponse,
     ExamEvalScriptUpdateRequest,
 )
-from app.schemas.experiment import (
-    FileListItem,
-    FileListResponse,
-    FileReadResponse,
-    FileSaveRequest,
-    FileUploadResponse,
-)
-from app.services.bundle_file_service import (
-    BundleFileError,
-    BundleFileService,
-    FileSizeExceededError,
-    FileNotFoundError as BundleFileNotFoundError,
-    PathTraversalError,
-    FileConflictError,
-)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-def _get_service(script) -> BundleFileService:
-    return BundleFileService(storage_root=script.storage_root)
-
-
-def _handle_error(e: BundleFileError):
-    raise HTTPException(status_code=e.status_code, detail=e.code)
 
 
 def _to_response(s) -> ExamEvalScriptResponse:
@@ -154,92 +132,24 @@ async def delete_script(
     return ApiResponse(data=None, message="已删除")
 
 
-# ─── Files 子协议 ─────────────────────────────────────────────────────────────
+# ─── Files 子协议（复用 common/bundle_files_router 工厂）─────────────────────
 
-@router.get("/{script_id}/files", response_model=ApiResponse[FileListResponse], summary="列目录")
-async def list_files(
-    script_id: int,
-    path: Optional[str] = Query(default=None),
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
+async def _resolve_eval_script(db: AsyncSession, bundle_id: int, teacher_id: int):
+    return await _get_or_404(db, bundle_id, teacher_id)
+
+
+async def _update_eval_script_stats_adapter(
+    db: AsyncSession, bundle, file_count: int, total_size_bytes: int, file_manifest: list[dict]
 ):
-    s = await _get_or_404(db, script_id, teacher_id)
-    svc = _get_service(s)
-    try:
-        items = svc.list_files(path or "")
-    except PathTraversalError as e:
-        _handle_error(e)
-    return ApiResponse(data=FileListResponse(items=[FileListItem(**item) for item in items]))
+    # eval script 无需 manifest，但 update_eval_script_stats 内部会根据
+    # storage_root 下 entry_point 是否存在自动重新计算 validate_status。
+    await crud_script.update_eval_script_stats(
+        db, script=bundle, file_count=file_count, total_size_bytes=total_size_bytes,
+    )
 
 
-@router.post("/{script_id}/files/upload", response_model=ApiResponse[FileUploadResponse], summary="上传文件")
-async def upload_file(
-    script_id: int,
-    file: UploadFile = File(...),
-    path: Optional[str] = Form(default=None),
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
-):
-    s = await _get_or_404(db, script_id, teacher_id)
-    svc = _get_service(s)
-    file_data = await file.read()
-    try:
-        svc.save_uploaded_file(file.filename or "upload", file_data, target_dir=path)
-    except (FileSizeExceededError, PathTraversalError) as e:
-        _handle_error(e)
-    fc, ts, _ = svc.scan_directory()
-    await crud_script.update_eval_script_stats(db, script=s, file_count=fc, total_size_bytes=ts)
-    return ApiResponse(data=FileUploadResponse(file_count=fc, total_size_bytes=ts))
-
-
-@router.get("/{script_id}/files/read", response_model=ApiResponse[FileReadResponse], summary="读文件")
-async def read_file(
-    script_id: int,
-    path: str = Query(...),
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
-):
-    s = await _get_or_404(db, script_id, teacher_id)
-    svc = _get_service(s)
-    try:
-        content, encoding = svc.read_file(path)
-        abs_path = svc._safe_path(path)
-        mtime = abs_path.stat().st_mtime if abs_path.exists() else None
-    except (BundleFileNotFoundError, PathTraversalError) as e:
-        _handle_error(e)
-    return ApiResponse(data=FileReadResponse(content=content, encoding=encoding, modified_at=mtime))
-
-
-@router.post("/{script_id}/files/save", response_model=ApiResponse[dict], summary="保存文件")
-async def save_file(
-    script_id: int,
-    data: FileSaveRequest,
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
-):
-    s = await _get_or_404(db, script_id, teacher_id)
-    svc = _get_service(s)
-    try:
-        new_mtime = svc.save_file(data.path, data.content, data.modified_at)
-    except (FileConflictError, PathTraversalError) as e:
-        _handle_error(e)
-    fc, ts, _ = svc.scan_directory()
-    await crud_script.update_eval_script_stats(db, script=s, file_count=fc, total_size_bytes=ts)
-    return ApiResponse(data={"modified_at": new_mtime})
-
-
-@router.delete("/{script_id}/files/delete", status_code=status.HTTP_204_NO_CONTENT, summary="删除文件")
-async def delete_file(
-    script_id: int,
-    path: str = Query(...),
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
-):
-    s = await _get_or_404(db, script_id, teacher_id)
-    svc = _get_service(s)
-    try:
-        svc.delete_file(path)
-    except BundleFileError as e:
-        _handle_error(e)
-    fc, ts, _ = svc.scan_directory()
-    await crud_script.update_eval_script_stats(db, script=s, file_count=fc, total_size_bytes=ts)
+_files_router = build_bundle_files_router(
+    resolver=_resolve_eval_script,
+    stats_updater=_update_eval_script_stats_adapter,
+)
+router.include_router(_files_router, prefix="/{bundle_id}")

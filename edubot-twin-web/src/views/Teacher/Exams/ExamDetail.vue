@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ContentWrap } from '@/components/ContentWrap'
+import { Icon } from '@/components/Icon'
+import MonacoEditor from '@/components/Monaco/MonacoEditor.vue'
+import { useWorkspaceSettings } from '@/composables/useWorkspaceSettings'
 import {
   getExamDetailApi,
   updateExamApi,
@@ -36,6 +39,7 @@ import { useRoute, useRouter } from 'vue-router'
 const route = useRoute()
 const router = useRouter()
 const examId = computed(() => Number(route.params.id))
+const { settings: monacoSettings } = useWorkspaceSettings()
 
 const exam = ref<ExamResponse | null>(null)
 const loading = ref(false)
@@ -326,7 +330,13 @@ onMounted(() => {
             <ElFormItem label="编码">
               <ElInput :model-value="exam?.code" disabled />
             </ElFormItem>
-            <ElFormItem label="模式">
+            <ElFormItem>
+              <template #label>
+                <span class="flex items-center gap-4px">
+                  模式
+                  <Icon v-if="frozenDisabled" icon="vi-ep:lock" color="#909399" :size="12" />
+                </span>
+              </template>
               <ElSelect v-model="editForm.exam_mode" :disabled="frozenDisabled" style="width: 100%">
                 <ElOption
                   v-for="(label, key) in modeLabelMap"
@@ -350,7 +360,13 @@ onMounted(() => {
             </div>
           </template>
           <ElForm label-width="90px" size="default">
-            <ElFormItem label="测评脚本">
+            <ElFormItem>
+              <template #label>
+                <span class="flex items-center gap-4px">
+                  测评脚本
+                  <Icon v-if="frozenDisabled" icon="vi-ep:lock" color="#909399" :size="12" />
+                </span>
+              </template>
               <ElSelect
                 v-model="editForm.eval_script_id"
                 :disabled="frozenDisabled"
@@ -366,7 +382,13 @@ onMounted(() => {
                 />
               </ElSelect>
             </ElFormItem>
-            <ElFormItem label="考试环境">
+            <ElFormItem>
+              <template #label>
+                <span class="flex items-center gap-4px">
+                  考试环境
+                  <Icon v-if="frozenDisabled" icon="vi-ep:lock" color="#909399" :size="12" />
+                </span>
+              </template>
               <ElSelect
                 v-model="editForm.env_snapshot_id"
                 :disabled="frozenDisabled"
@@ -382,7 +404,13 @@ onMounted(() => {
                 />
               </ElSelect>
             </ElFormItem>
-            <ElFormItem label="考试文件">
+            <ElFormItem>
+              <template #label>
+                <span class="flex items-center gap-4px">
+                  考试文件
+                  <Icon v-if="frozenDisabled" icon="vi-ep:lock" color="#909399" :size="12" />
+                </span>
+              </template>
               <ElSelect
                 v-model="editForm.file_snapshot_id"
                 :disabled="frozenDisabled"
@@ -414,45 +442,78 @@ onMounted(() => {
         </ElCard>
       </ElCol>
 
-      <!-- 右列：策略 JSON 编辑 -->
+      <!-- 右列：策略 JSON 编辑（Monaco） -->
       <ElCol :span="14">
         <ElCard shadow="never" class="mb-16px">
           <template #header>
             <span class="font-bold">运行策略 runtime_policy</span>
           </template>
-          <ElInput v-model="editForm.runtime_policy" type="textarea" :rows="8" class="font-mono" />
+          <div class="monaco-card">
+            <MonacoEditor
+              v-model="editForm.runtime_policy"
+              language="json"
+              :settings="monacoSettings"
+            />
+          </div>
         </ElCard>
 
         <ElCard shadow="never" class="mb-16px">
           <template #header>
             <span class="font-bold">面板策略 panel_policy</span>
           </template>
-          <ElInput v-model="editForm.panel_policy" type="textarea" :rows="8" class="font-mono" />
+          <div class="monaco-card">
+            <MonacoEditor
+              v-model="editForm.panel_policy"
+              language="json"
+              :settings="monacoSettings"
+            />
+          </div>
         </ElCard>
 
         <ElCard shadow="never" class="mb-16px">
           <template #header>
             <span class="font-bold">评分策略 scoring_policy</span>
           </template>
-          <ElInput v-model="editForm.scoring_policy" type="textarea" :rows="8" class="font-mono" />
+          <div class="monaco-card">
+            <MonacoEditor
+              v-model="editForm.scoring_policy"
+              language="json"
+              :settings="monacoSettings"
+            />
+          </div>
         </ElCard>
 
         <ElCard shadow="never">
           <template #header>
             <div class="flex items-center gap-8px">
               <span class="font-bold">Sidecar 策略 sidecar_policy</span>
-              <ElTag v-if="frozenDisabled" size="small" type="info"> 🔒 已冻结 </ElTag>
+              <Icon v-if="frozenDisabled" icon="vi-ep:lock" color="#909399" :size="14" />
+              <ElTag v-if="frozenDisabled" size="small" type="info"> 已冻结 </ElTag>
             </div>
           </template>
-          <ElInput
-            v-model="editForm.sidecar_policy"
-            type="textarea"
-            :rows="5"
-            :disabled="frozenDisabled"
-            class="font-mono"
-          />
+          <div class="monaco-card monaco-card--short">
+            <MonacoEditor
+              v-model="editForm.sidecar_policy"
+              language="json"
+              :readonly="frozenDisabled"
+              :settings="monacoSettings"
+            />
+          </div>
         </ElCard>
       </ElCol>
     </ElRow>
   </ContentWrap>
 </template>
+
+<style lang="less" scoped>
+.monaco-card {
+  height: 240px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  overflow: hidden;
+
+  &--short {
+    height: 160px;
+  }
+}
+</style>

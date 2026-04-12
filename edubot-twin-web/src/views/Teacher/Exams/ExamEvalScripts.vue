@@ -1,28 +1,26 @@
-<script setup lang="tsx">
+<script setup lang="ts">
 /**
  * 测评脚本包管理页 — /teacher/exams/eval-scripts
  *
- * 功能：脚本包列表 + 新建 + 删除 + 文件管理 + 入口校验状态
+ * 基于 BundleWorkspaceTemplate 的三栏布局：
+ *   左侧：脚本包列表 ↔ 文件树 + 基本设置（entry_point、description）
+ *   右侧：Monaco 编辑器（EditorWorkbench）
+ *
+ * 注意：保存/上传脚本文件后 validate_status 会自动更新（后端根据 entry_point
+ * 是否存在自动刷新），因此 refreshListOnSave = true。
  */
-import { ContentWrap } from '@/components/ContentWrap'
-import { Dialog } from '@/components/Dialog'
-import { Table } from '@/components/Table'
-import { useTable } from '@/hooks/web/useTable'
-import { CrudSchema, useCrudSchemas } from '@/hooks/web/useCrudSchemas'
+import { nextTick, onBeforeUnmount, ref } from 'vue'
+import BundleWorkspaceTemplate from './components/BundleWorkspaceTemplate.vue'
 import {
   getExamEvalScriptListApi,
   createExamEvalScriptApi,
   deleteExamEvalScriptApi,
-  listExamEvalScriptFilesApi,
-  uploadExamEvalScriptFileApi,
-  deleteExamEvalScriptFileApi
+  patchExamEvalScriptApi
 } from '@/api/exam/evalScripts'
 import type { ExamEvalScriptListItem, EvalScriptValidateStatus } from '@/api/exam/types'
-import type { BundleFileItem } from '@/api/experiment/types'
 import {
   ElButton,
   ElDialog,
-  ElEmpty,
   ElForm,
   ElFormItem,
   ElInput,
@@ -30,13 +28,6 @@ import {
   ElMessageBox,
   ElTag
 } from 'element-plus'
-import { reactive, ref, unref } from 'vue'
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
-}
 
 const validateStatusMap: Record<
   EvalScriptValidateStatus,
@@ -47,109 +38,150 @@ const validateStatusMap: Record<
   invalid: { label: '✗ 无效', type: 'danger' }
 }
 
-// ─── 脚本包列表 ──────────────────────────────────────────────────────────────
+// ─── 列表加载 ────────────────────────────────────────────────────────────────
 
-const { tableRegister, tableState, tableMethods } = useTable({
-  fetchDataApi: async () => {
-    const { pageSize, currentPage } = tableState
-    const res = await getExamEvalScriptListApi({
-      page: unref(currentPage),
-      page_size: unref(pageSize)
+const scripts = ref<ExamEvalScriptListItem[]>([])
+const listLoading = ref(false)
+
+async function refreshList() {
+  listLoading.value = true
+  try {
+    const res = await getExamEvalScriptListApi({ page: 1, page_size: 200 })
+    scripts.value = res.data?.items || []
+    // 同步设置表单到当前选中项的最新数据
+    if (selectedScript.value) {
+      const updated = scripts.value.find((s) => s.id === selectedScript.value!.id)
+      if (updated) {
+        selectedScript.value = updated
+        settingsForm.value.entry_point = updated.entry_point
+        settingsForm.value.description = updated.description || ''
+      }
+    }
+  } finally {
+    listLoading.value = false
+  }
+}
+
+refreshList()
+
+// ─── API 前缀 ────────────────────────────────────────────────────────────────
+
+const buildApiPrefix = (item: ExamEvalScriptListItem) =>
+  `/api/v1/teachers/exam-eval-scripts/${item.id}/files`
+
+// ─── 设置表单（entry_point + description） ──────────────────────────────────
+
+const selectedScript = ref<ExamEvalScriptListItem | null>(null)
+const settingsForm = ref({ entry_point: 'evaluate.sh', description: '' })
+const savingSettings = ref(false)
+
+function handleSelect(item: ExamEvalScriptListItem) {
+  selectedScript.value = item
+  settingsForm.value.entry_point = item.entry_point
+  settingsForm.value.description = item.description || ''
+}
+
+async function handleSaveSettings() {
+  if (!selectedScript.value) return
+  savingSettings.value = true
+  try {
+    await patchExamEvalScriptApi(selectedScript.value.id, {
+      entry_point: settingsForm.value.entry_point.trim() || 'evaluate.sh',
+      description: settingsForm.value.description.trim() || undefined
     })
-    return {
-      list: res.data?.items || [],
-      total: res.data?.total || 0
-    }
+    ElMessage.success('基本设置已保存，已重新校验入口文件')
+    await refreshList()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    ElMessage.error('保存失败：' + (err?.response?.data?.detail || ''))
+  } finally {
+    savingSettings.value = false
   }
-})
+}
 
-const { dataList, loading, currentPage, pageSize, total } = tableState
-const { getList } = tableMethods
+// ─── 新建脚本包 ─────────────────────────────────────────────────────────────
 
-const crudSchemas = reactive<CrudSchema[]>([
-  { field: 'id', label: 'ID', table: { width: 70 } },
-  { field: 'name', label: '脚本包名' },
-  {
-    field: 'entry_point',
-    label: '入口脚本',
-    table: { width: 140 }
-  },
-  {
-    field: 'validate_status',
-    label: '校验状态',
-    table: {
-      width: 100,
-      slots: {
-        default: (data: { row: ExamEvalScriptListItem }) => {
-          const status = validateStatusMap[data.row.validate_status]
-          return (
-            <ElTag type={status?.type || 'info'} size="small">
-              {status?.label || data.row.validate_status}
-            </ElTag>
-          )
-        }
-      }
-    }
-  },
-  {
-    field: 'file_count',
-    label: '文件数',
-    table: { width: 80 }
-  },
-  {
-    field: 'total_size_bytes',
-    label: '大小',
-    table: {
-      width: 100,
-      slots: {
-        default: (data: { row: ExamEvalScriptListItem }) => formatSize(data.row.total_size_bytes)
-      }
-    }
-  },
-  {
-    field: 'created_at',
-    label: '创建时间',
-    table: {
-      width: 120,
-      slots: {
-        default: (data: { row: ExamEvalScriptListItem }) =>
-          data.row.created_at?.substring(0, 10) || '-'
-      }
-    }
-  },
-  {
-    field: 'action',
-    label: '操作',
-    table: {
-      width: 200,
-      slots: {
-        default: (data: { row: ExamEvalScriptListItem }) => (
-          <div class="flex gap-6px flex-wrap">
-            <ElButton link type="primary" onClick={() => openFileBrowser(data.row)}>
-              文件管理
-            </ElButton>
-            <ElButton link type="danger" onClick={() => handleDelete(data.row)}>
-              删除
-            </ElButton>
-          </div>
-        )
-      }
-    }
+const createDialogVisible = ref(false)
+const createForm = ref({ name: '', description: '', entry_point: 'evaluate.sh' })
+
+const openCreateDialog = () => {
+  createForm.value = { name: '', description: '', entry_point: 'evaluate.sh' }
+  createDialogVisible.value = true
+}
+
+const submitCreate = async () => {
+  if (!createForm.value.name.trim()) {
+    ElMessage.warning('请填写脚本包名称')
+    return
   }
-])
+  try {
+    await createExamEvalScriptApi({
+      name: createForm.value.name.trim(),
+      description: createForm.value.description.trim() || undefined,
+      entry_point: createForm.value.entry_point.trim() || 'evaluate.sh'
+    })
+    ElMessage.success('脚本包创建成功，请上传脚本文件')
+    createDialogVisible.value = false
+    await refreshList()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    ElMessage.error('创建失败：' + (err?.response?.data?.detail || ''))
+  }
+}
 
-const { allSchemas } = useCrudSchemas(crudSchemas)
+// ─── 右键菜单 ────────────────────────────────────────────────────────────────
 
-// ─── 删除 ─────────────────────────────────────────────────────────────────────
+interface CtxMenuState {
+  visible: boolean
+  x: number
+  y: number
+  item: ExamEvalScriptListItem | null
+}
+const ctxMenu = ref<CtxMenuState>({ visible: false, x: 0, y: 0, item: null })
 
-const handleDelete = async (row: ExamEvalScriptListItem) => {
-  await ElMessageBox.confirm(`确认删除脚本包「${row.name}」吗？`, '删除确认', {
+const showCtxMenu = (e: MouseEvent, item: ExamEvalScriptListItem) => {
+  e.preventDefault()
+  ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, item }
+}
+const hideCtxMenu = () => {
+  ctxMenu.value.visible = false
+}
+onBeforeUnmount(() => document.removeEventListener('click', hideCtxMenu))
+nextTick(() => document.addEventListener('click', hideCtxMenu))
+
+const renameDialogVisible = ref(false)
+const renameInput = ref('')
+const renameId = ref<number | null>(null)
+
+const handleRename = (item: ExamEvalScriptListItem) => {
+  hideCtxMenu()
+  renameId.value = item.id
+  renameInput.value = item.name
+  renameDialogVisible.value = true
+}
+
+const submitRename = async () => {
+  if (!renameId.value || !renameInput.value.trim()) return
+  try {
+    await patchExamEvalScriptApi(renameId.value, { name: renameInput.value.trim() })
+    ElMessage.success('重命名成功')
+    renameDialogVisible.value = false
+    await refreshList()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    ElMessage.error('重命名失败：' + (err?.response?.data?.detail || ''))
+  }
+}
+
+const handleDelete = async (item: ExamEvalScriptListItem) => {
+  hideCtxMenu()
+  await ElMessageBox.confirm(`确认删除脚本包「${item.name}」吗？`, '删除确认', {
     type: 'warning'
   })
   try {
-    await deleteExamEvalScriptApi(row.id)
+    await deleteExamEvalScriptApi(item.id)
     ElMessage.success('已删除')
-    getList()
+    await refreshList()
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
     const detail = err?.response?.data?.detail
@@ -161,146 +193,111 @@ const handleDelete = async (row: ExamEvalScriptListItem) => {
   }
 }
 
-// ─── 新建脚本包 ──────────────────────────────────────────────────────────────
-
-const createDialogVisible = ref(false)
-const createForm = reactive({
-  name: '',
-  description: '',
-  entry_point: 'evaluate.sh'
-})
-
-const openCreateDialog = () => {
-  createForm.name = ''
-  createForm.description = ''
-  createForm.entry_point = 'evaluate.sh'
-  createDialogVisible.value = true
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
-
-const submitCreate = async () => {
-  if (!createForm.name.trim()) {
-    ElMessage.warning('请填写脚本包名称')
-    return
-  }
-  try {
-    await createExamEvalScriptApi({
-      name: createForm.name.trim(),
-      description: createForm.description.trim() || undefined,
-      entry_point: createForm.entry_point.trim() || 'evaluate.sh'
-    })
-    ElMessage.success('脚本包创建成功，请上传脚本文件')
-    createDialogVisible.value = false
-    getList()
-  } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } }
-    ElMessage.error('创建失败：' + (err?.response?.data?.detail || ''))
-  }
-}
-
-// ─── 文件浏览器 ──────────────────────────────────────────────────────────────
-
-const fileBrowserVisible = ref(false)
-const fileBrowserScript = ref<ExamEvalScriptListItem | null>(null)
-const fileBrowserFiles = ref<BundleFileItem[]>([])
-const fileBrowserPath = ref('')
-const fileBrowserLoading = ref(false)
-
-const openFileBrowser = async (row: ExamEvalScriptListItem) => {
-  fileBrowserScript.value = row
-  fileBrowserPath.value = ''
-  fileBrowserVisible.value = true
-  await loadFiles('')
-}
-
-const loadFiles = async (path: string) => {
-  if (!fileBrowserScript.value) return
-  fileBrowserLoading.value = true
-  try {
-    const res = await listExamEvalScriptFilesApi(fileBrowserScript.value.id, path || undefined)
-    fileBrowserFiles.value = res.data?.items || []
-    fileBrowserPath.value = path
-  } catch {
-    ElMessage.error('加载目录失败')
-  } finally {
-    fileBrowserLoading.value = false
-  }
-}
-
-const handleFileClick = (file: BundleFileItem) => {
-  if (file.type === 'dir') {
-    const newPath = fileBrowserPath.value ? `${fileBrowserPath.value}/${file.name}` : file.name
-    loadFiles(newPath)
-  }
-}
-
-const handleGoUp = () => {
-  const parts = fileBrowserPath.value.split('/')
-  parts.pop()
-  loadFiles(parts.join('/'))
-}
-
-const handleUploadFile = async (e: Event) => {
-  const target = e.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (!file || !fileBrowserScript.value) return
-  const formData = new FormData()
-  formData.append('file', file)
-  if (fileBrowserPath.value) formData.append('path', fileBrowserPath.value)
-  try {
-    await uploadExamEvalScriptFileApi(fileBrowserScript.value.id, formData)
-    ElMessage.success('上传成功')
-    loadFiles(fileBrowserPath.value)
-    getList() // 刷新列表以获取新的 validate_status
-  } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } }
-    ElMessage.error('上传失败：' + (err?.response?.data?.detail || ''))
-  }
-  target.value = ''
-}
-
-const handleDeleteFile = async (file: BundleFileItem) => {
-  if (!fileBrowserScript.value) return
-  const fullPath = fileBrowserPath.value ? `${fileBrowserPath.value}/${file.name}` : file.name
-  await ElMessageBox.confirm(`确认删除 ${file.name}？`, '删除', { type: 'warning' })
-  try {
-    await deleteExamEvalScriptFileApi(fileBrowserScript.value.id, fullPath)
-    ElMessage.success('已删除')
-    loadFiles(fileBrowserPath.value)
-    getList()
-  } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } }
-    ElMessage.error('删除失败：' + (err?.response?.data?.detail || ''))
-  }
-}
-
-const uploadInputRef = ref<HTMLInputElement | null>(null)
 </script>
 
 <template>
-  <ContentWrap>
-    <div class="flex items-center justify-between mb-16px">
-      <div class="text-18px font-600">测评脚本管理</div>
-      <ElButton type="primary" @click="openCreateDialog">新建脚本包</ElButton>
-    </div>
+  <BundleWorkspaceTemplate
+    title="测评脚本管理"
+    :items="scripts"
+    :list-loading="listLoading"
+    :build-api-prefix="buildApiPrefix"
+    :refresh-list-on-save="true"
+    @refresh-list="refreshList"
+    @select="handleSelect"
+    @context-menu="showCtxMenu"
+  >
+    <template #header-extra="{ viewMode }">
+      <ElButton v-if="viewMode === 'list'" type="primary" @click="openCreateDialog">
+        新建脚本包
+      </ElButton>
+    </template>
 
-    <div class="mb-12px text-13px color-#909399">
-      💡 上传测评脚本后，系统会自动校验入口文件（entry_point）是否存在。
-      脚本包被考试引用前须确保<ElTag type="success" size="small">✓ 有效</ElTag>
-    </div>
+    <template #list-item="{ item }">
+      <span class="list-item__icon">🧪</span>
+      <div class="list-item__info">
+        <div class="list-item__name-line">
+          <span class="list-item__name">{{ item.name }}</span>
+          <ElTag
+            :type="validateStatusMap[item.validate_status]?.type || 'info'"
+            size="small"
+          >
+            {{ validateStatusMap[item.validate_status]?.label || item.validate_status }}
+          </ElTag>
+        </div>
+        <div class="list-item__meta">
+          入口：{{ item.entry_point }} · {{ item.file_count }} 文件 ·
+          {{ formatSize(item.total_size_bytes) }}
+        </div>
+      </div>
+    </template>
 
-    <Table
-      v-model:current-page="currentPage"
-      v-model:page-size="pageSize"
-      :columns="allSchemas.tableColumns"
-      :data="dataList"
-      :loading="loading"
-      :pagination="{ total: unref(total) }"
-      @register="tableRegister"
-    />
-  </ContentWrap>
+    <template #list-empty>
+      <div class="color-#606266 text-14px">
+        暂无脚本包。<br />点击「新建脚本包」创建，<br />
+        然后<strong>双击</strong>进入文件树编辑。
+      </div>
+    </template>
+
+    <template #settings-panel="{ selectedItem }">
+      <ElForm :model="settingsForm" label-position="top" size="small">
+        <ElFormItem label="入口文件 (entry_point)">
+          <ElInput v-model="settingsForm.entry_point" placeholder="evaluate.sh" />
+        </ElFormItem>
+        <ElFormItem label="描述">
+          <ElInput
+            v-model="settingsForm.description"
+            type="textarea"
+            :rows="2"
+            placeholder="（可选）"
+          />
+        </ElFormItem>
+        <ElFormItem label="校验状态">
+          <ElTag
+            v-if="selectedItem"
+            :type="validateStatusMap[selectedItem.validate_status]?.type || 'info'"
+            size="small"
+          >
+            {{
+              validateStatusMap[selectedItem.validate_status]?.label || selectedItem.validate_status
+            }}
+          </ElTag>
+          <div class="mt-4px text-11px color-#909399">
+            保存入口或上传文件后系统将自动重新校验。
+          </div>
+        </ElFormItem>
+        <ElFormItem>
+          <ElButton
+            type="primary"
+            size="small"
+            :loading="savingSettings"
+            @click="handleSaveSettings"
+          >
+            保存设置
+          </ElButton>
+        </ElFormItem>
+      </ElForm>
+    </template>
+  </BundleWorkspaceTemplate>
+
+  <!-- 右键菜单 -->
+  <div
+    v-if="ctxMenu.visible"
+    class="ctx-menu"
+    :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+  >
+    <div class="ctx-menu__item" @click="handleRename(ctxMenu.item!)">重命名</div>
+    <div class="ctx-menu__item ctx-menu__item--danger" @click="handleDelete(ctxMenu.item!)">
+      删除
+    </div>
+  </div>
 
   <!-- 新建脚本包 -->
-  <Dialog v-model="createDialogVisible" title="新建测评脚本包" width="480px">
+  <ElDialog v-model="createDialogVisible" title="新建测评脚本包" width="480px">
     <ElForm label-width="90px">
       <ElFormItem label="名称" required>
         <ElInput v-model="createForm.name" placeholder="例如：导航评测脚本" />
@@ -311,73 +308,79 @@ const uploadInputRef = ref<HTMLInputElement | null>(null)
       <ElFormItem label="描述">
         <ElInput v-model="createForm.description" type="textarea" :rows="2" />
       </ElFormItem>
-      <ElFormItem>
-        <ElButton type="primary" @click="submitCreate">创建</ElButton>
-        <ElButton @click="createDialogVisible = false">取消</ElButton>
+    </ElForm>
+    <template #footer>
+      <ElButton @click="createDialogVisible = false">取消</ElButton>
+      <ElButton type="primary" @click="submitCreate">创建</ElButton>
+    </template>
+  </ElDialog>
+
+  <!-- 重命名 -->
+  <ElDialog v-model="renameDialogVisible" title="重命名脚本包" width="420px">
+    <ElForm label-width="90px">
+      <ElFormItem label="新名称" required>
+        <ElInput v-model="renameInput" placeholder="输入新名称" @keyup.enter="submitRename" />
       </ElFormItem>
     </ElForm>
-  </Dialog>
-
-  <!-- 文件浏览器 -->
-  <ElDialog
-    v-model="fileBrowserVisible"
-    :title="`文件管理 - ${fileBrowserScript?.name || ''}`"
-    width="700px"
-    top="5vh"
-  >
-    <div class="flex items-center gap-8px mb-12px">
-      <ElButton size="small" :disabled="!fileBrowserPath" @click="handleGoUp"> ↑ 上级 </ElButton>
-      <ElTag type="info">{{ fileBrowserPath || '/' }}</ElTag>
-      <div class="flex-1"></div>
-      <ElButton size="small" type="primary" @click="uploadInputRef?.click()"> 上传文件 </ElButton>
-      <input ref="uploadInputRef" type="file" style="display: none" @change="handleUploadFile" />
-    </div>
-
-    <div v-loading="fileBrowserLoading" style="min-height: 200px">
-      <ElEmpty v-if="fileBrowserFiles.length === 0" description="空目录，请上传脚本文件" />
-      <div v-else>
-        <div
-          v-for="f in fileBrowserFiles"
-          :key="f.name"
-          class="file-item flex items-center justify-between"
-        >
-          <div class="flex items-center gap-8px cursor-pointer" @click="handleFileClick(f)">
-            <span>{{ f.type === 'dir' ? '📁' : '📄' }}</span>
-            <span>{{ f.name }}</span>
-            <ElTag
-              v-if="f.name === fileBrowserScript?.entry_point && f.type === 'file'"
-              type="success"
-              size="small"
-            >
-              入口
-            </ElTag>
-            <span v-if="f.size !== undefined" class="text-12px color-#999">
-              ({{ formatSize(f.size) }})
-            </span>
-          </div>
-          <ElButton
-            v-if="f.type === 'file'"
-            link
-            type="danger"
-            size="small"
-            @click.stop="handleDeleteFile(f)"
-          >
-            删除
-          </ElButton>
-        </div>
-      </div>
-    </div>
+    <template #footer>
+      <ElButton @click="renameDialogVisible = false">取消</ElButton>
+      <ElButton type="primary" @click="submitRename">确认</ElButton>
+    </template>
   </ElDialog>
 </template>
 
-<style scoped>
-.file-item {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  transition: background 0.2s;
+<style lang="less" scoped>
+.list-item__icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.list-item__info {
+  flex: 1;
+  min-width: 0;
+}
+.list-item__name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.list-item__name {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-item__meta {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.file-item:hover {
-  background: var(--el-fill-color-light);
+.ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--el-bg-color-overlay);
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 120px;
+  overflow: hidden;
+
+  &__item {
+    padding: 9px 18px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &:hover {
+      background: var(--el-fill-color-light);
+    }
+    &--danger {
+      color: var(--el-color-danger);
+    }
+  }
 }
 </style>

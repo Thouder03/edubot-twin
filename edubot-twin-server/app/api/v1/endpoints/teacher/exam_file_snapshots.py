@@ -5,12 +5,12 @@
 结构与 exam_env_snapshots.py 完全对称。
 """
 import logging
-from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.endpoints.common.bundle_files_router import build_bundle_files_router
 from app.core.security import get_current_teacher
 from app.core.snapshot_copier import SnapshotCopyError, copy_snapshot
 from app.crud import exam_file_snapshot as crud_snapshot
@@ -25,32 +25,9 @@ from app.schemas.exam import (
     ExamFileSnapshotResponse,
     ExamFileSnapshotUpdateRequest,
 )
-from app.schemas.experiment import (
-    FileListItem,
-    FileListResponse,
-    FileReadResponse,
-    FileSaveRequest,
-    FileUploadResponse,
-)
-from app.services.bundle_file_service import (
-    BundleFileError,
-    BundleFileService,
-    FileSizeExceededError,
-    FileNotFoundError as BundleFileNotFoundError,
-    PathTraversalError,
-    FileConflictError,
-)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-def _get_service(snapshot) -> BundleFileService:
-    return BundleFileService(storage_root=snapshot.storage_root)
-
-
-def _handle_error(e: BundleFileError):
-    raise HTTPException(status_code=e.status_code, detail=e.code)
 
 
 def _to_response(s) -> ExamFileSnapshotResponse:
@@ -189,94 +166,26 @@ async def delete_snapshot(
     return ApiResponse(data=None, message="已删除")
 
 
-# ─── Files 子协议 ─────────────────────────────────────────────────────────────
+# ─── Files 子协议（复用 common/bundle_files_router 工厂）─────────────────────
 
-@router.get("/{snapshot_id}/files", response_model=ApiResponse[FileListResponse], summary="列目录")
-async def list_files(
-    snapshot_id: int,
-    path: Optional[str] = Query(default=None),
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
+async def _resolve_file_snapshot(db: AsyncSession, bundle_id: int, teacher_id: int):
+    return await _get_or_404(db, bundle_id, teacher_id)
+
+
+async def _update_file_snapshot_stats_adapter(
+    db: AsyncSession, bundle, file_count: int, total_size_bytes: int, file_manifest: list[dict]
 ):
-    s = await _get_or_404(db, snapshot_id, teacher_id)
-    svc = _get_service(s)
-    try:
-        items = svc.list_files(path or "")
-    except PathTraversalError as e:
-        _handle_error(e)
-    return ApiResponse(data=FileListResponse(items=[FileListItem(**item) for item in items]))
-
-
-@router.post("/{snapshot_id}/files/upload", response_model=ApiResponse[FileUploadResponse], summary="上传文件")
-async def upload_file(
-    snapshot_id: int,
-    file: UploadFile = File(...),
-    path: Optional[str] = Form(default=None),
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
-):
-    s = await _get_or_404(db, snapshot_id, teacher_id)
-    svc = _get_service(s)
-    file_data = await file.read()
-    try:
-        svc.save_uploaded_file(file.filename or "upload", file_data, target_dir=path)
-    except (FileSizeExceededError, PathTraversalError) as e:
-        _handle_error(e)
-    fc, ts, manifest = svc.scan_directory()
     await crud_snapshot.update_file_snapshot_stats(
-        db, snapshot=s, file_count=fc, total_size_bytes=ts, file_manifest=manifest,
+        db,
+        snapshot=bundle,
+        file_count=file_count,
+        total_size_bytes=total_size_bytes,
+        file_manifest=file_manifest,
     )
-    return ApiResponse(data=FileUploadResponse(file_count=fc, total_size_bytes=ts))
 
 
-@router.get("/{snapshot_id}/files/read", response_model=ApiResponse[FileReadResponse], summary="读文件")
-async def read_file(
-    snapshot_id: int,
-    path: str = Query(...),
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
-):
-    s = await _get_or_404(db, snapshot_id, teacher_id)
-    svc = _get_service(s)
-    try:
-        content, encoding = svc.read_file(path)
-        abs_path = svc._safe_path(path)
-        mtime = abs_path.stat().st_mtime if abs_path.exists() else None
-    except (BundleFileNotFoundError, PathTraversalError) as e:
-        _handle_error(e)
-    return ApiResponse(data=FileReadResponse(content=content, encoding=encoding, modified_at=mtime))
-
-
-@router.post("/{snapshot_id}/files/save", response_model=ApiResponse[dict], summary="保存文件")
-async def save_file(
-    snapshot_id: int,
-    data: FileSaveRequest,
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
-):
-    s = await _get_or_404(db, snapshot_id, teacher_id)
-    svc = _get_service(s)
-    try:
-        new_mtime = svc.save_file(data.path, data.content, data.modified_at)
-    except (FileConflictError, PathTraversalError) as e:
-        _handle_error(e)
-    return ApiResponse(data={"modified_at": new_mtime})
-
-
-@router.delete("/{snapshot_id}/files/delete", status_code=status.HTTP_204_NO_CONTENT, summary="删除文件")
-async def delete_file(
-    snapshot_id: int,
-    path: str = Query(...),
-    db: AsyncSession = Depends(get_db),
-    teacher_id: int = Depends(get_current_teacher),
-):
-    s = await _get_or_404(db, snapshot_id, teacher_id)
-    svc = _get_service(s)
-    try:
-        svc.delete_file(path)
-    except BundleFileError as e:
-        _handle_error(e)
-    fc, ts, manifest = svc.scan_directory()
-    await crud_snapshot.update_file_snapshot_stats(
-        db, snapshot=s, file_count=fc, total_size_bytes=ts, file_manifest=manifest,
-    )
+_files_router = build_bundle_files_router(
+    resolver=_resolve_file_snapshot,
+    stats_updater=_update_file_snapshot_stats_adapter,
+)
+router.include_router(_files_router, prefix="/{bundle_id}")
