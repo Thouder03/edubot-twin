@@ -10,8 +10,8 @@
 ## 0. 文档元信息
 
 - **文档标题**：SDD-第11期：考试域数据基座与教师端资源管理
-- **文档版本**：v1.0
-- **创建日期**：2026-04-10
+- **文档版本**：v1.1
+- **创建日期**：2026-04-12
 - **负责人**：Thouder03
 - **前置依赖**：第10期（实验环境版本化与容器重建）、第7.5期（用户域模型重构）
 - **后续期次**：
@@ -249,7 +249,13 @@ stateDiagram-v2
 
 **发布后仍可修改的字段**：
 - `name`、`description`、`teacher_comment_template`
-- `runtime_policy_json`、`panel_policy_json`、`scoring_policy_json`（这些是对"如何运行和评分"的动态调整，不影响任务快照）
+- `runtime_policy_json`、`panel_policy_json`、`scoring_policy_json`
+
+**补充约束（供第12-13期执行链路使用）**：
+- 平台允许教师在考试已发布后继续调整 `runtime_policy_json`、`panel_policy_json`、`scoring_policy_json`，以支持教学现场按需微调。
+- 但**每次学生创建 `exam_attempt` 时，必须把当次生效的 `exam_mode`、`runtime_policy_json`、`panel_policy_json`、`scoring_policy_json` 全量快照到 attempt 记录**。
+- 第12期的考试执行、第13期的教师复核、人工评分、申诉解释，均以 attempt 上的策略快照为准，而不是回读 `exams` 当前值。
+- 因此，发布后修改策略只影响**后续新创建的 attempt**，不允许回溯改变历史 attempt 的运行条件与评分依据。
 
 ---
 
@@ -281,6 +287,8 @@ stateDiagram-v2
 
 **`ExamUpdateRequest` 字段**（全部可选，按字段级更新）：
 `name`、`description`、`env_snapshot_id`、`file_snapshot_id`、`eval_script_id`、`runtime_policy`、`panel_policy`、`scoring_policy`、`sidecar_policy`、`teacher_comment_template`。
+
+> 补充约束：若考试处于 `published` 状态，允许更新 `runtime_policy`、`panel_policy`、`scoring_policy`；但这些变更只对后续新创建的 attempt 生效。历史 attempt 的解释与复核以其创建时固化的策略快照为准。
 
 ### 5.2 考试环境快照 API
 
@@ -488,7 +496,7 @@ stateDiagram-v2
 | `process_run` | 过程型操作评测 | SLAM 建图、遥控、调参 |
 | `multi_stage_run` | 多阶段编排评测 | 先巡线再返航、综合测试 |
 
-#### `ExamStatus`
+#### `ExamStatus`（现先写成自由切换以方便测试）
 
 | 值 | 含义 | UI 策略 |
 |----|------|--------|
@@ -866,3 +874,4 @@ export interface ExamListItem {
 | 版本 | 日期 | 变更 | 负责人 |
 |------|------|------|--------|
 | v1.0 | 2026-04-10 | 初版（基于 v1.1 Sidecar 架构拆分） | Thouder03 |
+| v1.1 | 2026-04-12 | CEO审查 | Thouder03 |

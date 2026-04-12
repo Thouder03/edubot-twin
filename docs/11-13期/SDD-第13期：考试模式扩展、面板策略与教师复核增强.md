@@ -10,8 +10,8 @@
 ## 0. 文档元信息
 
 - **文档标题**：SDD-第13期：考试模式扩展、面板策略与教师复核增强
-- **文档版本**：v1.0
-- **创建日期**：2026-04-10
+- **文档版本**：v1.1
+- **创建日期**：2026-04-12
 - **负责人**：Thouder03
 - **前置依赖**：
   - 第11期：考试定义、快照、策略 JSON 字段
@@ -311,6 +311,7 @@ stateDiagram-v2
 1. 在 Sidecar 的 artifacts 目录写入 `.submit` 标记文件
 2. 更新 attempt 状态为 `scoring`（触发 Sidecar 自己读取 marker 并汇总）
 3. 后端继续监控 Sidecar 直到 exit
+4. **该端点必须是幂等的**：若第一次提交已成功写入 marker 或 attempt 已进入 `scoring/completed/reviewed`，后续重复调用返回当前 attempt 状态与相同结果摘要，不因双击、断网重试、刷新重放而报错
 
 ### 5.2 教师端新增
 
@@ -385,7 +386,12 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 | 字段 | 第12期语义 | 第13期扩展 |
 |------|-----------|-----------|
 | `status` | `pending/running/scoring/completed/aborted/error` | 新增 `waiting_submit`、`reviewed` |
-| `stage_statuses_json` | 默认 `[]`（result_run 不使用） | multi_stage_run 下由后端阶段轮询器更新 |
+| `attempt_exam_mode` | 第12期新增 | 第13期继续作为复核与前端展示的唯一模式快照来源 |
+| `attempt_runtime_policy_json` | 第12期新增 | process_run 超时、倒计时、交互边界均读取此快照 |
+| `attempt_panel_policy_json` | 第12期新增 | 学生端面板过滤与锁定逻辑读取此快照，不回读 `exams` |
+| `attempt_scoring_policy_json` | 第12期新增 | 人工评分、override、final_score 核算一律读取此快照 |
+| `stage_statuses_json` | 默认 `[]`（result_run 不使用） | multi_stage_run 下由后端阶段轮询器更新，并固化为数据库复核主视图 |
+| `artifact_index_json` | 第12期预留 | 本期作为数据库侧 artifacts 主索引，教师端先读该索引，再按需读取文件系统附件 |
 | `manual_score` | 预留 null | 本期写入 |
 | `final_score` | 预留 null | 本期核算写入 |
 | `review_status` | `pending` | 提交人工分后设为 `reviewed` |
@@ -454,6 +460,8 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 | `final_score_calculated` | 最终成绩核算完成 | backend | `{objective, manual, final}` |
 
 ### 6.5 `artifact_index_json` 结构（第12期预留，本期落实）
+
+> **主真相源约束**：教师复核默认以数据库中的 `objective_score`、`manual_score`、`final_score`、`stage_statuses_json`、`exam_evidence_events`、`artifact_index_json` 为准；文件系统 `artifacts/` 仅保存原始附件，不承担复核主状态来源。
 
 ```jsonc
 {
@@ -679,7 +687,40 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 | artifacts 预览失败 | 显示错误 + 下载按钮 | — | — |
 | 最终成绩核算异常 | 保持 final_score=null + 记录 error | 教师可手动重试 | — |
 
-### 11.3 可观测性
+### 11.3 Runbook（正式运维处理手册）
+
+#### 11.3.1 Sidecar 启动失败
+1. 按 `attempt_id` 查询数据库中的 `error_code=SIDECAR_START_FAILED` 与 `attempt_exam_mode` 快照。
+2. 检查单实例后端进程日志中的 `sidecar_policy.image`、Docker API 错误原文、主容器 `sim_container_docker_id` 是否存在。
+3. 确认宿主机已预拉取指定镜像、`/data/exam_submissions/{attempt_id}` 与 `/data/exam_artifacts/{attempt_id}` 权限正确。
+4. 若镜像/宿主机问题已修复，允许教师指导学生重新创建新 attempt；原 attempt 保持失败记录，不覆写。
+
+#### 11.3.2 阶段轮询卡死
+1. 检查当前部署是否仍满足**单后端实例**前提，确认没有第二个扫描器/轮询器实例并发运行。
+2. 对照 `stage_statuses_json` 的最后更新时间、`exam_evidence_events` 最后一条 `stage_*` 事件时间与 Sidecar 容器存活状态。
+3. 若 Sidecar 仍在运行但阶段未刷新，重启该 attempt 对应的轮询协程；禁止直接手工改写数据库阶段状态。
+4. 若 Sidecar 已退出，则立即走 finalize 流程，把数据库状态收敛到 `completed/error/aborted` 之一。
+
+#### 11.3.3 `result.json` 非法
+1. 固定保留数据库里的失败摘要、`error_code`、`error_message` 与 `invalid_result_json` 事件，作为审计记录。
+2. 打开文件系统原始 `result.json` 与 stderr 片段，确认是脚本输出格式错误还是截断写入。
+3. 若为脚本问题，修脚本后仅影响后续新 attempt；禁止回写历史 attempt 的结果快照。
+4. 如需复核，教师端显示失败原因和原始附件下载入口，不伪装成“正常完成”。
+
+#### 11.3.4 artifacts 丢失
+1. 先以数据库 `artifact_index_json` 判断该 attempt 理论上应有哪些附件，再检查文件系统是否缺失。
+2. 若数据库有索引但磁盘文件缺失，教师端显示“文件已清理/丢失”，但分数、阶段、事件摘要仍以数据库快照继续可读。
+3. 记录 `system_error` 事件并排查宿主机清理策略、目录权限、磁盘配额。
+4. 禁止因附件缺失而直接修改历史分数；只允许补充运维说明。
+
+#### 11.3.5 超时清理失败
+1. 检查超时扫描器日志，确认 `docker kill` / `docker rm` 哪一步失败。
+2. 若数据库已标记 `aborted` 但容器仍残留，运维按 `sidecar_container_id` 手工清理残留容器与临时目录，并补记 `system_warning`。
+3. 若容器已消失但数据库未收敛，执行一次 finalize/cleanup 补偿任务，把 attempt 收敛到终态。
+4. 连续出现 3 次以上时触发告警，暂停新考试场次，先处理宿主机 Docker 健康问题。
+
+### 11.4 可观测性
+
 
 - **关键日志字段**：`attempt_id`, `exam_mode`, `stage_key`, `teacher_id`, `action`, `error_code`
 - **核心指标**：
@@ -701,6 +742,7 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 |----------|------|------|---------|
 | result_run 完整流 | E2E | 使用 fake sidecar 镜像 | 客观分入库 |
 | process_run 完整流 | E2E | 学生启动 → 操作 → 提交 | waiting_submit → scoring → completed |
+| process_run 幂等提交 | 集成 | 双击提交 / 断网后重试提交 | 返回同一 attempt 当前状态，不重复写 marker，不报 409 |
 | process_run 超时 | 集成 | 超过 max_duration | aborted |
 | multi_stage_run 阶段流 | 集成 | 2 个阶段脚本 | stage_statuses 正确更新 |
 | 阶段文件畸形 | 单元 | 非法 JSON 行 | 跳过 + warning |
@@ -739,6 +781,8 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 
 - [ ] 10 次 multi_stage_run 运行阶段轮询无丢事件
 - [ ] 教师复核页在 100+ 生命周期事件下渲染流畅（无卡顿）
+- [ ] process_run 重复提交 3 次以上仍保持幂等，不产生重复评分或重复事件
+- [ ] 单实例部署约束已写入部署文档与启动说明，多副本未放开前不可上线
 
 ---
 
@@ -750,9 +794,9 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 
 | 路径 | 说明 |
 |------|------|
-| `app/core/stage_event_poller.py` | Sidecar 阶段事件文件轮询器 |
-| `app/core/final_score_calculator.py` | 最终成绩核算器 |
-| `app/api/v1/endpoints/teacher/exam_attempts_review.py` | 复核专用 API（artifacts / manual-score / override / export） |
+| `app/core/stage_event_poller.py` | Sidecar 阶段事件文件轮询器（单实例约束） |
+| `app/core/final_score_calculator.py` | 最终成绩核算器（读取 attempt 级 scoring policy 快照） |
+| `app/api/v1/endpoints/teacher/exam_attempts_review.py` | 复核专用 API（数据库快照主视图 + artifacts / manual-score / override / export） |
 
 **修改文件**：
 
@@ -868,3 +912,4 @@ def emit_stage(event, stage_key, stage_name=None, score=None, metrics=None):
 | 版本 | 日期 | 变更 | 负责人 |
 |------|------|------|--------|
 | v1.0 | 2026-04-10 | 初版（基于 v1.1 Sidecar 架构） | Thouder03 |
+| v1.1 | 2026-04-12 | CEO审查 | Thouder03 |

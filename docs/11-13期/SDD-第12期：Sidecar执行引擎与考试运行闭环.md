@@ -10,8 +10,8 @@
 ## 0. 文档元信息
 
 - **文档标题**：SDD-第12期：Sidecar 执行引擎与考试运行闭环
-- **文档版本**：v1.0
-- **创建日期**：2026-04-10
+- **文档版本**：v1.1
+- **创建日期**：2026-04-1
 - **负责人**：Thouder03
 - **前置依赖**：
   - 第11期：考试定义、测评脚本、考试环境/文件快照四张表与教师端 CRUD
@@ -371,6 +371,10 @@ stateDiagram-v2
 | `sim_container_docker_id` | VARCHAR(64) | 否 | — | Docker 容器 ID（用于共享 network） |
 | `sidecar_container_id` | VARCHAR(64) | 否 | — | Sidecar Docker 容器 ID |
 | `status` | VARCHAR(20) | 是 | `pending` | 状态（见 §4.3 状态机） |
+| `attempt_exam_mode` | VARCHAR(20) | 是 | — | **创建 attempt 时固化的考试模式快照**，后续解释不回读 `exams.exam_mode` |
+| `attempt_runtime_policy_json` | JSON | 是 | `{}` | **创建 attempt 时固化的运行策略快照** |
+| `attempt_panel_policy_json` | JSON | 是 | `{}` | **创建 attempt 时固化的面板策略快照** |
+| `attempt_scoring_policy_json` | JSON | 是 | `{}` | **创建 attempt 时固化的评分策略快照** |
 | `submission_snapshot_path` | VARCHAR(512) | 否 | — | 代码快照绝对路径 |
 | `artifacts_path` | VARCHAR(512) | 否 | — | artifacts 目录路径 `/data/exam_artifacts/{attempt_id}/` |
 | `result_json` | JSON | 否 | — | 完整 Sidecar 输出 JSON |
@@ -381,7 +385,7 @@ stateDiagram-v2
 | `summary` | VARCHAR(512) | 否 | — | 从 result_json.summary 解析 |
 | `custom_fields_json` | JSON | 否 | — | 从 result_json.custom_fields 解析 |
 | `stage_statuses_json` | JSON | 是 | `[]` | 第13期多阶段使用；本期为空数组 |
-| `artifact_index_json` | JSON | 是 | `{}` | artifacts 文件索引 |
+| `artifact_index_json` | JSON | 是 | `{}` | artifacts 文件索引；作为数据库侧复核主索引 |
 | `review_status` | VARCHAR(20) | 是 | `pending` | `pending` / `reviewed` |
 | `teacher_comment` | TEXT | 否 | — | 第13期写入 |
 | `error_code` | VARCHAR(64) | 否 | — | 错误码（error 状态时） |
@@ -555,11 +559,17 @@ bash /opt/evaluate/{entry_point}
 
 **异步执行模式**：采用与第10期 `_run_rebuild_task` 相同的 `asyncio.create_task` + 独立 `AsyncSessionLocal` 模式。
 
+**补充约束**：
+- `schedule_sidecar()` 在启动 Sidecar 前，必须先把 `exam_mode`、`runtime_policy_json`、`panel_policy_json`、`scoring_policy_json` 从 `exams` 表复制到 attempt 快照字段。
+- 后续 Sidecar 环境变量、前端状态展示、教师复核、申诉解释均以 attempt 快照字段为准，不再回读 `exams` 当前值。
+- `finalize_attempt()` 必须把 `artifact_index_json`、`result_json`、关键摘要字段一并固化到数据库，教师端详情页默认读取数据库快照；文件系统 artifacts 仅作为原始附件来源。
+- 当前设计**仅支持单后端实例 / 单进程部署**。`asyncio.create_task`、超时扫描任务与第13期阶段轮询器不具备多实例协调能力，多副本部署前必须补分布式锁或租约机制。
+
 ### 7.5 超时终止定时任务
 
 **任务**：后端启动一个后台定时任务，每 10 秒扫描一次 `exam_attempts`：
 
-- 条件：`status=running` AND `started_at + runtime_policy.max_duration_ms + 30s < now`
+- 条件：`status=running` AND `started_at + attempt_runtime_policy_json.max_duration_ms + 30s < now`
 - 动作：
   1. `docker kill` Sidecar 容器
   2. 更新 `status=aborted`, `error_code=SIDECAR_TIMEOUT`
@@ -967,3 +977,4 @@ export interface AttemptDetail {
 | 版本 | 日期 | 变更 | 负责人 |
 |------|------|------|--------|
 | v1.0 | 2026-04-10 | 初版（基于 v1.1 Sidecar 架构） | Thouder03 |
+| v1.1 | 2026-04-12 | CEO审查 | Thouder03 |
