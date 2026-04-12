@@ -14,16 +14,27 @@ Edubot Twin 是一个面向移动机器人实训的数字孪生评测平台，�
 ### scripts/ 规范
 
 > ⚠️ 所有 Run & Debug 操作必须通过 `scripts/` 目录下的 `.sh` 脚本进行，严禁直接使用 `pnpm`、`uvicorn` 等命令。
-> 该目录尚未创建——首次执行启停操作时，先在 `scripts/` 下创建对应脚本，再通过脚本执行。
+> 如所需脚本尚未存在（例如 `start_web.sh`/`start_server.sh`），先创建脚本，再通过脚本执行。
 
-### 前端常用命令（通过 scripts/ 封装后使用）
+### 现有 scripts/
+
+| 脚本 | 用途 |
+|---|---|
+| `ts_check_web.sh` | 前端类型检查（提交前必跑） |
+| `test_sidecar.sh` | Sidecar 文件服务 & 代理层联调测试 |
+| `test_server_container_crud.sh` | 容器 CRUD 接口测试 |
+| `test_server_status_toggle.sh` | 容器状态切换测试 |
+| `test_server_terminal_permissions.sh` | 终端权限测试 |
+| `test_server_phase10.sh` | 第 10 期验收脚本 |
+
+### 前端常用命令（需要时请封装到 scripts/）
 
 ```bash
-# 原始命令，仅作参考，请封装到 scripts/start_web.sh
+# 原始命令，仅作参考
 cd edubot-twin-web
 pnpm install          # 安装依赖
 pnpm run dev          # 开发服务器 http://localhost:4000
-pnpm ts:check         # 类型检查（提交前必须通过）
+pnpm ts:check         # 类型检查 —— 已封装：scripts/ts_check_web.sh
 pnpm lint:eslint      # ESLint
 pnpm lint:format      # Prettier
 pnpm build:pro        # 生产构建
@@ -31,7 +42,7 @@ pnpm build:pro        # 生产构建
 
 **要求**: Node.js >= 18.0.0, pnpm >= 8.1.0
 
-### 后端常用命令（通过 scripts/ 封装后使用）
+### 后端常用命令（需要时请封装到 scripts/）
 
 ```bash
 # 原始命令，仅作参考，请封装到 scripts/start_server.sh
@@ -41,6 +52,8 @@ cd edubot-twin-server
 ../.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # API 文档: http://localhost:8000/docs
 ```
+
+**虚拟环境**: `.venv` 位于项目根目录（所有 Python 命令通过 `../.venv/bin/...` 调用）。
 
 ## 核心架构
 
@@ -200,11 +213,11 @@ curl "http://localhost:8000/api/v1/auth/routes?role=student"
 
 ## 技术债务与已知问题
 
-1. **scripts/ 未创建**: 违反全局规范，首次启动前需补建
+1. **scripts/ 仅含测试脚本**: `start_web.sh`/`start_server.sh` 等启停脚本尚未补齐
 2. **GzWeb 集成**: iframe 嵌入，通信能力有限
-3. **数据库迁移**: 当前 SQLite，生产需切换 PostgreSQL
+3. **数据库迁移**: 当前 SQLite（根目录 `edubot.db`），生产需切换 PostgreSQL
 4. **Token 认证**: 前后端联调中，Token 存储机制待完善
-5. **容器管理**: Docker SDK 集成尚未完成（`app/core/docker_client.py` 骨架已有）
+5. **容器管理**: Docker SDK 集成进行中（`app/core/docker_client.py`、`container_manager.py`、`port_allocator.py`）
 
 ## 相关文档
 
