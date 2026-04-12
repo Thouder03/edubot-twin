@@ -761,6 +761,68 @@ const adminList = [
         ]
       },
       {
+        path: 'exams',
+        component: '##',
+        redirect: '/teacher/exams/list',
+        name: 'TeacherExams',
+        meta: {
+          title: '考试管理',
+          icon: 'vi-carbon:exam-mode',
+          alwaysShow: true
+        },
+        children: [
+          {
+            path: 'list',
+            component: 'views/Teacher/Exams/ExamList',
+            name: 'TeacherExamList',
+            meta: {
+              title: '考试列表',
+              icon: 'vi-carbon:list'
+            }
+          },
+          {
+            path: ':id/detail',
+            component: 'views/Teacher/Exams/ExamDetail',
+            name: 'TeacherExamDetail',
+            meta: {
+              title: '考试详情',
+              noTagsView: true,
+              noCache: true,
+              hidden: true,
+              canTo: true,
+              activeMenu: '/teacher/exams/list'
+            }
+          },
+          {
+            path: 'envs',
+            component: 'views/Teacher/Exams/ExamEnvs',
+            name: 'TeacherExamEnvs',
+            meta: {
+              title: '考试环境',
+              icon: 'vi-carbon:settings'
+            }
+          },
+          {
+            path: 'files',
+            component: 'views/Teacher/Exams/ExamFiles',
+            name: 'TeacherExamFiles',
+            meta: {
+              title: '考试文件',
+              icon: 'vi-carbon:folder'
+            }
+          },
+          {
+            path: 'eval-scripts',
+            component: 'views/Teacher/Exams/ExamEvalScripts',
+            name: 'TeacherExamEvalScripts',
+            meta: {
+              title: '测评脚本',
+              icon: 'vi-carbon:script'
+            }
+          }
+        ]
+      },
+      {
         path: 'containers',
         component: '##',
         redirect: '/teacher/containers/monitor',

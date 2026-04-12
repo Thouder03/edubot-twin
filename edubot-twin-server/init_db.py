@@ -29,6 +29,12 @@ from app.models.experiment import (
     ExperimentVersion,
     PublishStatus,
 )
+from app.models.exam import (  # noqa: F401（第11期新增模型）
+    Exam,
+    ExamEnvSnapshot,
+    ExamFileSnapshot,
+    ExamEvalScript,
+)
 from app.models.simulation_task import SimulationTask  # noqa: F401
 from app.models.student import User
 from app.crud.student import hash_password

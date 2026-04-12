@@ -11,6 +11,15 @@ from app.models.experiment import (
     FileBundleStatus,
     PublishStatus,
 )
+from app.models.exam import (
+    Exam,
+    ExamEnvSnapshot,
+    ExamFileSnapshot,
+    ExamEvalScript,
+    ExamMode,
+    ExamStatus,
+    ExamEvalScriptValidateStatus,
+)
 from app.models.simulation_task import (
     SimulationTask,
     SimulationTaskStage,
@@ -29,6 +38,13 @@ __all__ = [
     "ExperimentStatus",
     "FileBundleStatus",
     "PublishStatus",
+    "Exam",
+    "ExamEnvSnapshot",
+    "ExamFileSnapshot",
+    "ExamEvalScript",
+    "ExamMode",
+    "ExamStatus",
+    "ExamEvalScriptValidateStatus",
     "SimulationTask",
     "SimulationTaskStage",
     "SimulationTaskStatus",

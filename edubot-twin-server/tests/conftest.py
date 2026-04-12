@@ -7,6 +7,7 @@ from app.models import (
     Student, SimContainer, ContainerMetrics,
     Experiment, ExperimentVersion, ExperimentPublishLog, ExperimentFileBundle,
     SimulationTask,
+    Exam, ExamEnvSnapshot, ExamFileSnapshot, ExamEvalScript,
 )
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"

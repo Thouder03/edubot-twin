@@ -1,0 +1,286 @@
+"""
+教师端考试环境快照 API（第11期）
+
+端点前缀：/api/v1/teachers/exam-env-snapshots
+files 子协议与 env_bundles.py 保持一致，仅存储根目录不同。
+"""
+import logging
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import get_current_teacher
+from app.core.snapshot_copier import SnapshotCopyError, copy_snapshot
+from app.crud import exam_env_snapshot as crud_snapshot
+from app.crud import experiment as crud_experiment
+from app.db.database import get_db
+from app.schemas.common import ApiResponse
+from app.schemas.exam import (
+    ExamEnvSnapshotCopyRequest,
+    ExamEnvSnapshotCreateRequest,
+    ExamEnvSnapshotListItem,
+    ExamEnvSnapshotListResponse,
+    ExamEnvSnapshotResponse,
+    ExamEnvSnapshotUpdateRequest,
+)
+from app.schemas.experiment import (
+    FileListItem,
+    FileListResponse,
+    FileReadResponse,
+    FileSaveRequest,
+    FileUploadResponse,
+)
+from app.services.bundle_file_service import (
+    BundleFileError,
+    BundleFileService,
+    FileSizeExceededError,
+    FileNotFoundError as BundleFileNotFoundError,
+    PathTraversalError,
+    FileConflictError,
+)
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _get_service(snapshot) -> BundleFileService:
+    return BundleFileService(storage_root=snapshot.storage_root)
+
+
+def _handle_error(e: BundleFileError):
+    raise HTTPException(status_code=e.status_code, detail=e.code)
+
+
+def _to_response(s) -> ExamEnvSnapshotResponse:
+    return ExamEnvSnapshotResponse(
+        id=s.id, name=s.name, source_env_bundle_id=s.source_env_bundle_id,
+        storage_root=s.storage_root, container_target_dir=s.container_target_dir,
+        file_count=s.file_count, total_size_bytes=s.total_size_bytes,
+        created_by=s.created_by, created_at=s.created_at, updated_at=s.updated_at,
+    )
+
+
+def _to_list_item(s) -> ExamEnvSnapshotListItem:
+    return ExamEnvSnapshotListItem(
+        id=s.id, name=s.name, container_target_dir=s.container_target_dir,
+        file_count=s.file_count, total_size_bytes=s.total_size_bytes, created_at=s.created_at,
+    )
+
+
+async def _get_or_404(db, snapshot_id: int, teacher_id: int):
+    s = await crud_snapshot.get_env_snapshot(db, snapshot_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="考试环境快照不存在")
+    if s.created_by != teacher_id:
+        raise HTTPException(status_code=403, detail="无权访问")
+    return s
+
+
+# ─── CRUD ────────────────────────────────────────────────────────────────────
+
+@router.get("", response_model=ApiResponse[ExamEnvSnapshotListResponse], summary="环境快照列表")
+async def list_snapshots(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    keyword: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    items, total = await crud_snapshot.list_env_snapshots(
+        db, created_by=teacher_id, page=page, page_size=page_size, keyword=keyword,
+    )
+    return ApiResponse(data=ExamEnvSnapshotListResponse(
+        total=total, items=[_to_list_item(s) for s in items],
+    ))
+
+
+@router.post(
+    "",
+    response_model=ApiResponse[ExamEnvSnapshotResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="创建空快照",
+)
+async def create_snapshot(
+    data: ExamEnvSnapshotCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    try:
+        s = await crud_snapshot.create_env_snapshot(
+            db, name=data.name, container_target_dir=data.container_target_dir,
+            created_by=teacher_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return ApiResponse(data=_to_response(s))
+
+
+@router.post("/copy", response_model=ApiResponse[ExamEnvSnapshotResponse], summary="从实验环境复制")
+async def copy_from_env_bundle(
+    data: ExamEnvSnapshotCopyRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    """从实验环境包复制出考试环境快照（物理文件复制）"""
+    # 校验源存在
+    source = await crud_experiment.get_env_bundle(db, data.source_env_bundle_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="SOURCE_BUNDLE_NOT_FOUND")
+
+    # 创建 DB 记录
+    try:
+        snapshot = await crud_snapshot.create_env_snapshot(
+            db, name=data.name,
+            container_target_dir=source.container_target_dir,
+            created_by=teacher_id,
+            source_env_bundle_id=source.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    # 物理复制
+    try:
+        file_count, total_size = copy_snapshot(source.storage_root, snapshot.storage_root)
+    except SnapshotCopyError as e:
+        # 回滚 DB 记录
+        await db.delete(snapshot)
+        await db.commit()
+        raise HTTPException(status_code=500, detail="COPY_FAILED_DISK")
+
+    # 更新统计
+    await crud_snapshot.update_env_snapshot_stats(
+        db, snapshot=snapshot, file_count=file_count, total_size_bytes=total_size,
+    )
+    return ApiResponse(data=_to_response(snapshot))
+
+
+@router.get("/{snapshot_id}", response_model=ApiResponse[ExamEnvSnapshotResponse], summary="快照详情")
+async def get_snapshot(
+    snapshot_id: int,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    s = await _get_or_404(db, snapshot_id, teacher_id)
+    return ApiResponse(data=_to_response(s))
+
+
+@router.patch("/{snapshot_id}", response_model=ApiResponse[ExamEnvSnapshotResponse], summary="更新快照")
+async def update_snapshot(
+    snapshot_id: int,
+    data: ExamEnvSnapshotUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    s = await _get_or_404(db, snapshot_id, teacher_id)
+    try:
+        s = await crud_snapshot.update_env_snapshot(
+            db, snapshot=s, name=data.name, container_target_dir=data.container_target_dir,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return ApiResponse(data=_to_response(s))
+
+
+@router.delete("/{snapshot_id}", response_model=ApiResponse, summary="删除快照")
+async def delete_snapshot(
+    snapshot_id: int,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    s = await _get_or_404(db, snapshot_id, teacher_id)
+    try:
+        await crud_snapshot.delete_env_snapshot(db, snapshot=s)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return ApiResponse(data=None, message="已删除")
+
+
+# ─── Files 子协议 ─────────────────────────────────────────────────────────────
+
+@router.get("/{snapshot_id}/files", response_model=ApiResponse[FileListResponse], summary="列目录")
+async def list_files(
+    snapshot_id: int,
+    path: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    s = await _get_or_404(db, snapshot_id, teacher_id)
+    svc = _get_service(s)
+    try:
+        items = svc.list_files(path or "")
+    except PathTraversalError as e:
+        _handle_error(e)
+    return ApiResponse(data=FileListResponse(items=[FileListItem(**item) for item in items]))
+
+
+@router.post("/{snapshot_id}/files/upload", response_model=ApiResponse[FileUploadResponse], summary="上传文件")
+async def upload_file(
+    snapshot_id: int,
+    file: UploadFile = File(...),
+    path: Optional[str] = Form(default=None),
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    s = await _get_or_404(db, snapshot_id, teacher_id)
+    svc = _get_service(s)
+    file_data = await file.read()
+    try:
+        svc.save_uploaded_file(file.filename or "upload", file_data, target_dir=path)
+    except (FileSizeExceededError, PathTraversalError) as e:
+        _handle_error(e)
+    fc, ts, _ = svc.scan_directory()
+    await crud_snapshot.update_env_snapshot_stats(db, snapshot=s, file_count=fc, total_size_bytes=ts)
+    return ApiResponse(data=FileUploadResponse(file_count=fc, total_size_bytes=ts))
+
+
+@router.get("/{snapshot_id}/files/read", response_model=ApiResponse[FileReadResponse], summary="读文件")
+async def read_file(
+    snapshot_id: int,
+    path: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    s = await _get_or_404(db, snapshot_id, teacher_id)
+    svc = _get_service(s)
+    try:
+        content, encoding = svc.read_file(path)
+        abs_path = svc._safe_path(path)
+        mtime = abs_path.stat().st_mtime if abs_path.exists() else None
+    except (BundleFileNotFoundError, PathTraversalError) as e:
+        _handle_error(e)
+    return ApiResponse(data=FileReadResponse(content=content, encoding=encoding, modified_at=mtime))
+
+
+@router.post("/{snapshot_id}/files/save", response_model=ApiResponse[dict], summary="保存文件")
+async def save_file(
+    snapshot_id: int,
+    data: FileSaveRequest,
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    s = await _get_or_404(db, snapshot_id, teacher_id)
+    svc = _get_service(s)
+    try:
+        new_mtime = svc.save_file(data.path, data.content, data.modified_at)
+    except (FileConflictError, PathTraversalError) as e:
+        _handle_error(e)
+    return ApiResponse(data={"modified_at": new_mtime})
+
+
+@router.delete("/{snapshot_id}/files/delete", status_code=status.HTTP_204_NO_CONTENT, summary="删除文件")
+async def delete_file(
+    snapshot_id: int,
+    path: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    teacher_id: int = Depends(get_current_teacher),
+):
+    s = await _get_or_404(db, snapshot_id, teacher_id)
+    svc = _get_service(s)
+    try:
+        svc.delete_file(path)
+    except BundleFileError as e:
+        _handle_error(e)
+    fc, ts, _ = svc.scan_directory()
+    await crud_snapshot.update_env_snapshot_stats(db, snapshot=s, file_count=fc, total_size_bytes=ts)

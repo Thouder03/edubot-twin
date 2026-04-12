@@ -833,6 +833,68 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         ]
       },
       {
+        path: 'exams',
+        component: getParentLayout(),
+        redirect: '/teacher/exams/list',
+        name: 'TeacherExams',
+        meta: {
+          title: '考试管理',
+          icon: 'vi-carbon:exam-mode',
+          alwaysShow: true
+        },
+        children: [
+          {
+            path: 'list',
+            component: () => import('@/views/Teacher/Exams/ExamList.vue'),
+            name: 'TeacherExamList',
+            meta: {
+              title: '考试列表',
+              icon: 'vi-carbon:list'
+            }
+          },
+          {
+            path: ':id/detail',
+            component: () => import('@/views/Teacher/Exams/ExamDetail.vue'),
+            name: 'TeacherExamDetail',
+            meta: {
+              title: '考试详情',
+              noTagsView: true,
+              noCache: true,
+              hidden: true,
+              canTo: true,
+              activeMenu: '/teacher/exams/list'
+            }
+          },
+          {
+            path: 'envs',
+            component: () => import('@/views/Teacher/Exams/ExamEnvs.vue'),
+            name: 'TeacherExamEnvs',
+            meta: {
+              title: '考试环境',
+              icon: 'vi-carbon:settings'
+            }
+          },
+          {
+            path: 'files',
+            component: () => import('@/views/Teacher/Exams/ExamFiles.vue'),
+            name: 'TeacherExamFiles',
+            meta: {
+              title: '考试文件',
+              icon: 'vi-carbon:folder'
+            }
+          },
+          {
+            path: 'eval-scripts',
+            component: () => import('@/views/Teacher/Exams/ExamEvalScripts.vue'),
+            name: 'TeacherExamEvalScripts',
+            meta: {
+              title: '测评脚本',
+              icon: 'vi-carbon:script'
+            }
+          }
+        ]
+      },
+      {
         path: 'containers',
         component: getParentLayout(),
         redirect: '/teacher/containers/monitor',

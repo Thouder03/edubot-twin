@@ -183,7 +183,13 @@ async def get_user_routes(role: str):
             "/teacher/experiments/list",
             "/teacher/experiments/:id/detail",
             "/teacher/experiments/files",
-            "/teacher/experiments/environments"
+            "/teacher/experiments/environments",
+            "/teacher/exams",
+            "/teacher/exams/list",
+            "/teacher/exams/:id/detail",
+            "/teacher/exams/envs",
+            "/teacher/exams/files",
+            "/teacher/exams/eval-scripts"
         ],
         "admin": [
             "/dashboard",
