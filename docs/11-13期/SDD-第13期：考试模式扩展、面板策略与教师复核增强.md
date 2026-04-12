@@ -390,6 +390,7 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 | `attempt_runtime_policy_json` | 第12期新增 | process_run 超时、倒计时、交互边界均读取此快照 |
 | `attempt_panel_policy_json` | 第12期新增 | 学生端面板过滤与锁定逻辑读取此快照，不回读 `exams` |
 | `attempt_scoring_policy_json` | 第12期新增 | 人工评分、override、final_score 核算一律读取此快照 |
+| `attempt_sidecar_policy_json` | 第12期新增 | 阶段轮询、submit、超时清理、复核排查一律读取此快照，不回读 `exams.sidecar_policy_json` |
 | `stage_statuses_json` | 默认 `[]`（result_run 不使用） | multi_stage_run 下由后端阶段轮询器更新，并固化为数据库复核主视图 |
 | `artifact_index_json` | 第12期预留 | 本期作为数据库侧 artifacts 主索引，教师端先读该索引，再按需读取文件系统附件 |
 | `manual_score` | 预留 null | 本期写入 |
@@ -690,8 +691,8 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 ### 11.3 Runbook（正式运维处理手册）
 
 #### 11.3.1 Sidecar 启动失败
-1. 按 `attempt_id` 查询数据库中的 `error_code=SIDECAR_START_FAILED` 与 `attempt_exam_mode` 快照。
-2. 检查单实例后端进程日志中的 `sidecar_policy.image`、Docker API 错误原文、主容器 `sim_container_docker_id` 是否存在。
+1. 按 `attempt_id` 查询数据库中的 `error_code=SIDECAR_START_FAILED`、`attempt_exam_mode` 与 `attempt_sidecar_policy_json` 快照。
+2. 检查单实例后端进程日志中的 `attempt_sidecar_policy_json.image`、Docker API 错误原文、主容器 `sim_container_docker_id` 是否存在。
 3. 确认宿主机已预拉取指定镜像、`/data/exam_submissions/{attempt_id}` 与 `/data/exam_artifacts/{attempt_id}` 权限正确。
 4. 若镜像/宿主机问题已修复，允许教师指导学生重新创建新 attempt；原 attempt 保持失败记录，不覆写。
 
@@ -746,8 +747,10 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 | process_run 超时 | 集成 | 超过 max_duration | aborted |
 | multi_stage_run 阶段流 | 集成 | 2 个阶段脚本 | stage_statuses 正确更新 |
 | 阶段文件畸形 | 单元 | 非法 JSON 行 | 跳过 + warning |
-| 面板策略生效 | 前端单元 | panel_policy 配置组合 | registry 正确过滤 |
-| 考试中编辑器锁定 | 前端集成 | 进入 running 状态 | Monaco readOnly=true |
+| 面板策略生效 | 前端单元（Vitest + Vue Test Utils） | panel_policy 配置组合 | registry 正确过滤 |
+| `ExamHeader` 模式切换 | 前端单元（Vitest + Vue Test Utils） | result/process/multi_stage 三种按钮语义 | 按当前 exam_mode 正确切换 |
+| 考试中编辑器锁定 | 前端集成（Vitest + Vue Test Utils） | 进入 running 状态 | Monaco readOnly=true |
+| 教师复核页主流程 | E2E（Playwright） | 进入 review 页 → 预览 artifacts → 提交人工评分 | final_score 刷新且 review_status=reviewed |
 | 人工评分提交 | 集成 | 正常提交 | final_score 正确 + reviewed |
 | 覆盖客观分（允许） | 集成 | allow_override_objective=true | 重算 final_score |
 | 覆盖客观分（禁止） | 集成 | allow_override_objective=false | 403 |
@@ -776,6 +779,7 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 - [ ] 状态机扩展与 §4.4 一致
 - [ ] 阶段事件协议与 §6.3 一致
 - [ ] scoring_policy 各字段的"允许/禁止"在前后端一致
+- [ ] `attempt_sidecar_policy_json` 与运行时实际使用的 Sidecar 配置一致，复核与 Runbook 不回读 `exams.sidecar_policy_json`
 
 #### 12.2.3 稳定性验收
 
@@ -826,6 +830,7 @@ pass_final = final_score ≥ scoring_policy.pass_threshold
 | `src/views/Teacher/Exams/components/LifecycleTimeline.vue` | 生命周期时间轴 |
 | `src/views/Simulation/panels/TaskStatusPanel/index.vue` | 阶段视图面板（学生端） |
 | `src/views/Simulation/composables/usePanelPolicy.ts` | 面板策略过滤逻辑 |
+| `edubot-twin-web/package.json` | 继续承接 `Vitest + Vue Test Utils + Playwright` 前端测试基线 |
 
 **修改文件**：
 

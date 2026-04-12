@@ -295,7 +295,7 @@ stateDiagram-v2
 |----------|--------|------|---------|----------|--------|
 | `/students/exams/{exam_id}` | GET | student | — | `ExamRunInfo` | 200 / 404 / 409（考试未发布） |
 | `/students/exams/{exam_id}/my-attempts` | GET | student | — | `{items: AttemptSummary[]}` | 200 |
-| `/students/exam-attempts` | POST | student | `{exam_id}` | `{attempt_id, status}` | 201 / 409 |
+| `/students/exam-attempts` | POST | student | `{exam_id}` | `{attempt_id, status}` | 201 / 400 / 409 |
 | `/students/exam-attempts/{id}/start` | POST | student | — | `AttemptDetail` | 200 / 404 / 409 |
 | `/students/exam-attempts/{id}` | GET | student | — | `AttemptDetail` | 200 / 404 / 403 |
 | `/students/exam-attempts/{id}/abort` | POST | student | `{reason?}` | `AttemptDetail` | 200 / 409 |
@@ -346,11 +346,13 @@ stateDiagram-v2
 | 错误码 | HTTP | 语义 | 前端动作 |
 |--------|------|------|---------|
 | `EXAM_NOT_PUBLISHED` | 409 | 考试未发布，学生不可参加 | 提示"考试未开放" |
+| `EXAM_MODE_NOT_SUPPORTED_YET` | 400 | 当前 exam_mode 非 `result_run`，需到第13期才支持 | 提示"该考试模式将在后续期次开放" |
 | `CONTAINER_NOT_RUNNING` | 400 | 容器非 running | 引导学生启动仿真 |
 | `ATTEMPT_IN_PROGRESS` | 409 | 已有进行中尝试 | 恢复按钮 |
 | `MAX_ATTEMPTS_EXCEEDED` | 409 | 超出最大尝试次数 | 提示"已达上限" |
 | `SNAPSHOT_FAILED` | 500 | 代码快照失败 | 重试按钮 + 联系管理员 |
 | `SIDECAR_START_FAILED` | 500 | Sidecar 启动失败 | 同上 |
+| `ATTEMPT_PENDING_STALE` | 409 | 上一次 attempt 停留在 `pending` 超过回收阈值，需先回收或重试 | 提示恢复或重试 |
 | `RESULT_INVALID_JSON` | — | Sidecar 输出非法 JSON（状态内部转 error） | 前端显示"评测脚本输出格式错误" |
 | `RESULT_MISSING_FIELDS` | — | 缺必填字段 | 显示缺失字段清单 |
 | `SIDECAR_TIMEOUT` | — | Sidecar 超时被 kill | 显示"评测超时" |
@@ -375,6 +377,7 @@ stateDiagram-v2
 | `attempt_runtime_policy_json` | JSON | 是 | `{}` | **创建 attempt 时固化的运行策略快照** |
 | `attempt_panel_policy_json` | JSON | 是 | `{}` | **创建 attempt 时固化的面板策略快照** |
 | `attempt_scoring_policy_json` | JSON | 是 | `{}` | **创建 attempt 时固化的评分策略快照** |
+| `attempt_sidecar_policy_json` | JSON | 是 | `{}` | **创建 attempt 时固化的 Sidecar 运行配置快照**，后续启动、超时处理、复核排查一律只读此字段 |
 | `submission_snapshot_path` | VARCHAR(512) | 否 | — | 代码快照绝对路径 |
 | `artifacts_path` | VARCHAR(512) | 否 | — | artifacts 目录路径 `/data/exam_artifacts/{attempt_id}/` |
 | `result_json` | JSON | 否 | — | 完整 Sidecar 输出 JSON |
@@ -549,7 +552,7 @@ bash /opt/evaluate/{entry_point}
 |------|------|
 | `schedule_sidecar(attempt_id)` | 入口：编排快照 → 启动 → 监控 → 结果解析 → 清理 |
 | `create_code_snapshot(attempt)` | `shutil.copytree` 复制 workspace |
-| `build_docker_config(attempt, exam)` | 按 7.2 组装 Docker 参数 |
+| `build_docker_config(attempt)` | **只按 attempt 快照字段**组装 Docker 参数，不回读 `exams` 当前配置 |
 | `start_sidecar(config)` | 调用 Docker SDK 启动 |
 | `wait_for_completion(container_id, timeout_ms)` | 等待 exit + 超时 kill |
 | `parse_result_json(artifacts_path)` | 读取 + Schema 校验 |
@@ -560,8 +563,10 @@ bash /opt/evaluate/{entry_point}
 **异步执行模式**：采用与第10期 `_run_rebuild_task` 相同的 `asyncio.create_task` + 独立 `AsyncSessionLocal` 模式。
 
 **补充约束**：
-- `schedule_sidecar()` 在启动 Sidecar 前，必须先把 `exam_mode`、`runtime_policy_json`、`panel_policy_json`、`scoring_policy_json` 从 `exams` 表复制到 attempt 快照字段。
-- 后续 Sidecar 环境变量、前端状态展示、教师复核、申诉解释均以 attempt 快照字段为准，不再回读 `exams` 当前值。
+- `schedule_sidecar()` 在启动 Sidecar 前，必须先把 `exam_mode`、`runtime_policy_json`、`panel_policy_json`、`scoring_policy_json`、`sidecar_policy_json` 从 `exams` 表复制到 attempt 快照字段。
+- `build_docker_config()`、超时处理、前端状态展示、教师复核、申诉解释均以 attempt 快照字段为准，不再回读 `exams` 当前值。
+- 创建 attempt 入口必须校验 `exam_mode == result_run`；`process_run` / `multi_stage_run` 在第13期扩展前不得创建 attempt。
+- 两步开始流程保留，但 `pending` 状态必须具备超时回收与可重试语义，防止浏览器中断或第二步请求未发出时留下僵尸 attempt。
 - `finalize_attempt()` 必须把 `artifact_index_json`、`result_json`、关键摘要字段一并固化到数据库，教师端详情页默认读取数据库快照；文件系统 artifacts 仅作为原始附件来源。
 - 当前设计**仅支持单后端实例 / 单进程部署**。`asyncio.create_task`、超时扫描任务与第13期阶段轮询器不具备多实例协调能力，多副本部署前必须补分布式锁或租约机制。
 
@@ -606,7 +611,7 @@ bash /opt/evaluate/{entry_point}
    - 显示 Sidecar 进度条
    - 每 2 秒轮询 `GET /students/exam-attempts/{id}`
 
-### 8.2 SimulationHeader 考试模式
+### 8.2 ExamHeader 考试模式
 
 **普通模式顶栏**（现有）：
 ```
@@ -717,6 +722,8 @@ export interface AttemptDetail {
 
 在第11期的 `ExamDetail.vue` 基础上，新增右下区域"运行记录"子面板：
 
+> 本期仍为最小闭环视图，保留第13期升级为独立复核页的演进空间。
+
 ```
 ┌────────────────────────────────────────────────────┐
 │  运行记录                                          │
@@ -749,7 +756,7 @@ export interface AttemptDetail {
 | 共享 network 跨攻击 | Sidecar 访问主容器私有端口 | 仅开放已知的 ROS/gzbridge 端口；主容器内部端口由 iptables 规则限制（部署文档处理） | 网络测试 |
 | 代码快照越权 | 学生 A 读到学生 B 的快照 | 快照路径按 `attempt_id` 隔离；目录权限 700 | 文件权限测试 |
 | JSON 注入 | result.json 含超大 payload | 文件大小上限 1MB；超出则 `RESULT_TOO_LARGE` | 单元测试 |
-| 并发考试 | 学生同时启动多次 | `exam_attempts` 唯一索引 `(student_id, status IN running)` + 应用层校验 | 集成测试 |
+| 并发考试 | 学生同时启动多次 | 应用层限制单学生仅一个 `pending/running/scoring` attempt；`pending` 需超时回收 | 集成测试 |
 | 超时未清理 | Sidecar 容器残留 | 定时扫描 + 强制 kill + 启动时自愈检查 | 集成测试 |
 | 磁盘耗尽 | 大量快照和 artifacts | 单 attempt 快照上限 100MB；artifacts 上限 50MB | 压测 |
 
@@ -761,7 +768,8 @@ export interface AttemptDetail {
 
 | Codepath | 失败模式 | 已处理? | 用户可见? | 日志/指标? | 测试? |
 |----------|---------|--------|----------|-----------|-------|
-| 创建 attempt 时已有进行中 | 唯一性校验 | Y | 明确提示 + 恢复 | Y | Y |
+| 创建 attempt 时已有进行中 | 应用层状态校验 + 恢复入口 | Y | 明确提示 + 恢复 | Y | Y |
+| `pending` attempt 半路中断 | 超时回收 + 可重试 | Y | 提示恢复或重试 | Y | Y |
 | 容器非 running | 状态校验 | Y | 引导启动 | Y | Y |
 | workspace 复制失败（磁盘满） | I/O 异常 | Y | 提示 + 数据库回滚 | Y | Y |
 | Sidecar 镜像拉取失败 | Docker 异常 | Y | `SIDECAR_START_FAILED` + 建议管理员检查 | Y | Y |
@@ -805,9 +813,11 @@ export interface AttemptDetail {
 
 | 流程/分支 | 类型 | 用例要点 | 通过标准 |
 |----------|------|---------|---------|
-| 创建 attempt（正常） | 集成 | 容器 running + 无冲突 | status=pending + DB 记录 |
+| 创建 attempt（正常） | 集成 | 容器 running + `exam_mode=result_run` + 无冲突 | status=pending + DB 记录 |
+| 创建 attempt（非 result_run） | 集成 | `process_run` / `multi_stage_run` | 返回 400 `EXAM_MODE_NOT_SUPPORTED_YET` |
 | 创建 attempt（容器非 running） | 集成 | — | 返回 400 |
-| 创建 attempt（已有进行中） | 集成 | — | 返回 409 |
+| 创建 attempt（已有进行中） | 集成 | `pending/running/scoring` 任一存在 | 返回 409 |
+| pending 超时回收 | 集成 | 创建 attempt 后不调用 `/start` | 超过阈值后自动标记 stale，可重试 |
 | start（快照 + Sidecar 启动） | 集成 | Happy path | Sidecar 容器启动 + status=running |
 | start（workspace 不存在） | 集成 | — | `SNAPSHOT_FAILED` |
 | 正常完成评测 | 集成（需 mock Sidecar 或 fake image） | exit 0 + 合法 JSON | status=completed + 字段入库 |
@@ -859,7 +869,7 @@ export interface AttemptDetail {
 | `app/crud/exam_attempt.py` | CRUD |
 | `app/core/sidecar_manager.py` | Sidecar 调度服务（§7.4 契约） |
 | `app/core/result_parser.py` | 标准 JSON 解析与 Schema 校验 |
-| `app/core/workspace_snapshot.py` | 学生 workspace 代码快照工具（区别于第11期的 `snapshot_copier.py`——后者面向教师资源冻结复制，本工具面向学生实时代码快照） |
+| `app/core/workspace_snapshot.py` | 学生 workspace 代码快照工具（区别于第11期在 [`app/crud/exam_env_snapshot.py`](edubot-twin-server/app/crud/exam_env_snapshot.py:1) / [`app/crud/exam_file_snapshot.py`](edubot-twin-server/app/crud/exam_file_snapshot.py:1) 内完成的教师资源冻结复制，本工具仅面向学生实时代码快照） |
 | `app/api/v1/endpoints/student/exam_attempts.py` | 学生端 attempt API |
 | `app/api/v1/endpoints/teacher/exam_attempts.py` | 教师端 attempt API |
 | `app/core/sidecar_timeout_scanner.py` | 超时扫描定时任务 |
@@ -891,7 +901,7 @@ export interface AttemptDetail {
 |------|------|
 | `src/api/exam/attempts.ts` | 学生端 attempt API |
 | `src/views/Simulation/composables/useExamMode.ts` | 考试模式状态管理 Composable |
-| `src/views/Simulation/components/ExamHeader.vue` | 考试模式顶栏 |
+| `src/views/Simulation/components/ExamHeader.vue` | 考试模式顶栏（本期沿用独立考试头部路线） |
 | `src/views/Simulation/components/ExamStartDialog.vue` | 开始考试确认对话框 |
 | `src/views/Simulation/components/ExamResultDialog.vue` | 结果摘要对话框 |
 | `src/views/Teacher/Exams/components/AttemptList.vue` | 运行记录列表面板 |
@@ -902,7 +912,7 @@ export interface AttemptDetail {
 | 路径 | 修改内容 |
 |------|---------|
 | `src/views/Simulation/Simulation.vue` | 读取 query `exam_id`，注入 ExamMode 状态 |
-| `src/views/Simulation/components/SimulationHeader.vue` | 根据考试模式切换顶栏 |
+| `edubot-twin-web/package.json` | 增加 `Vitest + Vue Test Utils + Playwright` 测试脚本与依赖 |
 | `src/views/Teacher/Exams/ExamDetail.vue` | 增加"运行记录"子面板 |
 
 ### 12.3 文档交付

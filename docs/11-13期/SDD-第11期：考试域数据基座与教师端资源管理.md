@@ -238,7 +238,7 @@ stateDiagram-v2
 | `draft` | （删除） | DELETE | 无限制 |
 | `published` | `archived` | POST /archive | 解冻，但学生端不可见 |
 | `archived` | `published` | POST /republish | 重新冻结 |
-| `archived` | （删除） | DELETE | 要求无历史 `exam_attempts`（第12期后生效） |
+| `archived` | （删除） | DELETE | 第11期仅允许删除 `archived` 考试；历史 `exam_attempts` 校验在第12期接入后生效 |
 
 **发布后的冻结字段**（更新时 API 返回 409）：
 - `exam_mode`
@@ -253,7 +253,8 @@ stateDiagram-v2
 
 **补充约束（供第12-13期执行链路使用）**：
 - 平台允许教师在考试已发布后继续调整 `runtime_policy_json`、`panel_policy_json`、`scoring_policy_json`，以支持教学现场按需微调。
-- 但**每次学生创建 `exam_attempt` 时，必须把当次生效的 `exam_mode`、`runtime_policy_json`、`panel_policy_json`、`scoring_policy_json` 全量快照到 attempt 记录**。
+- `sidecar_policy_json` 仅保留最小运行占位（镜像名 + 超时），其余 Sidecar 资源约束由第12期执行链路落地时再扩展。
+- 但**每次学生创建 `exam_attempt` 时，必须把当次生效的 `exam_mode`、`runtime_policy_json`、`panel_policy_json`、`scoring_policy_json`、`sidecar_policy_json` 全量快照到 attempt 记录**。
 - 第12期的考试执行、第13期的教师复核、人工评分、申诉解释，均以 attempt 上的策略快照为准，而不是回读 `exams` 当前值。
 - 因此，发布后修改策略只影响**后续新创建的 attempt**，不允许回溯改变历史 attempt 的运行条件与评分依据。
 
@@ -270,8 +271,8 @@ stateDiagram-v2
 | `/exams` | GET | teacher | Query: `page, page_size, keyword, status, exam_mode` | `{items: ExamListItem[], total}` | 200 |
 | `/exams` | POST | teacher | `ExamCreateRequest` | `ExamResponse` | 201 / 400 / 409（code 重复） |
 | `/exams/{id}` | GET | teacher | — | `ExamDetailResponse` | 200 / 404 |
-| `/exams/{id}` | PATCH | teacher | `ExamUpdateRequest`（部分字段） | `ExamResponse` | 200 / 404 / 409（冻结字段） |
-| `/exams/{id}` | DELETE | teacher | — | `null` | 200 / 404 / 409（有历史尝试） |
+| `/exams/{id}` | PATCH | teacher | `ExamUpdateRequest`（部分字段，**必须带 `updated_at` 或 `revision` 用于乐观锁校验**） | `ExamResponse` | 200 / 404 / 409（冻结字段 / 并发冲突） |
+| `/exams/{id}` | DELETE | teacher | — | `null` | 200 / 404 / 409（第11期仅允许删除 archived；历史尝试限制第12期补齐） |
 | `/exams/{id}/publish` | POST | teacher | — | `ExamResponse` | 200 / 404 / 409（校验失败） |
 | `/exams/{id}/archive` | POST | teacher | — | `ExamResponse` | 200 / 404 |
 | `/exams/{id}/republish` | POST | teacher | — | `ExamResponse` | 200 / 404 |
@@ -286,9 +287,9 @@ stateDiagram-v2
 | `exam_mode` | enum | 是 | `result_run` / `process_run` / `multi_stage_run` |
 
 **`ExamUpdateRequest` 字段**（全部可选，按字段级更新）：
-`name`、`description`、`env_snapshot_id`、`file_snapshot_id`、`eval_script_id`、`runtime_policy`、`panel_policy`、`scoring_policy`、`sidecar_policy`、`teacher_comment_template`。
+`name`、`description`、`env_snapshot_id`、`file_snapshot_id`、`eval_script_id`、`runtime_policy`、`panel_policy`、`scoring_policy`、`sidecar_policy`、`teacher_comment_template`、`updated_at`（或 `revision`）。
 
-> 补充约束：若考试处于 `published` 状态，允许更新 `runtime_policy`、`panel_policy`、`scoring_policy`；但这些变更只对后续新创建的 attempt 生效。历史 attempt 的解释与复核以其创建时固化的策略快照为准。
+> 补充约束：若考试处于 `published` 状态，允许更新 `runtime_policy`、`panel_policy`、`scoring_policy`；但这些变更只对后续新创建的 attempt 生效。历史 attempt 的解释与复核以其创建时固化的策略快照为准。`PATCH /exams/{id}`` 必须校验乐观锁，发现并发编辑冲突时返回 409，前端提示重新拉取最新版本后再保存。
 
 ### 5.2 考试环境快照 API
 
@@ -306,7 +307,7 @@ stateDiagram-v2
 | `/exam-env-snapshots/{id}/files/save` | POST | `{path, content, modified_at?}` | `null` | 保存 |
 | `/exam-env-snapshots/{id}/files/delete` | DELETE | Query: `path` | `null` | 删除 |
 
-> **说明**：files 系列接口的参数签名与 `teacher/env_bundles.py` 保持一致，仅存储根目录不同。
+> **说明**：files 系列接口的参数签名与 `teacher/env_bundles.py` 保持一致，仅存储根目录不同。三类资源（环境快照 / 文件快照 / 测评脚本）共用统一的 files 子协议、共享 schema 与错误码约定，只保留 `protected_paths`、`validate_status` 等资源特有差异。
 
 ### 5.3 考试文件快照 API
 
@@ -329,7 +330,7 @@ stateDiagram-v2
 | `/exam-eval-scripts/{id}` | GET / PATCH / DELETE | | | 详情 / 重命名 / 删除 |
 | `/exam-eval-scripts/{id}/files/*` | files 系列 | | | 同上 |
 
-> **说明**：测评脚本不支持"从实验复制"（实验没有对应资源）；教师通过文件上传或在线编辑创建。
+> **说明**：测评脚本不支持"从实验复制"（实验没有对应资源）；教师通过文件上传或在线编辑创建。其 files 子协议与 5.2 / 5.3 保持同一套共享 schema 和错误码语义。
 
 ### 5.5 错误语义映射
 
@@ -338,7 +339,9 @@ stateDiagram-v2
 | `EXAM_CODE_DUPLICATED` | 409 | code 已存在 | 表单校验红字提示 |
 | `EXAM_PUBLISH_INCOMPLETE` | 409 | 发布时配置不完整 | 显示缺失项清单 |
 | `EXAM_FIELD_FROZEN` | 409 | 尝试修改已发布考试的冻结字段 | 提示"考试已发布，请先归档再编辑" |
-| `EXAM_HAS_ATTEMPTS` | 409 | 删除时存在历史尝试 | 提示"考试已有学生参加，无法删除，仅可归档" |
+| `EXAM_CONCURRENT_MODIFIED` | 409 | `updated_at` / `revision` 不匹配，说明记录已被他人修改 | 提示"该考试已被其他人修改，请刷新后重试" |
+| `EXAM_DELETE_REQUIRES_ARCHIVED` | 409 | 第11期仅允许删除 archived 状态考试 | 提示"请先归档后再删除" |
+| `EXAM_HAS_ATTEMPTS` | 409 | 删除时存在历史尝试（**第12期接入 `exam_attempts` 后启用**） | 提示"考试已有学生参加，无法删除，仅可归档" |
 | `SNAPSHOT_IN_USE` | 409 | 快照被考试引用，禁止删除 | 提示"该环境/文件正被考试使用" |
 | `SOURCE_BUNDLE_NOT_FOUND` | 404 | 复制时源 bundle 不存在 | 刷新列表 |
 | `COPY_FAILED_DISK` | 500 | 物理复制失败（磁盘 I/O） | 提示"复制失败，请重试或联系管理员" |
@@ -476,13 +479,12 @@ stateDiagram-v2
 
 ### 6.8 JSON 字段：`sidecar_policy_json` 结构
 
+> 第11期仅保存**最小运行占位**，避免在 Sidecar 执行链路真正落地前过早冻结 CPU / 内存 / 环境变量等资源语义。第12期启动执行引擎时，再把扩展后的运行配置快照到 attempt。
+
 ```jsonc
 {
-  "image": "edubot/sidecar-runner:v1",      // Sidecar 基础镜像
-  "timeout_ms": 180000,                     // 执行超时
-  "cpu_limit": 1.0,                         // CPU 核心数限制
-  "memory_limit_mb": 512,                   // 内存限制
-  "env_extra": {}                           // 追加环境变量
+  "image": "edubot/sidecar-runner:v1",  // Sidecar 基础镜像
+  "timeout_ms": 180000                    // 执行超时
 }
 ```
 
