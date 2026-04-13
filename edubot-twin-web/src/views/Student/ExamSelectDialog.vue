@@ -6,9 +6,19 @@
  */
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElButton, ElDialog, ElEmpty, ElTable, ElTableColumn, ElTag, ElMessage } from 'element-plus'
+import {
+  ElButton,
+  ElDialog,
+  ElEmpty,
+  ElTable,
+  ElTableColumn,
+  ElTag,
+  ElMessage,
+  ElLoading
+} from 'element-plus'
 import { getPublishedExamsApi } from '@/api/exam/attempts'
 import type { PublishedExamItem } from '@/api/exam/attempts'
+import { ensureContainerRunning } from '@/views/Simulation/composables/useContainerStart'
 
 const props = defineProps<{
   visible: boolean
@@ -65,22 +75,43 @@ function handleRowDblClick(row: PublishedExamItem) {
   handleConfirm()
 }
 
-function handleConfirm() {
+async function handleConfirm() {
   if (!selectedExamId.value) {
     ElMessage.warning('请先选择一个考试')
     return
   }
-  emit('update:visible', false)
 
-  const url = router.resolve({
-    name: 'Simulation',
-    query: { exam_id: String(selectedExamId.value) }
-  }).href
+  const loadingInstance = ElLoading.service({
+    text: '正在检查仿真容器...',
+    background: 'rgba(0,0,0,0.8)'
+  })
 
-  const newWin = window.open(url, '_blank')
-  if (!newWin) {
-    ElMessage.warning('新标签页被拦截，将在当前标签页跳转')
-    router.push({ name: 'Simulation', query: { exam_id: String(selectedExamId.value) } })
+  try {
+    const ok = await ensureContainerRunning(loadingInstance)
+    if (!ok) {
+      loadingInstance.close()
+      ElMessage.error('仿真容器未就绪，请检查状态或联系管理员')
+      return
+    }
+
+    loadingInstance.setText('仿真环境就绪，正在打开考试...')
+    loadingInstance.close()
+    emit('update:visible', false)
+
+    const url = router.resolve({
+      name: 'Simulation',
+      query: { exam_id: String(selectedExamId.value) }
+    }).href
+
+    const newWin = window.open(url, '_blank')
+    if (!newWin) {
+      ElMessage.warning('新标签页被拦截，将在当前标签页跳转')
+      router.push({ name: 'Simulation', query: { exam_id: String(selectedExamId.value) } })
+    }
+  } catch (err) {
+    loadingInstance.close()
+    ElMessage.error('启动仿真容器失败，请重试')
+    console.error('[ExamSelectDialog] 容器启动失败:', err)
   }
 }
 

@@ -11,6 +11,7 @@ import { Icon } from '@/components/Icon'
 import type { ExamRunInfo, AttemptDetail, ExamAttemptStatus } from '@/api/exam/attempts'
 import { availablePanels } from '../config/predefined-layouts'
 import SimControlBar from './SimControlBar.vue'
+import { confirmExit } from '../composables/useExitConfirm'
 
 const props = defineProps<{
   examRunInfo: ExamRunInfo | null
@@ -22,10 +23,14 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'start'): void
   (e: 'abort'): void
-  (e: 'exit'): void
+  (e: 'back', mode: 'temporary' | 'stopAndExit'): void
   (e: 'view-result'): void
   (e: 'addPanel', type: string, title: string): void
 }>()
+
+function handleBack() {
+  confirmExit((mode) => emit('back', mode), '退出考试')
+}
 
 const isRunning = computed(() => props.attempt?.status === 'running')
 
@@ -190,13 +195,13 @@ const countdownWarning = computed(() => countdownPercent.value < 20)
         <ElButton type="primary" :loading="props.starting" @click="emit('start')">
           ▶ 开始考试
         </ElButton>
-        <ElButton @click="emit('exit')">🚪 退出考试</ElButton>
+        <ElButton @click="handleBack()">🚪 退出考试</ElButton>
       </template>
 
       <!-- pending：准备中 -->
       <template v-else-if="props.attempt.status === 'pending'">
         <ElButton type="primary" loading disabled>准备中…</ElButton>
-        <ElButton @click="emit('exit')">🚪 退出</ElButton>
+        <ElButton @click="handleBack()">🚪 退出</ElButton>
       </template>
 
       <!-- running：评测中 -->
@@ -215,13 +220,13 @@ const countdownWarning = computed(() => countdownPercent.value < 20)
       <!-- completed：已完成 -->
       <template v-else-if="props.attempt.status === 'completed'">
         <ElButton type="success" @click="emit('view-result')">📋 查看结果</ElButton>
-        <ElButton @click="emit('exit')">← 返回</ElButton>
+        <ElButton @click="handleBack()">← 返回</ElButton>
       </template>
 
       <!-- error / aborted -->
       <template v-else>
         <ElButton type="danger" plain @click="emit('view-result')">❌ 查看详情</ElButton>
-        <ElButton @click="emit('exit')">← 返回</ElButton>
+        <ElButton @click="handleBack()">← 返回</ElButton>
       </template>
     </div>
   </div>

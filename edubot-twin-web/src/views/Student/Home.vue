@@ -18,13 +18,10 @@ import { getStudentHomeDataApi } from '@/api/student'
 import {
   distributeSimulationFilesApi,
   getAvailableExperimentsApi,
-  getSimulationTaskApi,
   startSimulationApi
 } from '@/api/experiment'
-import type {
-  StudentAvailableVersionItem,
-  StudentSimulationTaskResponse
-} from '@/api/experiment/types'
+import type { StudentAvailableVersionItem } from '@/api/experiment/types'
+import { pollTaskUntilDone } from '@/views/Simulation/composables/useContainerStart'
 import ExamSelectDialog from './ExamSelectDialog.vue'
 
 const { getPrefixCls } = useDesign()
@@ -111,51 +108,6 @@ function openSimulationPage(version: StudentAvailableVersionItem) {
       }
     })
   }
-}
-
-// ─── 阶段文案映射（SDD §15.1）────────────────────────────────────────────────
-
-const stageTextMap: Record<string, string> = {
-  PREPARING_CONFIG: '正在准备配置...',
-  STOPPING_OLD_CONTAINER: '正在清理旧环境...',
-  CREATING_NEW_CONTAINER: '正在创建仿真容器...',
-  CHECKING_GZWEB: '等待 Gazebo 仿真引擎启动...',
-  CHECKING_ROSBRIDGE: '等待 ROS 通信桥启动...',
-  VALIDATING_MANIFEST: '正在校验实验文件清单...',
-  DISTRIBUTING_FILES: '正在分发实验文件到容器...',
-  SETTING_PERMISSIONS: '正在设置实验目录权限...',
-  SUCCEEDED: '仿真环境就绪，正在打开...',
-  FAILED: '启动失败'
-}
-
-async function pollTaskUntilDone(
-  taskId: string,
-  loadingInstance: ReturnType<typeof ElLoading.service>
-): Promise<StudentSimulationTaskResponse> {
-  const maxRounds = 90
-  const intervalMs = 2000
-
-  for (let i = 0; i < maxRounds; i++) {
-    const res = await getSimulationTaskApi(taskId)
-    const task = res.data
-    if (!task) {
-      throw new Error('task response empty')
-    }
-
-    // 按 current_stage 更新文案（SDD §15.1）
-    const stage = (task as any).current_stage as string | undefined
-    if (stage && stageTextMap[stage]) {
-      loadingInstance.setText(stageTextMap[stage])
-    }
-
-    if (task.task_status === 'SUCCEEDED' || task.task_status === 'FAILED') {
-      return task
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, intervalMs))
-  }
-
-  throw new Error('task timeout')
 }
 
 const handleStartSimulation = async () => {

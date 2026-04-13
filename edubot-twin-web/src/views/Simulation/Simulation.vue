@@ -290,6 +290,14 @@ async function handleContainerStopped() {
   if (isDryRunContext) return
   if (isAlertShowing) return
   isAlertShowing = true
+
+  // 考试模式：直接自动重启，无需弹窗确认
+  if (isExamMode.value) {
+    isAlertShowing = false
+    await restartContainer()
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
       '由于长时间未活动，您的仿真容器已自动关闭。是否重新启动？',
@@ -482,7 +490,7 @@ async function handleBack(_mode: 'temporary' | 'stopAndExit') {
       :aborting="examMode.aborting.value"
       @start="handleExamStart"
       @abort="handleAbort"
-      @exit="handleBack('temporary')"
+      @back="handleBack"
       @view-result="handleViewResult"
       @add-panel="handleAddPanel"
     />
