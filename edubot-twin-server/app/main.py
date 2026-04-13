@@ -427,6 +427,7 @@ if __name__ == "__main__":
         port=8000,
         reload=True,
         reload_excludes=[
+            "data/*",
             "data/students/*",
             "data/students/**/*",
             "edubot-twin-server/data/students/*",

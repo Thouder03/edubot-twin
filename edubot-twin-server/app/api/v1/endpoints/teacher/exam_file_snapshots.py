@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.common.bundle_files_router import build_bundle_files_router
+from app.services.bundle_file_service import BundleFileService
 from app.core.security import get_current_teacher
 from app.core.snapshot_copier import SnapshotCopyError, copy_snapshot
 from app.crud import exam_file_snapshot as crud_snapshot
@@ -37,6 +38,11 @@ def _to_response(s) -> ExamFileSnapshotResponse:
         total_size_bytes=s.total_size_bytes, file_manifest=s.file_manifest,
         created_by=s.created_by, created_at=s.created_at, updated_at=s.updated_at,
     )
+
+
+def _get_service(snapshot) -> BundleFileService:
+    """为快照创建 BundleFileService 实例以扫描生成 manifest"""
+    return BundleFileService(storage_root=snapshot.storage_root)
 
 
 def _to_list_item(s) -> ExamFileSnapshotListItem:

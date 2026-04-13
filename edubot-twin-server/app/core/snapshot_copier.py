@@ -29,7 +29,7 @@ def copy_snapshot(
     物理复制目录到目标位置。
 
     :param source_dir: 源目录绝对路径
-    :param target_dir: 目标目录绝对路径（必须不存在）
+    :param target_dir: 目标目录绝对路径（由于 CRUD 层提前创建了该目录，这里必须允许其存在）
     :returns: (file_count, total_size_bytes)
     :raises SnapshotCopyError: 复制失败时（目标目录已清理）
     """
@@ -45,7 +45,7 @@ def copy_snapshot(
     try:
         # 确保父目录存在
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(str(source_path), str(target_path))
+        shutil.copytree(str(source_path), str(target_path), dirs_exist_ok=True)
     except Exception as e:
         logger.error(
             "[snapshot_copy_failed] source=%s target=%s error=%s",

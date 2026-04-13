@@ -252,7 +252,7 @@ function tryParseJSON(str: string): Record<string, unknown> | null {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-async function saveChanges() {
+async function saveChanges(manual: boolean = false) {
   if (!exam.value) return
   saving.value = true
 
@@ -288,6 +288,7 @@ async function saveChanges() {
 
   if (Object.keys(updateData).length <= 1) {
     saving.value = false
+    if (manual) ElMessage.success('配置已是最新')
     return
   }
 
@@ -295,6 +296,7 @@ async function saveChanges() {
     const res = await updateExamApi(examId.value, updateData)
     if (res.data) {
       exam.value = res.data
+      if (manual) ElMessage.success('保存成功')
     }
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
@@ -421,6 +423,9 @@ onMounted(() => {
         <span v-if="saving" class="text-12px color-gray">保存中...</span>
       </div>
       <div class="flex gap-8px">
+        <ElButton type="primary" @click="() => saveChanges(true)" :loading="saving">
+          保存更改
+        </ElButton>
         <ElButton v-if="isDraft" type="success" @click="handlePublish"> 发布考试 </ElButton>
         <ElButton v-if="isPublished" type="warning" @click="handleArchive"> 归档 </ElButton>
         <ElButton v-if="isArchived" type="success" @click="handleRepublish"> 重新发布 </ElButton>
