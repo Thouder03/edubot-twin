@@ -32,10 +32,108 @@ import {
   ElOption,
   ElRow,
   ElSelect,
-  ElTag
+  ElTag,
+  ElTooltip
 } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+
+// ─── 策略 JSON 默认模板（新建/空配置时展示） ──────────────────────────────────
+
+const DEFAULT_RUNTIME_POLICY = JSON.stringify(
+  {
+    max_duration_ms: 600000,
+    max_attempts: 3,
+    allow_debug_before_start: true
+  },
+  null,
+  2
+)
+
+const DEFAULT_PANEL_POLICY = JSON.stringify(
+  {
+    lock_panels_during_exam: false,
+    allowed_panels: ['ROS3DViewer', 'WorkspacePanel', 'ContainerTerminal', 'RosoutPanel']
+  },
+  null,
+  2
+)
+
+const DEFAULT_SCORING_POLICY = JSON.stringify(
+  {
+    pass_threshold: 60,
+    scoring_mode: 'objective_only'
+  },
+  null,
+  2
+)
+
+const DEFAULT_SIDECAR_POLICY = JSON.stringify(
+  {
+    image: 'edubot/sidecar-runner:v1',
+    cpu_limit: 1.0,
+    memory_limit_mb: 512,
+    eval_script_id: null,
+    env_snapshot_id: null,
+    file_snapshot_id: null
+  },
+  null,
+  2
+)
+
+// ─── 各策略字段说明 ────────────────────────────────────────────────────────────
+
+const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc: string }[] }> = {
+  runtime_policy: {
+    label: '运行策略',
+    fields: [
+      { name: 'max_duration_ms', desc: '考试时限（毫秒），默认 600000（10分钟）' },
+      { name: 'max_attempts', desc: '学生最多可尝试次数，默认 3' },
+      { name: 'allow_debug_before_start', desc: '开始考试前是否允许调试仿真环境，默认 true' }
+    ]
+  },
+  panel_policy: {
+    label: '面板策略',
+    fields: [
+      {
+        name: 'lock_panels_during_exam',
+        desc: '考试进行中是否锁定面板操作，默认 false（第13期生效）'
+      },
+      { name: 'allowed_panels', desc: '允许显示的面板列表（第13期生效）' }
+    ]
+  },
+  scoring_policy: {
+    label: '评分策略',
+    fields: [
+      { name: 'pass_threshold', desc: '及格线（0-100），默认 60' },
+      {
+        name: 'scoring_mode',
+        desc: '评分模式：objective_only（纯客观分）或 mixed（第13期人工评分）'
+      }
+    ]
+  },
+  sidecar_policy: {
+    label: 'Sidecar 策略',
+    fields: [
+      { name: 'image', desc: 'Sidecar 镜像名，默认 edubot/sidecar-runner:v1' },
+      { name: 'cpu_limit', desc: 'CPU 核数上限，默认 1.0' },
+      { name: 'memory_limit_mb', desc: '内存上限（MB），默认 512' },
+      { name: 'eval_script_id', desc: '关联测评脚本 ID（通常由上方"资源引用"自动同步）' },
+      { name: 'env_snapshot_id', desc: '考试环境快照 ID（可选，供脚本读取参数）' },
+      { name: 'file_snapshot_id', desc: '考试文件快照 ID（可选）' }
+    ]
+  }
+}
+
+function fillDefaultIfEmpty(jsonStr: string, defaultStr: string): string {
+  try {
+    const obj = JSON.parse(jsonStr)
+    if (Object.keys(obj).length === 0) return defaultStr
+  } catch {
+    // invalid json, return as-is
+  }
+  return jsonStr
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -104,10 +202,22 @@ async function loadExam() {
       editForm.value.file_snapshot_id = exam.value.file_snapshot_id ?? undefined
       editForm.value.eval_script_id = exam.value.eval_script_id ?? undefined
       editForm.value.teacher_comment_template = exam.value.teacher_comment_template || ''
-      editForm.value.runtime_policy = JSON.stringify(exam.value.runtime_policy_json || {}, null, 2)
-      editForm.value.panel_policy = JSON.stringify(exam.value.panel_policy_json || {}, null, 2)
-      editForm.value.scoring_policy = JSON.stringify(exam.value.scoring_policy_json || {}, null, 2)
-      editForm.value.sidecar_policy = JSON.stringify(exam.value.sidecar_policy_json || {}, null, 2)
+      editForm.value.runtime_policy = fillDefaultIfEmpty(
+        JSON.stringify(exam.value.runtime_policy_json || {}, null, 2),
+        DEFAULT_RUNTIME_POLICY
+      )
+      editForm.value.panel_policy = fillDefaultIfEmpty(
+        JSON.stringify(exam.value.panel_policy_json || {}, null, 2),
+        DEFAULT_PANEL_POLICY
+      )
+      editForm.value.scoring_policy = fillDefaultIfEmpty(
+        JSON.stringify(exam.value.scoring_policy_json || {}, null, 2),
+        DEFAULT_SCORING_POLICY
+      )
+      editForm.value.sidecar_policy = fillDefaultIfEmpty(
+        JSON.stringify(exam.value.sidecar_policy_json || {}, null, 2),
+        DEFAULT_SIDECAR_POLICY
+      )
     }
   } catch {
     ElMessage.error('加载考试详情失败')
@@ -447,9 +557,31 @@ onMounted(() => {
       <ElCol :span="14">
         <ElCard shadow="never" class="mb-16px">
           <template #header>
-            <span class="font-bold">运行策略 runtime_policy</span>
+            <div class="flex items-center gap-8px">
+              <span class="font-bold">运行策略 runtime_policy</span>
+              <ElTooltip placement="top" :show-after="200">
+                <template #content>
+                  <div class="policy-tooltip">
+                    <div
+                      v-for="f in POLICY_DOCS.runtime_policy.fields"
+                      :key="f.name"
+                      class="policy-tooltip__row"
+                    >
+                      <code>{{ f.name }}</code
+                      >{{ f.desc }}
+                    </div>
+                  </div>
+                </template>
+                <Icon
+                  icon="vi-carbon:information"
+                  color="#909399"
+                  :size="14"
+                  style="cursor: help"
+                />
+              </ElTooltip>
+            </div>
           </template>
-          <div class="monaco-card">
+          <div class="monaco-card monaco-card--short">
             <MonacoEditor
               v-model="editForm.runtime_policy"
               language="json"
@@ -460,7 +592,29 @@ onMounted(() => {
 
         <ElCard shadow="never" class="mb-16px">
           <template #header>
-            <span class="font-bold">面板策略 panel_policy</span>
+            <div class="flex items-center gap-8px">
+              <span class="font-bold">面板策略 panel_policy</span>
+              <ElTooltip placement="top" :show-after="200">
+                <template #content>
+                  <div class="policy-tooltip">
+                    <div
+                      v-for="f in POLICY_DOCS.panel_policy.fields"
+                      :key="f.name"
+                      class="policy-tooltip__row"
+                    >
+                      <code>{{ f.name }}</code
+                      >{{ f.desc }}
+                    </div>
+                  </div>
+                </template>
+                <Icon
+                  icon="vi-carbon:information"
+                  color="#909399"
+                  :size="14"
+                  style="cursor: help"
+                />
+              </ElTooltip>
+            </div>
           </template>
           <div class="monaco-card">
             <MonacoEditor
@@ -473,9 +627,31 @@ onMounted(() => {
 
         <ElCard shadow="never" class="mb-16px">
           <template #header>
-            <span class="font-bold">评分策略 scoring_policy</span>
+            <div class="flex items-center gap-8px">
+              <span class="font-bold">评分策略 scoring_policy</span>
+              <ElTooltip placement="top" :show-after="200">
+                <template #content>
+                  <div class="policy-tooltip">
+                    <div
+                      v-for="f in POLICY_DOCS.scoring_policy.fields"
+                      :key="f.name"
+                      class="policy-tooltip__row"
+                    >
+                      <code>{{ f.name }}</code
+                      >{{ f.desc }}
+                    </div>
+                  </div>
+                </template>
+                <Icon
+                  icon="vi-carbon:information"
+                  color="#909399"
+                  :size="14"
+                  style="cursor: help"
+                />
+              </ElTooltip>
+            </div>
           </template>
-          <div class="monaco-card">
+          <div class="monaco-card monaco-card--short">
             <MonacoEditor
               v-model="editForm.scoring_policy"
               language="json"
@@ -488,11 +664,31 @@ onMounted(() => {
           <template #header>
             <div class="flex items-center gap-8px">
               <span class="font-bold">Sidecar 策略 sidecar_policy</span>
+              <ElTooltip placement="top" :show-after="200">
+                <template #content>
+                  <div class="policy-tooltip">
+                    <div
+                      v-for="f in POLICY_DOCS.sidecar_policy.fields"
+                      :key="f.name"
+                      class="policy-tooltip__row"
+                    >
+                      <code>{{ f.name }}</code
+                      >{{ f.desc }}
+                    </div>
+                  </div>
+                </template>
+                <Icon
+                  icon="vi-carbon:information"
+                  color="#909399"
+                  :size="14"
+                  style="cursor: help"
+                />
+              </ElTooltip>
               <Icon v-if="frozenDisabled" icon="vi-ep:lock" color="#909399" :size="14" />
               <ElTag v-if="frozenDisabled" size="small" type="info"> 已冻结 </ElTag>
             </div>
           </template>
-          <div class="monaco-card monaco-card--short">
+          <div class="monaco-card">
             <MonacoEditor
               v-model="editForm.sidecar_policy"
               language="json"
@@ -523,6 +719,31 @@ onMounted(() => {
 
   &--short {
     height: 160px;
+  }
+}
+</style>
+
+<style lang="less">
+/* tooltip 内容不能 scoped，因为渲染在 teleport 层 */
+.policy-tooltip {
+  max-width: 360px;
+
+  &__row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 12px;
+    line-height: 1.5;
+
+    code {
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.12);
+      padding: 0 5px;
+      border-radius: 3px;
+      font-family: monospace;
+      color: #a8d8f0;
+    }
   }
 }
 </style>
