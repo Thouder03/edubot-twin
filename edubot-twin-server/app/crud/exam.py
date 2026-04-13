@@ -36,6 +36,27 @@ async def create_exam(
         exam_mode=ExamMode(exam_mode),
         status=ExamStatus.DRAFT,
         created_by=created_by,
+        runtime_policy_json={
+            "max_duration_ms": 600000,
+            "max_attempts": 3,
+            "allow_debug_before_start": True
+        },
+        panel_policy_json={
+            "lock_panels_during_exam": False,
+            "allowed_panels": ["ROS3DViewer", "WorkspacePanel", "ContainerTerminal", "RosoutPanel"]
+        },
+        scoring_policy_json={
+            "pass_threshold": 60,
+            "scoring_mode": "objective_only"
+        },
+        sidecar_policy_json={
+            "image": "edubot/sidecar-runner:v1",
+            "cpu_limit": 1.0,
+            "memory_limit_mb": 512,
+            "eval_script_id": None,
+            "env_snapshot_id": None,
+            "file_snapshot_id": None
+        }
     )
     db.add(exam)
     try:

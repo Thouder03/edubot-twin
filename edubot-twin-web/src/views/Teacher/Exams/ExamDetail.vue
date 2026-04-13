@@ -38,49 +38,6 @@ import {
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-// ─── 策略 JSON 默认模板（新建/空配置时展示） ──────────────────────────────────
-
-const DEFAULT_RUNTIME_POLICY = JSON.stringify(
-  {
-    max_duration_ms: 600000,
-    max_attempts: 3,
-    allow_debug_before_start: true
-  },
-  null,
-  2
-)
-
-const DEFAULT_PANEL_POLICY = JSON.stringify(
-  {
-    lock_panels_during_exam: false,
-    allowed_panels: ['ROS3DViewer', 'WorkspacePanel', 'ContainerTerminal', 'RosoutPanel']
-  },
-  null,
-  2
-)
-
-const DEFAULT_SCORING_POLICY = JSON.stringify(
-  {
-    pass_threshold: 60,
-    scoring_mode: 'objective_only'
-  },
-  null,
-  2
-)
-
-const DEFAULT_SIDECAR_POLICY = JSON.stringify(
-  {
-    image: 'edubot/sidecar-runner:v1',
-    cpu_limit: 1.0,
-    memory_limit_mb: 512,
-    eval_script_id: null,
-    env_snapshot_id: null,
-    file_snapshot_id: null
-  },
-  null,
-  2
-)
-
 // ─── 各策略字段说明 ────────────────────────────────────────────────────────────
 
 const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc: string }[] }> = {
@@ -123,16 +80,6 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
       { name: 'file_snapshot_id', desc: '考试文件快照 ID（可选）' }
     ]
   }
-}
-
-function fillDefaultIfEmpty(jsonStr: string, defaultStr: string): string {
-  try {
-    const obj = JSON.parse(jsonStr)
-    if (Object.keys(obj).length === 0) return defaultStr
-  } catch {
-    // invalid json, return as-is
-  }
-  return jsonStr
 }
 
 const route = useRoute()
@@ -202,22 +149,10 @@ async function loadExam() {
       editForm.value.file_snapshot_id = exam.value.file_snapshot_id ?? undefined
       editForm.value.eval_script_id = exam.value.eval_script_id ?? undefined
       editForm.value.teacher_comment_template = exam.value.teacher_comment_template || ''
-      editForm.value.runtime_policy = fillDefaultIfEmpty(
-        JSON.stringify(exam.value.runtime_policy_json || {}, null, 2),
-        DEFAULT_RUNTIME_POLICY
-      )
-      editForm.value.panel_policy = fillDefaultIfEmpty(
-        JSON.stringify(exam.value.panel_policy_json || {}, null, 2),
-        DEFAULT_PANEL_POLICY
-      )
-      editForm.value.scoring_policy = fillDefaultIfEmpty(
-        JSON.stringify(exam.value.scoring_policy_json || {}, null, 2),
-        DEFAULT_SCORING_POLICY
-      )
-      editForm.value.sidecar_policy = fillDefaultIfEmpty(
-        JSON.stringify(exam.value.sidecar_policy_json || {}, null, 2),
-        DEFAULT_SIDECAR_POLICY
-      )
+      editForm.value.runtime_policy = JSON.stringify(exam.value.runtime_policy_json || {}, null, 2)
+      editForm.value.panel_policy = JSON.stringify(exam.value.panel_policy_json || {}, null, 2)
+      editForm.value.scoring_policy = JSON.stringify(exam.value.scoring_policy_json || {}, null, 2)
+      editForm.value.sidecar_policy = JSON.stringify(exam.value.sidecar_policy_json || {}, null, 2)
     }
   } catch {
     ElMessage.error('加载考试详情失败')
@@ -275,13 +210,33 @@ async function saveChanges(manual: boolean = false) {
 
   // JSON 字段
   const rp = tryParseJSON(editForm.value.runtime_policy)
-  if (rp !== null) updateData.runtime_policy = rp
+  if (
+    rp !== null &&
+    editForm.value.runtime_policy !== JSON.stringify(exam.value.runtime_policy_json || {}, null, 2)
+  ) {
+    updateData.runtime_policy = rp
+  }
   const pp = tryParseJSON(editForm.value.panel_policy)
-  if (pp !== null) updateData.panel_policy = pp
+  if (
+    pp !== null &&
+    editForm.value.panel_policy !== JSON.stringify(exam.value.panel_policy_json || {}, null, 2)
+  ) {
+    updateData.panel_policy = pp
+  }
   const sp = tryParseJSON(editForm.value.scoring_policy)
-  if (sp !== null) updateData.scoring_policy = sp
+  if (
+    sp !== null &&
+    editForm.value.scoring_policy !== JSON.stringify(exam.value.scoring_policy_json || {}, null, 2)
+  ) {
+    updateData.scoring_policy = sp
+  }
   const scp = tryParseJSON(editForm.value.sidecar_policy)
-  if (scp !== null) updateData.sidecar_policy = scp
+  if (
+    scp !== null &&
+    editForm.value.sidecar_policy !== JSON.stringify(exam.value.sidecar_policy_json || {}, null, 2)
+  ) {
+    updateData.sidecar_policy = scp
+  }
 
   // 乐观锁
   updateData.updated_at = exam.value.updated_at
