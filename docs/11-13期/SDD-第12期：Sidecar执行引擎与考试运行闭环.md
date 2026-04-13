@@ -341,6 +341,14 @@ stateDiagram-v2
 
 **`AttemptFullDetail` = `AttemptDetail` + 学生信息 + 考试信息 + 下载链接**（artifacts 打包）。
 
+> 实现约束（本期审查决议）：后端 Schema 必须采用统一继承链，禁止学生端/教师端重复手写字段。
+>
+> - `AttemptBaseSchema`：公共字段（attempt_id、status、score、error 等）
+> - `StudentAttemptDetailSchema`：`AttemptBaseSchema` + 学生自查所需字段
+> - `TeacherAttemptFullSchema`：`AttemptBaseSchema` + 学生信息 + 考试信息 + artifacts 下载信息
+>
+> 前端 `types.ts` 仅允许从同一基础类型派生，禁止复制粘贴定义第二套 `AttemptDetail`。
+
 ### 5.3 错误语义映射
 
 | 错误码 | HTTP | 语义 | 前端动作 |
@@ -357,6 +365,12 @@ stateDiagram-v2
 | `RESULT_MISSING_FIELDS` | — | 缺必填字段 | 显示缺失字段清单 |
 | `SIDECAR_TIMEOUT` | — | Sidecar 超时被 kill | 显示"评测超时" |
 | `FORBIDDEN_NOT_OWNER` | 403 | 学生访问他人 attempt | — |
+
+> 实现约束（本期审查决议）：新增 `ExamAttemptErrorCode` 枚举与 `to_http_exception` 映射层。
+>
+> - 后端模块只允许抛 `ExamAttemptErrorCode`，不允许自由字符串错误码
+> - API 层统一做错误码 → HTTP 状态码映射
+> - 前端文案只按错误码 key 映射，不读取后端自由文本
 
 ---
 
@@ -569,6 +583,7 @@ bash /opt/evaluate/{entry_point}
 - 两步开始流程保留，但 `pending` 状态必须具备超时回收与可重试语义，防止浏览器中断或第二步请求未发出时留下僵尸 attempt。
 - `finalize_attempt()` 必须把 `artifact_index_json`、`result_json`、关键摘要字段一并固化到数据库，教师端详情页默认读取数据库快照；文件系统 artifacts 仅作为原始附件来源。
 - 当前设计**仅支持单后端实例 / 单进程部署**。`asyncio.create_task`、超时扫描任务与第13期阶段轮询器不具备多实例协调能力，多副本部署前必须补分布式锁或租约机制。
+- 部署与验收闸门（强制）：第12期上线检查必须验证后端副本数=1，并配置“检测到多实例即阻断发布”的流程告警。
 
 ### 7.5 超时终止定时任务
 
@@ -779,7 +794,7 @@ export interface AttemptDetail {
 | result.json 缺失 | 文件检查 | Y | `RESULT_MISSING_FILE` | Y | Y |
 | result.json 非法 JSON | 解析异常 | Y | `RESULT_INVALID_JSON` | Y | Y |
 | result.json 缺必填字段 | Schema 校验 | Y | `RESULT_MISSING_FIELDS` + 缺失列表 | Y | Y |
-| Sidecar 容器清理失败 | Docker API 异常 | Y | 后端自愈扫描重试 | Y | N |
+| Sidecar 容器清理失败 | Docker API 异常 | Y | 后端自愈扫描重试 | Y | Y（本期补回归测试） |
 | 学生关闭浏览器 | 前端断线 | Y | 后端任务独立运行，不受影响 | Y | Y |
 | 主仿真容器中途崩溃 | 状态不一致 | Y | 标记 attempt aborted + 记录 system_error | Y | Y |
 
@@ -828,6 +843,9 @@ export interface AttemptDetail {
 | result.json 缺必填 | 集成 | 少写 objective_score | `error` + `RESULT_MISSING_FIELDS` |
 | 学生查看进行中 | 集成 | poll API | 返回 status=running + elapsed_ms |
 | 学生主动 abort | 集成 | POST /abort | status=aborted + Sidecar kill |
+| Sidecar 清理失败回归 | 集成 | mock docker rm 异常 + 自愈扫描重试 | 最终无残留容器 + attempt 终态正确 |
+| 前端双击开始并发防护 | E2E | 连续双击“开始考试” | 仅创建 1 条 attempt，按钮状态正确 |
+| running 状态刷新/重进恢复 | E2E | 评测中刷新页面后重进 | 正确恢复 attempt 状态与轮询 |
 | 越权访问他人 attempt | 安全 | 学生 A 读 B 的 | 403 |
 | JSON Schema 单元 | 单元 | 边界 score=-1, score=101 | clamp + warning |
 | 超时扫描任务 | 集成 | 手动造过期 attempt | 5 秒内被 kill |
@@ -853,6 +871,8 @@ export interface AttemptDetail {
 - [ ] `exam_attempts` 状态转换符合 §4.3 状态机
 - [ ] 所有错误码在前后端一致
 - [ ] 生命周期事件顺序严格按 §6.3 语义
+- [ ] 镜像发布验收闸门通过：部署镜像 digest 与考试配置 sidecar 镜像一致
+- [ ] 运行与调试命令仅通过 `scripts/` 脚本入口执行
 
 ---
 
