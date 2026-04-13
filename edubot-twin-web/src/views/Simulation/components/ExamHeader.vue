@@ -6,8 +6,11 @@
  *   考试名称 | 模式 | 倒计时 | 状态 | 剩余尝试 | 操作按钮
  */
 import { computed, ref, onBeforeUnmount, watch } from 'vue'
-import { ElButton, ElTag } from 'element-plus'
+import { ElButton, ElTag, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus'
+import { Icon } from '@/components/Icon'
 import type { ExamRunInfo, AttemptDetail, ExamAttemptStatus } from '@/api/exam/attempts'
+import { availablePanels } from '../config/predefined-layouts'
+import SimControlBar from './SimControlBar.vue'
 
 const props = defineProps<{
   examRunInfo: ExamRunInfo | null
@@ -21,7 +24,10 @@ const emit = defineEmits<{
   (e: 'abort'): void
   (e: 'exit'): void
   (e: 'view-result'): void
+  (e: 'addPanel', type: string, title: string): void
 }>()
+
+const isRunning = computed(() => props.attempt?.status === 'running')
 
 // ─── 倒计时 ───────────────────────────────────────────────────────────────────
 const countdownDisplay = ref('--:--')
@@ -137,28 +143,48 @@ const countdownWarning = computed(() => countdownPercent.value < 20)
       </div>
     </div>
 
-    <!-- 中区：倒计时 -->
+    <!-- 中区：考试运行中显示倒计时，其余时间显示仿真控制栏 -->
     <div class="exam-header__center">
-      <div
-        v-if="props.attempt?.started_at"
-        class="countdown"
-        :class="{ warning: countdownWarning }"
-      >
-        <span class="countdown__icon">⏱</span>
-        <span class="countdown__time">{{ countdownDisplay }}</span>
-      </div>
-      <div v-else class="countdown countdown--idle">
-        <span class="countdown__icon">⏱</span>
-        <span class="countdown__time">{{
-          props.examRunInfo
-            ? `限时 ${Math.ceil(props.examRunInfo.time_limit_ms / 60000)} 分钟`
-            : '--'
-        }}</span>
-      </div>
+      <template v-if="isRunning">
+        <div class="countdown" :class="{ warning: countdownWarning }">
+          <span class="countdown__icon">⏱</span>
+          <span class="countdown__time">{{ countdownDisplay }}</span>
+        </div>
+      </template>
+      <template v-else>
+        <SimControlBar />
+      </template>
     </div>
 
-    <!-- 右区：操作按钮 -->
+    <!-- 右区：添加面板 + 操作按钮 -->
     <div class="exam-header__right">
+      <!-- 添加面板 -->
+      <ElDropdown
+        trigger="click"
+        @command="
+          (cmd: string) => {
+            const panel = availablePanels.find((p) => p.type === cmd)
+            if (panel) emit('addPanel', panel.type, panel.label)
+          }
+        "
+      >
+        <ElButton text class="header-action-btn">
+          <Icon icon="vi-carbon:add" :size="16" class="mr-4px" />
+          添加面板
+        </ElButton>
+        <template #dropdown>
+          <ElDropdownMenu>
+            <ElDropdownItem
+              v-for="panel in availablePanels"
+              :key="panel.type"
+              :command="panel.type"
+            >
+              {{ panel.label }}
+            </ElDropdownItem>
+          </ElDropdownMenu>
+        </template>
+      </ElDropdown>
+
       <!-- 无 attempt：调试中 -->
       <template v-if="!props.attempt">
         <ElButton type="primary" :loading="props.starting" @click="emit('start')">
@@ -260,6 +286,15 @@ const countdownWarning = computed(() => countdownPercent.value < 20)
     align-items: center;
     gap: 8px;
     flex: 0 0 auto;
+  }
+}
+
+.header-action-btn {
+  font-size: 13px;
+  color: #bac2de;
+
+  &:hover {
+    color: #cdd6f4;
   }
 }
 

@@ -484,6 +484,7 @@ async function handleBack(_mode: 'temporary' | 'stopAndExit') {
       @abort="handleAbort"
       @exit="handleBack('temporary')"
       @view-result="handleViewResult"
+      @add-panel="handleAddPanel"
     />
     <!-- 普通模式顶栏 -->
     <SimulationHeader
