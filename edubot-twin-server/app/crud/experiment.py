@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import logging
+import shutil
 
 from sqlalchemy import asc, desc, func, select
 from sqlalchemy.exc import IntegrityError
@@ -455,17 +456,11 @@ async def create_bundle(
     name: str = "未命名文件包",
     storage_root: str = "",
     created_by: int,
-    # 兼容旧测试参数（10-S1 之前）
-    experiment_id: Optional[int] = None,
     file_manifest: Optional[list] = None,
 ) -> ExperimentFileBundle:
     """创建实验文件包记录（10-S1-2: 新增 name/storage_root，移除 experiment_id/checksum）"""
-    del experiment_id  # 仅为兼容旧调用，S1 后文件包与实验解耦
 
     manifest = file_manifest or []
-    if not storage_root:
-        storage_root = str(Path("data/file_bundles") / f"tmp-{created_by}-{int(datetime.utcnow().timestamp() * 1000)}")
-    Path(storage_root).mkdir(parents=True, exist_ok=True)
 
     bundle = ExperimentFileBundle(
         name=name,
@@ -569,6 +564,12 @@ async def delete_bundle(db: AsyncSession, *, bundle: ExperimentFileBundle) -> No
 
     await db.delete(bundle)
     await db.commit()
+
+    if bundle.storage_root and Path(bundle.storage_root).exists():
+        try:
+            shutil.rmtree(bundle.storage_root)
+        except Exception as e:
+            logger.error(f"Failed to delete directory {bundle.storage_root}: {e}")
 
 
 async def update_bundle_stats(
@@ -691,6 +692,12 @@ async def delete_env_bundle(db: AsyncSession, *, env_bundle: ExperimentEnvBundle
 
     await db.delete(env_bundle)
     await db.commit()
+
+    if env_bundle.storage_root and Path(env_bundle.storage_root).exists():
+        try:
+            shutil.rmtree(env_bundle.storage_root)
+        except Exception as e:
+            logger.error(f"Failed to delete directory {env_bundle.storage_root}: {e}")
 
 
 async def update_env_bundle_stats(

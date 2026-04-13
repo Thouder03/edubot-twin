@@ -156,7 +156,7 @@ async def rename_file_bundle(
     ))
 
 
-@router.delete("/{bundle_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除文件包")
+@router.delete("/{bundle_id}",  response_model=ApiResponse, summary="删除文件包")
 async def delete_file_bundle(
     bundle_id: int,
     db: AsyncSession = Depends(get_db),
@@ -168,6 +168,7 @@ async def delete_file_bundle(
         await crud_experiment.delete_bundle(db, bundle=bundle)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    return ApiResponse(data=None, message="已删除")
 
 
 # ─── 文件包文件操作 ──────────────────────────────────────────────────────────────
@@ -275,7 +276,7 @@ async def save_bundle_file(
     return ApiResponse(data={"modified_at": new_mtime})
 
 
-@router.delete("/{bundle_id}/files/delete", status_code=status.HTTP_204_NO_CONTENT, summary="删除文件")
+@router.delete("/{bundle_id}/files/delete", response_model=ApiResponse , summary="删除文件")
 async def delete_bundle_file(
     bundle_id: int,
     path: str = Query(...),
@@ -300,6 +301,7 @@ async def delete_bundle_file(
         total_size_bytes=total_size,
         file_manifest=manifest,
     )
+    return ApiResponse(data=None, message="已删除")
 
 
 async def _refresh_stats(db: AsyncSession, bundle, svc: BundleFileService) -> None:

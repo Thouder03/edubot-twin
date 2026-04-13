@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import logging
+import shutil
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -123,6 +124,10 @@ async def delete_eval_script(db: AsyncSession, *, script: ExamEvalScript) -> Non
     )
     if result.scalar_one_or_none():
         raise ValueError("SNAPSHOT_IN_USE")
+
+    # 删除真实路径文件
+    if script.storage_root and Path(script.storage_root).exists():
+        shutil.rmtree(script.storage_root, ignore_errors=True)
 
     await db.delete(script)
     await db.commit()

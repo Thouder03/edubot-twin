@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import logging
+import shutil
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -120,6 +121,10 @@ async def delete_file_snapshot(db: AsyncSession, *, snapshot: ExamFileSnapshot) 
     )
     if result.scalar_one_or_none():
         raise ValueError("SNAPSHOT_IN_USE")
+
+    # 删除真实路径文件
+    if snapshot.storage_root and Path(snapshot.storage_root).exists():
+        shutil.rmtree(snapshot.storage_root, ignore_errors=True)
 
     await db.delete(snapshot)
     await db.commit()
