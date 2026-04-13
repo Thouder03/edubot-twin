@@ -19,17 +19,21 @@
  * 所有 API 调用通过请求拦截器自动使用 sessionStorage 中的 simulation_token
  * isDryRunMode 仅用于控制 DryRunToolbar 可见性，不影响任何业务逻辑
  */
-import { ref, onMounted, onBeforeUnmount, provide, readonly, inject } from 'vue'
+import { ref, onMounted, onBeforeUnmount, provide, readonly, inject, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { LayoutConfig, type ResolvedLayoutConfig } from 'golden-layout'
 import { useRoute, useRouter } from 'vue-router'
 
 import SimulationHeader from './components/SimulationHeader.vue'
+import ExamHeader from './components/ExamHeader.vue'
+import ExamStartDialog from './components/ExamStartDialog.vue'
+import ExamResultDialog from './components/ExamResultDialog.vue'
 import GLayout from './components/GLayout.vue'
 import SettingsSidebar from './components/SettingsSidebar.vue'
 import { defaultLayout } from './config/predefined-layouts'
 import { usePanelState } from './stores/panelState'
 import { useGzBridge } from './composables/useGzBridge'
+import { useExamMode } from './composables/useExamMode'
 import { defaultConfig as gzDefaultConfig } from './panels/GzWebViewer/settings'
 import {
   getMyContainerApi,
@@ -44,6 +48,45 @@ import { useUserStore } from '@/store/modules/user'
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+
+// ---------- 考试模式 ----------
+const examIdFromQuery = computed<number | null>(() => {
+  const q = route.query.exam_id
+  const n = Number(q)
+  return q && !isNaN(n) ? n : null
+})
+const isExamMode = computed(() => examIdFromQuery.value !== null)
+const examMode = useExamMode(examIdFromQuery)
+
+const showStartDialog = ref(false)
+const showResultDialog = ref(false)
+
+function handleExamStart() {
+  showStartDialog.value = true
+}
+
+async function handleStartConfirm() {
+  const ok = await examMode.startExam()
+  if (ok) showStartDialog.value = false
+}
+
+function handleAbort() {
+  examMode.abortExam('学生主动放弃')
+}
+
+function handleViewResult() {
+  showResultDialog.value = true
+}
+
+// attempt 变为终态时自动弹出结果弹窗
+watch(
+  () => examMode.attempt.value?.status,
+  (status) => {
+    if (status === 'completed' || status === 'error' || status === 'aborted') {
+      showResultDialog.value = true
+    }
+  }
+)
 
 const experimentContext = ref<{
   experiment_name?: string
@@ -430,12 +473,27 @@ async function handleBack(_mode: 'temporary' | 'stopAndExit') {
 
 <template>
   <div class="simulation-page">
+    <!-- 考试模式顶栏 -->
+    <ExamHeader
+      v-if="isExamMode"
+      :exam-run-info="examMode.examRunInfo.value"
+      :attempt="examMode.attempt.value"
+      :starting="examMode.starting.value"
+      :aborting="examMode.aborting.value"
+      @start="handleExamStart"
+      @abort="handleAbort"
+      @exit="handleBack('temporary')"
+      @view-result="handleViewResult"
+    />
+    <!-- 普通模式顶栏 -->
     <SimulationHeader
+      v-else
       :experiment-context="experimentContext"
       @layout-change="handleLayoutChange"
       @add-panel="handleAddPanel"
       @back="handleBack"
     />
+
     <div class="simulation-content">
       <SettingsSidebar />
       <GLayout
@@ -444,6 +502,24 @@ async function handleBack(_mode: 'temporary' | 'stopAndExit') {
         @settings-toggle="handleSettingsToggle"
       />
     </div>
+
+    <!-- 考试确认对话框 -->
+    <ExamStartDialog
+      v-if="isExamMode"
+      v-model:visible="showStartDialog"
+      :exam-run-info="examMode.examRunInfo.value"
+      :starting="examMode.starting.value"
+      @confirm="handleStartConfirm"
+      @cancel="showStartDialog = false"
+    />
+
+    <!-- 结果摘要对话框 -->
+    <ExamResultDialog
+      v-if="isExamMode"
+      v-model:visible="showResultDialog"
+      :attempt="examMode.attempt.value"
+      @close="showResultDialog = false"
+    />
   </div>
 </template>
 

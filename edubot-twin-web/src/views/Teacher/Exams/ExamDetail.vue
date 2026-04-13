@@ -13,6 +13,7 @@ import {
 import { getExamEnvSnapshotListApi } from '@/api/exam/envSnapshots'
 import { getExamFileSnapshotListApi } from '@/api/exam/fileSnapshots'
 import { getExamEvalScriptListApi } from '@/api/exam/evalScripts'
+import AttemptList from './components/AttemptList.vue'
 import type {
   ExamResponse,
   ExamEnvSnapshotListItem,
@@ -502,6 +503,14 @@ onMounted(() => {
         </ElCard>
       </ElCol>
     </ElRow>
+
+    <!-- 运行记录面板（第12期） -->
+    <ElCard v-if="exam" shadow="never" class="mt-20px">
+      <template #header>
+        <span class="font-bold">运行记录</span>
+      </template>
+      <AttemptList :exam-id="examId" />
+    </ElCard>
   </ContentWrap>
 </template>
 

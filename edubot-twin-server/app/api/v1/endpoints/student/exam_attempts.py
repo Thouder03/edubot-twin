@@ -2,6 +2,7 @@
 学生端考试运行 API（第12期 S6）
 
 路由前缀：/api/v1/students/
+  GET  /exams                              → 获取已发布考试列表（学生首页选考试用）
   GET  /exams/{exam_id}                    → 获取考试运行信息（ExamRunInfo）
   GET  /exams/{exam_id}/my-attempts        → 获取我的尝试列表
   POST /exam-attempts                      → 创建考试尝试（status=pending）
@@ -37,12 +38,26 @@ from app.schemas.exam_attempt import (
     StudentAttemptSummarySchema,
 )
 from app.core.sidecar_manager import schedule_sidecar
+from app.models.exam import Exam
+from pydantic import BaseModel
+from sqlalchemy import select
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # 本期只支持 result_run 模式
 SUPPORTED_EXAM_MODES = {ExamMode.RESULT_RUN.value}
+
+
+class ExamListItemSchema(BaseModel):
+    """学生端可参加的考试列表条目"""
+    exam_id: int
+    name: str
+    code: str
+    description: Optional[str] = None
+    exam_mode: str
+    time_limit_ms: int
+    max_attempts: int
 
 
 def _build_exam_run_info(exam, remaining_attempts: int) -> ExamRunInfoSchema:
@@ -79,6 +94,40 @@ def _build_student_detail(attempt) -> StudentAttemptDetailSchema:
         created_at=attempt.created_at,
         updated_at=attempt.updated_at,
     )
+
+
+# ─── GET /students/exams（已发布考试列表） ────────────────────────────────────
+
+
+@router.get(
+    "/exams",
+    response_model=ApiResponse[list[ExamListItemSchema]],
+    summary="获取可参加的已发布考试列表（学生首页用）",
+)
+async def list_published_exams(
+    _user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """返回全部已发布（published）且模式为 result_run 的考试，供学生首页选择。"""
+    result = await db.execute(
+        select(Exam)
+        .where(Exam.status == ExamStatus.PUBLISHED)
+        .order_by(Exam.created_at.desc())
+    )
+    exams = list(result.scalars().all())
+    items = []
+    for exam in exams:
+        policy = exam.runtime_policy_json or {}
+        items.append(ExamListItemSchema(
+            exam_id=exam.id,
+            name=exam.name,
+            code=exam.code,
+            description=exam.description,
+            exam_mode=exam.exam_mode.value,
+            time_limit_ms=policy.get("max_duration_ms", 600000),
+            max_attempts=policy.get("max_attempts", 3),
+        ))
+    return ApiResponse(code=0, data=items)
 
 
 # ─── GET /students/exams/{exam_id} ───────────────────────────────────────────

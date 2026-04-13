@@ -8,7 +8,8 @@ import {
   ElLoading,
   ElMessage,
   ElSelect,
-  ElOption
+  ElOption,
+  ElMessageBox
 } from 'element-plus'
 import { BaseButton } from '@/components/Button'
 import { ref, onMounted, computed } from 'vue'
@@ -24,7 +25,7 @@ import type {
   StudentAvailableVersionItem,
   StudentSimulationTaskResponse
 } from '@/api/experiment/types'
-import { ElMessageBox } from 'element-plus'
+import ExamSelectDialog from './ExamSelectDialog.vue'
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('student-home')
@@ -260,8 +261,10 @@ const handleStartSimulation = async () => {
   }
 }
 
+const showExamSelect = ref(false)
+
 const handleStartExam = () => {
-  console.log('TODO: 开始考试/测试逻辑')
+  showExamSelect.value = true
 }
 
 onMounted(async () => {
@@ -347,6 +350,8 @@ onMounted(async () => {
       <BaseButton type="primary" size="large" @click="handleStartSimulation">开始仿真</BaseButton>
       <BaseButton type="success" size="large" @click="handleStartExam">开始考试/测试</BaseButton>
     </div>
+
+    <ExamSelectDialog v-model:visible="showExamSelect" />
   </div>
 </template>
 
