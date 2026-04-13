@@ -21,6 +21,7 @@ from app.core.container_manager import (
     list_edubot_simulation_containers,
 )
 from app.models.container import ContainerStatus
+from app.core.sidecar_timeout_scanner import sidecar_timeout_scanner_loop
 
 logger = logging.getLogger(__name__)
 
@@ -368,6 +369,8 @@ async def lifespan(app: FastAPI):
     metrics_task = asyncio.create_task(_metrics_collection_loop())
     metrics_cleanup_task = asyncio.create_task(_metrics_cleanup_loop())
     orphan_task = asyncio.create_task(_orphan_container_reconcile_loop())
+    # 第12期：Sidecar 超时扫描任务
+    sidecar_scanner_task = asyncio.create_task(sidecar_timeout_scanner_loop())
     logger.info("🚀 Edubot Twin API 启动中...")
     logger.info("📚 API 文档: http://localhost:8000/docs")
 
@@ -378,7 +381,8 @@ async def lifespan(app: FastAPI):
     metrics_task.cancel()
     metrics_cleanup_task.cancel()
     orphan_task.cancel()
-    for task in [cleanup_task, metrics_task, metrics_cleanup_task, orphan_task]:
+    sidecar_scanner_task.cancel()
+    for task in [cleanup_task, metrics_task, metrics_cleanup_task, orphan_task, sidecar_scanner_task]:
         try:
             await task
         except asyncio.CancelledError:

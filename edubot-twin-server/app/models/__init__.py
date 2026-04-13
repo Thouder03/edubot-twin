@@ -25,6 +25,13 @@ from app.models.simulation_task import (
     SimulationTaskStage,
     SimulationTaskStatus,
 )
+from app.models.exam_attempt import (
+    ExamAttempt,
+    ExamEvidenceEvent,
+    ExamAttemptStatus,
+    ExamAttemptReviewStatus,
+    EvidenceEventType,
+)
 
 __all__ = [
     "Student",
@@ -48,4 +55,9 @@ __all__ = [
     "SimulationTask",
     "SimulationTaskStage",
     "SimulationTaskStatus",
+    "ExamAttempt",
+    "ExamEvidenceEvent",
+    "ExamAttemptStatus",
+    "ExamAttemptReviewStatus",
+    "EvidenceEventType",
 ]

@@ -15,6 +15,7 @@ from . import (
     containers, students, monitor, experiments, file_bundles, env_bundles,
     dry_run_tools, container_files, container_proxy,
     exams, exam_env_snapshots, exam_file_snapshots, exam_eval_scripts,
+    exam_attempts,
 )
 
 # 创建教师路由聚合器
@@ -62,3 +63,6 @@ router.include_router(containers.router, prefix="/containers", tags=["教师-容
 
 # 学生管理（第五期）
 router.include_router(students.router, prefix="/students", tags=["教师-学生管理"])
+
+# 考试运行记录（第12期）
+router.include_router(exam_attempts.router, tags=["教师-考试运行记录"])

@@ -35,6 +35,10 @@ from app.models.exam import (  # noqa: F401（第11期新增模型）
     ExamFileSnapshot,
     ExamEvalScript,
 )
+from app.models.exam_attempt import (  # noqa: F401（第12期新增模型）
+    ExamAttempt,
+    ExamEvidenceEvent,
+)
 from app.models.simulation_task import SimulationTask  # noqa: F401
 from app.models.student import User
 from app.crud.student import hash_password
