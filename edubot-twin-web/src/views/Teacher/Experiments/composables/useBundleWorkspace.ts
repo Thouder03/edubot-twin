@@ -37,6 +37,31 @@ function joinPath(dir: string, name: string): string {
   return dir === '.' ? name : `${dir}/${name}`
 }
 
+/**
+ * 解析 Content-Disposition 头中的文件名，按 RFC 5987 优先级：
+ *   1. filename*=UTF-8''<urlencoded>（支持非 ASCII，如中文）
+ *   2. filename="..." （ASCII 回退）
+ * 返回 null 表示头中无可用文件名字段。
+ */
+function parseContentDispositionFilename(cd: string): string | null {
+  if (!cd) return null
+  // 优先匹配 RFC 5987 形式：filename*=UTF-8''xxx 或 filename*=xxx
+  const starMatch = cd.match(/filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/i)
+  if (starMatch?.[1]) {
+    try {
+      return decodeURIComponent(starMatch[1].trim())
+    } catch {
+      /* fallthrough */
+    }
+  }
+  // 传统 filename="..." 或 filename=...
+  const plainMatch = cd.match(/filename\s*=\s*"?([^";]+)"?/i)
+  if (plainMatch?.[1]) {
+    return plainMatch[1].trim()
+  }
+  return null
+}
+
 // ─── 本地 listFiles（调用 bundle API）────────────────────────────────────────
 
 async function bundleListFiles(apiPrefix: string, path?: string) {
@@ -525,8 +550,7 @@ export function useBundleWorkspace(apiPrefixRef: Ref<string>, protectedPathNames
       }
       const blob = await res.blob()
       const cd = res.headers.get('Content-Disposition') ?? ''
-      const match = cd.match(/filename="?([^"\s]+)"?/)
-      const filename = match?.[1] ?? getBaseName(paths[0])
+      const filename = parseContentDispositionFilename(cd) ?? getBaseName(paths[0])
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
       link.download = filename

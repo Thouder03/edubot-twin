@@ -141,7 +141,8 @@ class TestListReadSaveDelete:
             res = await c.delete(
                 _url(snap.id, "/delete"), params={"path": "tmp.txt"}, headers=_auth()
             )
-        assert res.status_code == 204
+        assert res.status_code == 200
+        assert res.json()["code"] == 0
         assert not (Path(snap.storage_root) / "tmp.txt").exists()
 
         await db_session.refresh(snap)
@@ -342,6 +343,27 @@ class TestDownload:
         assert res.status_code == 200
         assert res.content == b"hello download"
         assert "attachment" in res.headers.get("content-disposition", "")
+
+    @pytest.mark.asyncio
+    async def test_download_file_with_non_ascii_name(
+        self, db_session, tmp_path, monkeypatch, override_get_db, mock_teacher_auth
+    ):
+        """回归：中文文件名应走 RFC 5987 filename*= 编码，不抛 UnicodeEncodeError"""
+        snap = await _create_snapshot(db_session, monkeypatch, tmp_path, "cjk")
+        (Path(snap.storage_root) / "C方案.md").write_text("hello 中文", encoding="utf-8")
+
+        async with await _client() as c:
+            res = await c.get(
+                _url(snap.id, "/download"), params={"path": "C方案.md"}, headers=_auth()
+            )
+        assert res.status_code == 200
+        assert res.content.decode("utf-8") == "hello 中文"
+        cd = res.headers.get("content-disposition", "")
+        # 含非 ASCII 时应使用 filename*=UTF-8'' 形式
+        assert "filename*=UTF-8''" in cd
+        # URL 编码后的 "C方案.md"
+        from urllib.parse import quote
+        assert quote("C方案.md", safe="") in cd
 
     @pytest.mark.asyncio
     async def test_download_directory_as_zip(

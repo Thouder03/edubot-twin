@@ -20,6 +20,7 @@ from __future__ import annotations
 import io
 import zipfile
 from typing import Awaitable, Callable, Optional, Protocol
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -80,6 +81,22 @@ def _handle(e: BundleFileError) -> None:
 
 def _relpath(target, root) -> str:
     return str(target.relative_to(root).as_posix())
+
+
+def _build_content_disposition(filename: str) -> str:
+    """
+    构造 RFC 5987 兼容的 Content-Disposition 头，支持中文等非 ASCII 文件名。
+
+    - ASCII 文件名 → 走传统 `filename="..."`
+    - 含非 ASCII 字符 → 降级 ASCII 名 `download` + `filename*=UTF-8''<urlencoded>`
+      现代浏览器会优先识别 filename*，Safari/IE 会回退到 filename。
+    """
+    try:
+        filename.encode("latin-1")
+        return f'attachment; filename="{filename}"'
+    except UnicodeEncodeError:
+        quoted = quote(filename, safe="")
+        return f"attachment; filename=\"download\"; filename*=UTF-8''{quoted}"
 
 
 # ─── 工厂主体 ─────────────────────────────────────────────────────────────────
@@ -209,10 +226,10 @@ def build_bundle_files_router(
         return ApiResponse(data={"modified_at": new_mtime})
 
     # ─── 5. 删除文件 ───────────────────────────────────────────────────────────
-
-    @router.delete(
-        "/files/delete", status_code=status.HTTP_204_NO_CONTENT, summary="删除文件/目录"
-    )
+    # 注意：必须返回 ApiResponse(code=0) 而非 204 No Content；前端 axios 响应
+    # 拦截器基于 response.data.code === SUCCESS_CODE 判定成功，空 body 会误触发
+    # 空提示错误。
+    @router.delete("/files/delete", response_model=ApiResponse, summary="删除文件/目录")
     async def delete_file(
         bundle_id: int,
         path: str = Query(...),
@@ -226,6 +243,7 @@ def build_bundle_files_router(
         except BundleFileError as e:
             _handle(e)
         await _refresh_stats(db, bundle, svc)
+        return ApiResponse(data=None, message="已删除")
 
     # ─── 6. 新建目录 ───────────────────────────────────────────────────────────
 
@@ -378,7 +396,7 @@ def build_bundle_files_router(
                 file_generator(),
                 media_type="application/octet-stream",
                 headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Content-Disposition": _build_content_disposition(filename),
                     "Content-Length": str(file_size),
                 },
             )
@@ -398,7 +416,7 @@ def build_bundle_files_router(
         return StreamingResponse(
             zip_generator(),
             media_type="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
+            headers={"Content-Disposition": _build_content_disposition(zip_name)},
         )
 
     return router
