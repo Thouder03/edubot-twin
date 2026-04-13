@@ -43,7 +43,6 @@ class ExperimentVersionBase(BaseModel):
     version_name: str = Field(..., min_length=1, max_length=64, description="版本号，如 v1.0.0")
     environment_key: str = Field(..., min_length=1, max_length=128, description="环境标识")
     image_name: str = Field(default="gzweb_sim:v1", min_length=1, max_length=200, description="Docker镜像名")
-    launch_file_path: str = Field(..., min_length=1, max_length=255, description="ROS launch文件路径")
     launch_args_template: dict = Field(default_factory=dict, description="参数模板JSON")
     file_bundle_id: Optional[int] = None
     env_bundle_id: Optional[int] = None  # 10-S1-5: 新增
@@ -70,7 +69,7 @@ class ExperimentVersionResponse(BaseModel):
     version_name: str
     environment_key: str
     image_name: str
-    launch_file_path: str
+
     launch_args_template: dict
     file_bundle_id: Optional[int] = None
     env_bundle_id: Optional[int] = None  # 10-S1-5
@@ -354,7 +353,7 @@ class EnvBundleDryRunByVersionResponse(BaseModel):
 class EnvBundleDryRunRequest(BaseModel):
     """环境包 Dry Run 请求体（旧版，已被 EnvBundleDryRunByVersionRequest 替代）"""
     image_name: str = Field(default="gzweb_sim:v1", min_length=1, max_length=200)
-    launch_file_path: Optional[str] = Field(default=None, max_length=255)
+
     launch_args: dict[str, str] = Field(default_factory=dict)
     readiness_timeout_seconds: float = Field(default=20.0, ge=3.0, le=120.0)
 

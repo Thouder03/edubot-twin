@@ -213,7 +213,7 @@ stateDiagram-v2
 | `/api/v1/teachers/experiments` | GET | Bearer(teacher/admin) | `page:int, page_size:int, keyword?:string, status?:string` | `list[{experiment_id,name,latest_version,published_at}], total` | 200/401/403 |
 | `/api/v1/teachers/experiments` | POST | Bearer(teacher/admin) | `name:str, code:str, description?:str` | `experiment_id, created_at` | 201/400/409 |
 | `/api/v1/teachers/experiments/{experiment_id}` | GET | Bearer(teacher/admin) | 路径参数 | `base_info + versions + publish_logs` | 200/404 |
-| `/api/v1/teachers/experiments/{experiment_id}/versions` | POST | Bearer(teacher/admin) | `version_name:str, environment_key:str, launch_file_path:str, launch_args_template:object, startup_script_ref?:str, file_bundle_id?:int` | `version_id,status(draft)` | 201/400/409 |
+| `/api/v1/teachers/experiments/{experiment_id}/versions` | POST | Bearer(teacher/admin) | `version_name:str, environment_key:str, launch_args_template:object, startup_script_ref?:str, file_bundle_id?:int` | `version_id,status(draft)` | 201/400/409 |
 | `/api/v1/teachers/experiments/{experiment_id}/versions/{version_id}/publish` | POST | Bearer(teacher/admin) | `publish_note?:str` | `publish_id, published_at, operator` | 200/400/404/409 |
 | `/api/v1/teachers/experiments/{experiment_id}/publish-logs` | GET | Bearer(teacher/admin) | `page:int,page_size:int` | `list[{publish_id,version_id,operator,created_at,note}]` | 200/404 |
 | `/api/v1/teachers/experiment-files/upload` | POST | Bearer(teacher/admin) | `multipart(file), experiment_id:int, checksum?:str` | `file_bundle_id, checksum, size, validate_status` | 201/400/413/422 |
@@ -262,7 +262,6 @@ stateDiagram-v2
 | version_name | string(64) | 是 | - | 版本名，如 v1.0.0 |
 | is_visible | bool | 是 | true | 学生是否可见 |
 | environment_key | string(128) | 是 | - | 只读环境标识 |
-| launch_file_path | string(255) | 是 | - | launch 文件路径 |
 | launch_args_template | json | 是 | `{}` | 参数模板 |
 | startup_script_ref | string(255) | 否 | null | 启动脚本引用 |
 | file_bundle_id | int | 否 | null | 关联实验文件包 |

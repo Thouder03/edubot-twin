@@ -8,7 +8,6 @@ export interface ExperimentVersionCreateRequest {
   version_name: string
   environment_key: string
   image_name?: string
-  launch_file_path: string
   launch_args_template: Record<string, string>
   file_bundle_id?: number
   env_bundle_id?: number
@@ -18,7 +17,6 @@ export interface ExperimentVersionUpdateRequest {
   version_name: string
   environment_key: string
   image_name?: string
-  launch_file_path: string
   launch_args_template: Record<string, string>
   file_bundle_id?: number
   env_bundle_id?: number
@@ -30,7 +28,6 @@ export interface ExperimentVersionResponse {
   version_name: string
   environment_key: string
   image_name: string
-  launch_file_path: string
   launch_args_template: Record<string, string>
   file_bundle_id?: number
   env_bundle_id?: number

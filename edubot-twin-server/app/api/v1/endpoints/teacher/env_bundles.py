@@ -297,7 +297,6 @@ async def dry_run_env_bundle(
         raise HTTPException(status_code=404, detail="VERSION_NOT_FOUND")
 
     image_name = version.image_name or "gzweb_sim:v1"
-    launch_file_path = version.launch_file_path
     launch_args = dict(version.launch_args_template) if version.launch_args_template else {}
     env_volumes = {env_bundle.storage_root: env_bundle.container_target_dir}
 
@@ -317,7 +316,6 @@ async def dry_run_env_bundle(
                 user_id=shadow.id,
                 image_name=image_name,
                 current_version_id=version.id,
-                launch_file_path=launch_file_path,
                 launch_args=launch_args,
                 startup_script_path=startup_script_path,
                 env_volumes=env_volumes,

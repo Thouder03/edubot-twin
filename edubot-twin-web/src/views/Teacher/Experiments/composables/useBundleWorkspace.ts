@@ -615,7 +615,7 @@ export function useBundleWorkspace(apiPrefixRef: Ref<string>, protectedPathNames
     extractCommand,
     compressCommand,
     downloadCommand,
-    
+
     // API Mock (For FileTreeContainer lazy load)
     getFilesApi
   }

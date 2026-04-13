@@ -222,10 +222,7 @@ function formatSize(bytes: number): string {
       <div class="list-item__info">
         <div class="list-item__name-line">
           <span class="list-item__name">{{ item.name }}</span>
-          <ElTag
-            :type="validateStatusMap[item.validate_status]?.type || 'info'"
-            size="small"
-          >
+          <ElTag :type="validateStatusMap[item.validate_status]?.type || 'info'" size="small">
             {{ validateStatusMap[item.validate_status]?.label || item.validate_status }}
           </ElTag>
         </div>

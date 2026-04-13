@@ -17,7 +17,6 @@ class ContainerCreate(BaseModel):
     memory_limit: int = Field(default=2048, ge=256, le=8192, description="内存配额 (MB)")
 
     # 10-S1 动态注入链路
-    launch_file_path: Optional[str] = Field(default=None, max_length=255)
     launch_args: dict[str, str] = Field(default_factory=dict)
     startup_script_path: Optional[str] = Field(default=None, max_length=512)
     env_volumes: dict[str, str] = Field(default_factory=dict)

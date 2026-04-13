@@ -41,7 +41,7 @@ const sortOptions = [
   { label: '最新创建', sort_by: 'created_at', sort_order: 'desc' },
   { label: '最早创建', sort_by: 'created_at', sort_order: 'asc' },
   { label: '状态 A→Z', sort_by: 'status', sort_order: 'asc' },
-  { label: '状态 Z→A', sort_by: 'status', sort_order: 'desc' },
+  { label: '状态 Z→A', sort_by: 'status', sort_order: 'desc' }
 ]
 
 // 用于下拉框的合并 key

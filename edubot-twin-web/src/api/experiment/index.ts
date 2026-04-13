@@ -326,10 +326,14 @@ export const startDryRunApi = (
   })
 }
 
-export const getDryRunDockerLogsApi = (lines = 500): Promise<IResponse<{ logs: string; lines_requested: number }>> => {
+export const getDryRunDockerLogsApi = (
+  lines = 500
+): Promise<IResponse<{ logs: string; lines_requested: number }>> => {
   return request.get({ url: '/api/v1/teachers/dry-run-tools/docker-logs', params: { lines } })
 }
 
-export const getDryRunFailureReviewApi = (): Promise<IResponse<{ container: Record<string, unknown>; task: Record<string, unknown> | null }>> => {
+export const getDryRunFailureReviewApi = (): Promise<
+  IResponse<{ container: Record<string, unknown>; task: Record<string, unknown> | null }>
+> => {
   return request.get({ url: '/api/v1/teachers/dry-run-tools/failure-review' })
 }

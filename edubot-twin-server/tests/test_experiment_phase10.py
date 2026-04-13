@@ -34,7 +34,7 @@ async def test_create_and_query_experiment_version_and_publish_log(db_session):
         version_name="v1.0.0",
         environment_key="ros-noetic-nav",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/nav.launch",
+
         launch_args_template={"use_sim_time": "true"},
         startup_script_ref=None,
         file_bundle_id=None,
@@ -78,7 +78,7 @@ async def test_start_simulation_reuse_running_container_when_same_version(db_ses
         version_name="v2.0.0",
         environment_key="ros-noetic-track",
         image_name="gzweb_sim:v2",
-        launch_file_path="/launch/track.launch",
+
         launch_args_template={},
         startup_script_ref=None,
         file_bundle_id=None,
@@ -136,7 +136,7 @@ async def test_start_simulation_recreate_container_with_new_version(db_session, 
         version_name="v3.0.0",
         environment_key="ros-noetic-recreate",
         image_name="gzweb_sim:v3",
-        launch_file_path="/launch/recreate.launch",
+
         launch_args_template={},
         startup_script_ref=None,
         file_bundle_id=None,
@@ -245,7 +245,7 @@ async def test_update_experiment_version_only_allows_draft(db_session):
         version_name="v1.0.0",
         environment_key="ros-noetic-draft",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/draft.launch",
+
         launch_args_template={"use_sim_time": "false"},
         startup_script_ref="boot_v1",
         file_bundle_id=None,
@@ -259,7 +259,7 @@ async def test_update_experiment_version_only_allows_draft(db_session):
             version_name="v1.0.1",
             environment_key="ros-noetic-draft-updated",
             image_name="gzweb_sim:v1.1",
-            launch_file_path="/launch/draft_v2.launch",
+
             launch_args_template={"use_sim_time": "true"},
             startup_script_ref="boot_v2",
             file_bundle_id=123,
@@ -292,7 +292,7 @@ async def test_update_experiment_version_rejects_published(db_session):
         version_name="v2.0.0",
         environment_key="ros-noetic-published",
         image_name="gzweb_sim:v2",
-        launch_file_path="/launch/published.launch",
+
         launch_args_template={"mode": "stable"},
         startup_script_ref=None,
         file_bundle_id=None,
@@ -315,7 +315,7 @@ async def test_update_experiment_version_rejects_published(db_session):
                 version_name="v2.0.1",
                 environment_key="ros-noetic-published-updated",
                 image_name="gzweb_sim:v2.1",
-                launch_file_path="/launch/published_v2.launch",
+
                 launch_args_template={"mode": "edited"},
                 startup_script_ref="forbidden_edit",
                 file_bundle_id=None,
@@ -369,7 +369,7 @@ async def test_start_simulation_draft_version_not_accessible(db_session, test_st
         version_name="v1.0.0",
         environment_key="ros-draft",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/nav.launch",
+
         launch_args_template={},
         startup_script_ref=None,
         file_bundle_id=None,
@@ -405,7 +405,7 @@ async def test_start_simulation_concurrent_conflict_returns_409(db_session, test
         version_name="v1.0.0",
         environment_key="ros-concurrent",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/nav.launch",
+
         launch_args_template={},
         startup_script_ref=None,
         file_bundle_id=None,
@@ -554,7 +554,7 @@ async def _setup_published_version_with_bundle(db_session, exp_code: str):
         version_name="v1.0.0",
         environment_key="ros-distribute",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/nav.launch",
+
         launch_args_template={},
         startup_script_ref=None,
         file_bundle_id=bundle.id,
@@ -780,7 +780,7 @@ async def test_rebuild_task_fails_when_health_check_fails(db_session, test_stude
         version_name="v1.0.0",
         environment_key="ros-health-fail",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/nav.launch",
+
         launch_args_template={},
         startup_script_ref=None,
         file_bundle_id=None,
@@ -853,7 +853,7 @@ async def test_rebuild_task_fails_immediately_when_container_exits_before_gz_rea
         version_name="v1.0.0",
         environment_key="ros-exit-before-gz",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/nav.launch",
+
         launch_args_template={},
         startup_script_ref=None,
         file_bundle_id=None,
@@ -942,7 +942,7 @@ async def test_start_simulation_does_not_reuse_exited_running_container(db_sessi
         version_name="v1.0.0",
         environment_key="ros-reuse-exited-guard",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/nav.launch",
+
         launch_args_template={},
         startup_script_ref=None,
         file_bundle_id=None,

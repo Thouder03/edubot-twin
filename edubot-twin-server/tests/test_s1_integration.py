@@ -284,7 +284,6 @@ def test_s1_11_container_manager_signature():
         params = sig.parameters
 
         # 新增参数
-        assert "launch_file_path" in params, "launch_file_path 参数应存在"
         assert "launch_args" in params, "launch_args 参数应存在"
         assert "startup_script_path" in params, "startup_script_path 参数应存在"
         assert "env_volumes" in params, "env_volumes 参数应存在"
@@ -416,7 +415,6 @@ async def _test_db_operations():
                 version_name="v-sm-test",
                 environment_key="test_env",
                 image_name="",  # 故意留空，触发 blocking
-                launch_file_path="/fake/path.launch",
                 launch_args_template={},
                 publish_status=PublishStatus.DRAFT,
             )

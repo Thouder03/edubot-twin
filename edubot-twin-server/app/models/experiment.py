@@ -76,7 +76,6 @@ class ExperimentVersion(Base):
     # 10-S1-1: 删除 is_visible（可见性统一由 publish_status + Experiment.status 决定）
     environment_key: Mapped[str] = mapped_column(String(128), nullable=False, comment="只读环境标识，用于前端展示")
     image_name: Mapped[str] = mapped_column(String(200), default="gzweb_sim:v1", nullable=False, comment="使用的Docker镜像")
-    launch_file_path: Mapped[str] = mapped_column(String(255), nullable=False, comment="ROS launch 文件路径")
     launch_args_template: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False, comment="launch 参数模板 JSON")
     # 10-S1-3: 删除 startup_script_ref（由环境包根目录下 startup.sh 文件替代）
     file_bundle_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="关联的实验文件包ID")

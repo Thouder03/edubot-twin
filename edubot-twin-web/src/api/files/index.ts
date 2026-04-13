@@ -111,7 +111,11 @@ export function createFilesApiClient(base: string) {
     return service.post({ url: `${base}/compress`, data })
   }
 
-  const downloadFile = async (path: string, token: string, tokenKey = 'Authorization'): Promise<void> => {
+  const downloadFile = async (
+    path: string,
+    token: string,
+    tokenKey = 'Authorization'
+  ): Promise<void> => {
     const params = new URLSearchParams({ path })
     const url = `${import.meta.env.VITE_API_BASE_PATH}${base}/download?${params}`
     const res = await fetch(url, {
@@ -168,7 +172,7 @@ export function createFilesApiClient(base: string) {
     extractFile,
     compressFiles,
     downloadFile,
-    downloadMultipleFiles,
+    downloadMultipleFiles
   }
 }
 

@@ -113,7 +113,6 @@ async def create_container(
     ros_port: int,
     *,
     # ── 启动配置（10-S1-7）──────────────────────────────────────────
-    launch_file_path: str = "/home/ubuntu20/catkin_ws/src/bingda_tutorials/launch/simulation_robot.launch",
     launch_args: Optional[dict[str, str]] = None,
     startup_script_path: Optional[str] = None,
     # ── 文件挂载（10-S1-7）──────────────────────────────────────────
@@ -124,14 +123,13 @@ async def create_container(
 
     按三组数据分层实现：
     1. 镜像 / 端口：image, student_id, gz_port, ros_port
-    2. 启动配置：launch_file_path, launch_args, startup_script_path
+    2. 启动配置：launch_args, startup_script_path
     3. 文件挂载：env_volumes
 
     :param image: 镜像名（如 gzweb_sim:v1）
     :param student_id: 学生/Shadow学生 ID（用于容器命名和标签）
     :param gz_port: 宿主机 gzweb 映射端口
     :param ros_port: 宿主机 rosbridge 映射端口
-    :param launch_file_path: ROS launch 文件路径
     :param launch_args: launch 参数字典（格式化为 LAUNCH_ARGS 环境变量注入容器）
     :param startup_script_path: 教师自定义启动脚本宿主机路径（来自 env_bundle.storage_root/startup.sh）
     :param env_volumes: 额外 Volume 挂载映射 {host_path: container_path}（环境文件）

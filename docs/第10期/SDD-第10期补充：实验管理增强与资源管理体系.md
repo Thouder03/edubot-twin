@@ -26,7 +26,7 @@
 ### 1.1 问题
 
 1. **文件包上传端点完全缺失**：第10期 API 契约表定义了 `POST /teachers/experiment-files/upload`，但后端无实现，教师无法上传实验资源。
-2. **容器启动命令硬编码**：`container_manager.py` 中 `launch_file` 和 `entrypoint_cmd` 写死为固定路径，版本配置中的 `launch_file_path` 和 `launch_args_template` 未注入。
+2. **容器启动命令硬编码**：`container_manager.py` 中 `launch_file` 和 `entrypoint_cmd` 写死为固定路径，版本配置中的 `launch_args_template` 未注入。
 3. **容器就绪检测缺失**：学生点击"开始仿真"后直接打开仿真页，但容器内 gzweb（8080）和 rosbridge（9090）可能尚未就绪，导致白屏或连接失败。
 4. **数据模型冗余与语义冲突**：`is_visible` 与 `publish_status` 语义重叠；`ExperimentFileBundle.experiment_id` 约束了文件包只能绑定单个实验；`checksum` 字段无实际校验流程。
 5. **实验/版本生命周期不完整**：缺少实验删除、实验状态切换、版本发布状态回退、版本删除等操作端点。
@@ -69,7 +69,7 @@
 | S1-4 | 新增 `ExperimentEnvBundle` 模型 | 环境文件包：容器目标目录、访问权限。启动脚本以文件形式存储在 `storage_root/startup.sh`，不存数据库 |
 | S1-5 | `ExperimentVersion` 新增 `env_bundle_id` 外键 | 引用环境文件包 |
 | S1-6 | 实现 `POST /teachers/file-bundles/upload` | 文件包上传端点（支持任意文件，上传后不自动解压；前端文件树组件已有解压功能） |
-| S1-7 | 修复 `container_manager.create_container()` | 从版本配置读取 `launch_file_path`、`launch_args_template`、教师启动脚本注入 |
+| S1-7 | 修复 `container_manager.create_container()` | 从版本配置读取 `launch_args_template`、教师启动脚本注入 |
 | S1-7b | 新增常驻系统启动脚本 | 容器固定挂载一个系统级 entrypoint 脚本，负责启动 rosbridge 和 gzweb；容器启动时将宿主机映射端口以环境变量注入 |
 | S1-8 | 容器就绪检测 | 在 HEALTH_CHECKING 阶段检测 gzweb 和 rosbridge 端口可用性 |
 | S1-9 | 实验状态切换与删除 | `PATCH /experiments/{id}/status`、`DELETE /experiments/{id}` |
@@ -123,7 +123,7 @@
 
 **现状**：`container_manager.py` 硬编码 `launch_file` 和 `entrypoint_cmd`。
 
-**方案 B1（本期采用）**：[`create_container()`](edubot-twin-server/app/core/container_manager.py:131) 新增 `launch_file_path`、`launch_args`、`startup_script_path` 等参数，但容器最终入口必须收敛为**统一前台守护入口**。该入口负责拉起教师 [`startup.sh`](docs/第10期/SDD-第10期补充：实验管理增强与资源管理体系.md:503)、rosbridge、gzweb，并定义任一关键进程退出时的失败语义和清理动作。
+**方案 B1（本期采用）**：[`create_container()`](edubot-twin-server/app/core/container_manager.py:131) 新增 `launch_args`、`startup_script_path` 等参数，但容器最终入口必须收敛为**统一前台守护入口**。该入口负责拉起教师 [`startup.sh`](docs/第10期/SDD-第10期补充：实验管理增强与资源管理体系.md:503)、rosbridge、gzweb，并定义任一关键进程退出时的失败语义和清理动作。
 
 - **优点**：保留最小 diff，同时避免容器 running 但关键服务半故障的静默失败。
 - **风险**：入口脚本职责更集中，需要把日志和退出码语义一次定义清楚。
@@ -570,7 +570,6 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 | bundle-rename | 名称冲突 | 是（409） | 是 | 是 | 提示换名 |
 | experiment-delete | 含非 draft 版本 | 是（409） | 是 | 是 | 提示先废弃/删除版本 |
 | version-delete | 非 draft 状态 | 是（409） | 是 | 是 | 提示仅 draft 可删 |
-| container-create | launch_file_path 文件不存在于镜像 | 是（FAILED + 错误信息） | 是 | 是 | 教师检查配置 |
 | readiness-check | gzweb 端口 60s 超时 | 是（GZWEB_NOT_READY） | 是 | 是 | 重试按钮 + 容器日志提示 |
 | readiness-check | rosbridge 端口 60s 超时 | 是（ROSBRIDGE_NOT_READY） | 是 | 是 | 重试按钮 + 容器日志提示 |
 | dry-run | 配额已满（3个） | 是（DRY_RUN_RESOURCE_EXHAUSTED） | 是 | 是 | 提示清理已有测试容器 |
@@ -641,7 +640,6 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 | 版本发布状态切换 | 集成 | draft→published→deprecated→published | 每步正确，发布日志同步写入 |
 | 学生可见性过滤 | 集成 | 实验 status=draft 时查询 available | 返回空列表 |
 | 学生可见性过滤 | 集成 | 版本 publish_status=deprecated 时查询 | 该版本不在列表中 |
-| container_manager launch 注入 | 集成 | 创建容器时传入自定义 launch_file_path | Docker command 包含正确路径 |
 | 就绪检测 Happy Path | 集成 | 容器创建后检测双端口 | CHECKING_GZWEB→CHECKING_ROSBRIDGE→SUCCEEDED |
 | 就绪检测超时 | 集成 | 模拟端口不可达 | 60s 后 FAILED + GZWEB_NOT_READY，日志字段和容器清理动作齐全 |
 | 版本验证 Happy Path | 集成 | 所有配置项正确 | `{valid: true, issues: []}` |
@@ -697,7 +695,7 @@ Dry Run 容器不写数据库，仅在进程内存中维护（`dict[str, DryRunC
 | `app/api/v1/endpoints/teacher/experiments.py` | 新增 DELETE、PATCH /status、DELETE /versions/{vid}、PATCH /publish-status、POST /validate |
 | `app/api/v1/endpoints/student/simulation.py` | `_run_rebuild_task` 注入 launch 配置；健康检查拆分为 CHECKING_GZWEB + CHECKING_ROSBRIDGE |
 | `app/api/v1/endpoints/student/experiments.py` | 可见性过滤条件修改 |
-| `app/core/container_manager.py` | [`create_container()`](edubot-twin-server/app/core/container_manager.py:131) 新增 `launch_file_path`、`launch_args`、`startup_script_path`、`env_volumes` 参数，并按“镜像/端口、启动配置、文件挂载、运行模式”四组在内部数据结构中分层实现 |
+| `app/core/container_manager.py` | [`create_container()`](edubot-twin-server/app/core/container_manager.py:131) 新增 `launch_args`、`startup_script_path`、`env_volumes` 参数，并按“镜像/端口、启动配置、文件挂载、运行模式”四组在内部数据结构中分层实现 |
 | `app/core/readiness_checker.py` | 新建：TCP 端口探测工具，支持 gzweb 和 rosbridge 分别检测 |
 | `app/core/dry_run_manager.py` | 新建：Dry Run 容器生命周期管理（内存存储 + 停止即清理 + Docker event 监听兜底） |
 | `app/core/system_entrypoint.py` | 新建：统一前台守护入口脚本管理，负责生成和挂载 [`system_entrypoint.sh`](docs/第10期/SDD-第10期补充：实验管理增强与资源管理体系.md:859) |
@@ -844,7 +842,6 @@ async def create_container(
     gz_port: int,
     ros_port: int,
     *,
-    launch_file_path: str = "/home/ubuntu20/catkin_ws/src/bingda_tutorials/launch/simulation_robot.launch",
     launch_args: dict[str, str] | None = None,
     startup_script_path: str | None = None,
     env_volumes: dict[str, str] | None = None,
@@ -852,14 +849,13 @@ async def create_container(
 ```
 
 **行为变更**：
-1. `launch_file_path`：替换原硬编码的 `launch_file` 变量。（注：该参数保留用于默认 entrypoint 场景；当 `startup_script_path` 非空时，由教师在 startup.sh 中自行决定 launch 路径）
 2. `launch_args`：遍历 dict 生成 roslaunch 参数字符串 `key:=value`，直接格式化后作为环境变量 `LAUNCH_ARGS` 传入容器（教师为受信任角色，无需白名单校验）。教师在 `startup.sh` 中通过 `$LAUNCH_ARGS` 引用（如 `roslaunch pkg file.launch $LAUNCH_ARGS &`）。
 3. `startup_script_path`：如果非空，将该文件路径（`{env_bundle.storage_root}/startup.sh`）挂载到容器 `/tmp/startup.sh`，在 entrypoint 中先执行此脚本。注意：启动脚本以文件形式存储在环境包根目录，不存数据库。
 4. `env_volumes`：额外的 Volume 挂载映射（`{host_path: container_path}`），用于环境文件。
 
 **参数分层约束**：实现时即便暂不引入完整 `ContainerSpec` 类型，也必须在 `container_manager` 内部按以下四组数据结构分层，禁止继续把新参数平铺堆入一段长函数：
 - 镜像 / 端口：`image`、`student_id`、`gz_port`、`ros_port`
-- 启动配置：`launch_file_path`、`launch_args`、`startup_script_path`
+- 启动配置：`launch_args`、`startup_script_path`
 - 文件挂载：`env_volumes`
 - 运行模式：正式仿真 / Dry Run 的差异标记与清理策略
 

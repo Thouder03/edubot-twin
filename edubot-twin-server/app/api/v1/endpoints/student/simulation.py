@@ -168,7 +168,6 @@ async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> N
                     user_id=student_id,
                     image_name=version.image_name,
                     current_version_id=version.id,
-                    launch_file_path=version.launch_file_path,
                     launch_args=version.launch_args_template or {},
                     startup_script_path=startup_script_path,
                     env_volumes=env_volumes,

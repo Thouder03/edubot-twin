@@ -84,7 +84,7 @@ async def test_switch_version_publish_status_allows_arbitrary_transition_in_crud
         version_name="v1.0.0",
         environment_key="sim_env",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/main.launch",
+
         launch_args_template={},
         file_bundle_id=None,
         env_bundle_id=None,
@@ -134,7 +134,7 @@ async def test_switch_version_publish_status_allows_arbitrary_transition_in_endp
         version_name="v1.0.1",
         environment_key="sim_env",
         image_name="gzweb_sim:v1",
-        launch_file_path="/launch/main.launch",
+
         launch_args_template={},
         file_bundle_id=None,
         env_bundle_id=None,

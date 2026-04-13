@@ -61,7 +61,6 @@ def _to_version_response(obj) -> ExperimentVersionResponse:
         version_name=obj.version_name,
         environment_key=obj.environment_key,
         image_name=obj.image_name,
-        launch_file_path=obj.launch_file_path,
         launch_args_template=obj.launch_args_template,
         file_bundle_id=obj.file_bundle_id,
         env_bundle_id=obj.env_bundle_id,
@@ -244,7 +243,7 @@ async def create_version(
         version_name=data.version_name,
         environment_key=data.environment_key,
         image_name=data.image_name,
-        launch_file_path=data.launch_file_path,
+
         launch_args_template=data.launch_args_template,
         file_bundle_id=data.file_bundle_id,
         env_bundle_id=data.env_bundle_id,
@@ -279,7 +278,7 @@ async def update_version(
         version_name=data.version_name,
         environment_key=data.environment_key,
         image_name=data.image_name,
-        launch_file_path=data.launch_file_path,
+
         launch_args_template=data.launch_args_template,
         file_bundle_id=data.file_bundle_id,
         env_bundle_id=data.env_bundle_id,

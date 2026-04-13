@@ -247,7 +247,10 @@ export function useWorkspaceCommands(
   async function moveCommand(sourcePaths: string[], targetDir: string) {
     if (!sourcePaths.length) return
     try {
-      const res = await getFilesApi().moveFiles({ source_paths: sourcePaths, target_dir: targetDir })
+      const res = await getFilesApi().moveFiles({
+        source_paths: sourcePaths,
+        target_dir: targetDir
+      })
       if (res.code === 0) {
         const successPaths: string[] = Array.isArray(res.data?.success) ? res.data.success : []
         const failedPaths = new Set<string>((res.data?.failed ?? []).map((item: any) => item.path))

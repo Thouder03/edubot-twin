@@ -198,7 +198,6 @@ async def create_version(
     version_name: str,
     environment_key: str,
     image_name: str,
-    launch_file_path: str,
     launch_args_template: dict,
     file_bundle_id: Optional[int],
     env_bundle_id: Optional[int] = None,
@@ -213,7 +212,6 @@ async def create_version(
         version_name=version_name,
         environment_key=environment_key,
         image_name=image_name,
-        launch_file_path=launch_file_path,
         launch_args_template=launch_args_template,
         file_bundle_id=file_bundle_id,
         env_bundle_id=env_bundle_id,
@@ -232,7 +230,6 @@ async def update_version(
     version_name: str,
     environment_key: str,
     image_name: str,
-    launch_file_path: str,
     launch_args_template: dict,
     file_bundle_id: Optional[int],
     env_bundle_id: Optional[int] = None,
@@ -243,7 +240,6 @@ async def update_version(
     version.version_name = version_name
     version.environment_key = environment_key
     version.image_name = image_name
-    version.launch_file_path = launch_file_path
     version.launch_args_template = launch_args_template
     version.file_bundle_id = file_bundle_id
     version.env_bundle_id = env_bundle_id

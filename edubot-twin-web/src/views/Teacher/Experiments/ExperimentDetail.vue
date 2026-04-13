@@ -55,7 +55,7 @@ const editForm = reactive({
   version_name: '',
   environment_key: '',
   image_name: '',
-  launch_file_path: '',
+
   file_bundle_id: '' as string | number,
   env_bundle_id: '' as string | number
 })
@@ -80,7 +80,7 @@ const versionForm = reactive<{
   version_name: string
   environment_key: string
   image_name: string
-  launch_file_path: string
+
   launch_args_template_text: string
   file_bundle_id: string
   env_bundle_id: string | number
@@ -88,7 +88,7 @@ const versionForm = reactive<{
   version_name: '',
   environment_key: '',
   image_name: 'gzweb_sim:v1',
-  launch_file_path: '/launch/main.launch',
+
   launch_args_template_text: '{}',
   file_bundle_id: '',
   env_bundle_id: ''
@@ -176,7 +176,7 @@ const syncEditFormFromSelected = (version: ExperimentVersionResponse | null) => 
     editForm.version_name = ''
     editForm.environment_key = ''
     editForm.image_name = ''
-    editForm.launch_file_path = ''
+
     editForm.file_bundle_id = ''
     editForm.env_bundle_id = ''
     editorText.value = '{}'
@@ -185,7 +185,7 @@ const syncEditFormFromSelected = (version: ExperimentVersionResponse | null) => 
   editForm.version_name = version.version_name
   editForm.environment_key = version.environment_key
   editForm.image_name = version.image_name
-  editForm.launch_file_path = version.launch_file_path
+
   editForm.file_bundle_id = version.file_bundle_id ?? ''
   editForm.env_bundle_id = version.env_bundle_id ?? ''
   editorText.value = JSON.stringify(version.launch_args_template || {}, null, 2)
@@ -280,10 +280,6 @@ const saveVersion = async () => {
     ElMessage.warning('请填写版本号和环境标识')
     return
   }
-  if (!editForm.launch_file_path.trim()) {
-    ElMessage.warning('请填写启动文件路径')
-    return
-  }
 
   const launchArgsTemplate = parseLaunchArgsTemplate(editorText.value)
   if (!launchArgsTemplate) return
@@ -292,7 +288,7 @@ const saveVersion = async () => {
     version_name: editForm.version_name.trim(),
     environment_key: editForm.environment_key.trim(),
     image_name: editForm.image_name.trim() || 'gzweb_sim:v1',
-    launch_file_path: editForm.launch_file_path.trim(),
+
     file_bundle_id: editForm.file_bundle_id ? Number(editForm.file_bundle_id) : undefined,
     env_bundle_id: editForm.env_bundle_id ? Number(editForm.env_bundle_id) : undefined,
     launch_args_template: launchArgsTemplate
@@ -417,7 +413,7 @@ const resetVersionForm = () => {
   versionForm.version_name = ''
   versionForm.environment_key = ''
   versionForm.image_name = 'gzweb_sim:v1'
-  versionForm.launch_file_path = '/launch/main.launch'
+
   versionForm.launch_args_template_text = '{}'
   versionForm.file_bundle_id = ''
   versionForm.env_bundle_id = ''
@@ -433,17 +429,14 @@ const buildVersionCreatePayload = (): ExperimentVersionCreateRequest | null => {
     ElMessage.warning('请填写版本号和环境标识')
     return null
   }
-  if (!versionForm.launch_file_path.trim()) {
-    ElMessage.warning('请填写启动文件路径')
-    return null
-  }
+
   const launchArgsTemplate = parseLaunchArgsTemplate(versionForm.launch_args_template_text)
   if (!launchArgsTemplate) return null
   return {
     version_name: versionForm.version_name.trim(),
     environment_key: versionForm.environment_key.trim(),
     image_name: versionForm.image_name.trim() || 'gzweb_sim:v1',
-    launch_file_path: versionForm.launch_file_path.trim(),
+
     launch_args_template: launchArgsTemplate,
     file_bundle_id: versionForm.file_bundle_id ? Number(versionForm.file_bundle_id) : undefined,
     env_bundle_id: versionForm.env_bundle_id ? Number(versionForm.env_bundle_id) : undefined
@@ -624,11 +617,7 @@ fetchExperimentDetail()
                 />
               </ElSelect>
             </ElFormItem>
-            <!--
-            <ElFormItem label="启动文件">
-              <ElInput v-model="editForm.launch_file_path" :disabled="!isDraftVersion" />
-            </ElFormItem>
-            -->
+
             <ElFormItem label="文件包">
               <ElSelect
                 v-model="editForm.file_bundle_id"
@@ -717,9 +706,7 @@ fetchExperimentDetail()
         <ElFormItem label="镜像">
           <ElInput v-model="versionForm.image_name" placeholder="gzweb_sim:v1" />
         </ElFormItem>
-        <ElFormItem label="启动文件" required>
-          <ElInput v-model="versionForm.launch_file_path" placeholder="/launch/main.launch" />
-        </ElFormItem>
+
         <ElFormItem label="启动参数(JSON)">
           <ElInput
             v-model="versionForm.launch_args_template_text"
