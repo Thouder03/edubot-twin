@@ -46,7 +46,9 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
     fields: [
       { name: 'max_duration_ms', desc: '考试时限（毫秒），默认 600000（10分钟）' },
       { name: 'max_attempts', desc: '学生最多可尝试次数，默认 3' },
-      { name: 'allow_debug_before_start', desc: '开始考试前是否允许调试仿真环境，默认 true' }
+      { name: 'allow_debug_before_start', desc: '开始考试前是否允许调试仿真环境，默认 true' },
+      { name: 'image', desc: '启动考试容器的镜像' },
+      { name: 'launch_args', desc: '考试环境中 roslaunch 的启动参数' }
     ]
   },
   panel_policy: {

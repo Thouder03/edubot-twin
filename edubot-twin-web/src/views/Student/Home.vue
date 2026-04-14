@@ -8,20 +8,15 @@ import {
   ElLoading,
   ElMessage,
   ElSelect,
-  ElOption,
-  ElMessageBox
+  ElOption
 } from 'element-plus'
 import { BaseButton } from '@/components/Button'
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getStudentHomeDataApi } from '@/api/student'
-import {
-  distributeSimulationFilesApi,
-  getAvailableExperimentsApi,
-  startSimulationApi
-} from '@/api/experiment'
+import { getAvailableExperimentsApi } from '@/api/experiment'
 import type { StudentAvailableVersionItem } from '@/api/experiment/types'
-import { pollTaskUntilDone } from '@/views/Simulation/composables/useContainerStart'
+import { startContainerUnified } from '@/views/Simulation/composables/useContainerStart'
 import ExamSelectDialog from './ExamSelectDialog.vue'
 
 const { getPrefixCls } = useDesign()
@@ -123,59 +118,15 @@ const handleStartSimulation = async () => {
   })
 
   try {
-    const startRes = await startSimulationApi({
-      version_id: version.version_id
-    })
-
-    const startData = startRes.data
-    if (startData?.task_id) {
-      loadingInstance.setText('正在准备配置...')
-      const task = await pollTaskUntilDone(startData.task_id, loadingInstance)
-      if (task.task_status === 'FAILED') {
-        loadingInstance.close()
-        // FAILED 时弹出错误弹窗含重试按钮（SDD §15.1）
-        await ElMessageBox.confirm(
-          task.error_message || '仿真环境启动失败，请检查配置后重试',
-          '启动失败',
-          {
-            confirmButtonText: '重试',
-            cancelButtonText: '关闭',
-            type: 'error'
-          }
-        )
-          .then(() => handleStartSimulation())
-          .catch(() => {})
-        return
-      }
+    const ok = await startContainerUnified(
+      { mode: 'simulation', versionId: version.version_id },
+      loadingInstance
+    )
+    if (!ok) {
+      loadingInstance.close()
+      return
     }
 
-    loadingInstance.setText('正在分发实验文件...')
-    const distRes = await distributeSimulationFilesApi({
-      version_id: version.version_id,
-      selected_paths: [],
-      mode: 'pull'
-    })
-    const distData = distRes.data
-    if (distData?.task_id) {
-      const distTask = await pollTaskUntilDone(distData.task_id, loadingInstance)
-      if (distTask.task_status === 'FAILED') {
-        loadingInstance.close()
-        await ElMessageBox.confirm(
-          distTask.error_message || '实验文件分发失败，请重试',
-          '文件分发失败',
-          {
-            confirmButtonText: '重试',
-            cancelButtonText: '关闭',
-            type: 'error'
-          }
-        )
-          .then(() => handleStartSimulation())
-          .catch(() => {})
-        return
-      }
-    }
-
-    // SUCCEEDED：延迟 500ms 后跳转（SDD §15.1）
     loadingInstance.setText('仿真环境就绪，正在打开...')
     await new Promise((resolve) => setTimeout(resolve, 500))
     openSimulationPage(version)
@@ -186,27 +137,22 @@ const handleStartSimulation = async () => {
       await getAvailableVersions()
       return
     }
-
     if (detail === 'CONTAINER_REBUILD_IN_PROGRESS') {
       ElMessage.warning('已有重建任务进行中，请稍后重试')
       return
     }
-
     if (detail === 'NO_FILE_BUNDLE_ATTACHED') {
       ElMessage.error('该实验版本未绑定文件包，请联系教师配置')
       return
     }
-
     if (detail === 'FILE_BUNDLE_NOT_VALID') {
       ElMessage.error('实验文件包未通过校验，请联系教师修复')
       return
     }
-
     if (e?.response?.status === 503) {
       ElMessage.error('服务器资源已满，请稍后再试')
       return
     }
-
     ElMessage.error('启动失败，请稍后重试')
   } finally {
     loadingInstance.close()

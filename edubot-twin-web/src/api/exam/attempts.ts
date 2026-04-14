@@ -162,6 +162,12 @@ export interface AttemptListResponse {
   page_size: number
 }
 
+// ─── 考试容器启动相关类型（12期补充） ────────────────────────────────────────
+
+export interface ExamContainerStartRequest {
+  exam_id: number
+}
+
 // ─── 学生端 API ──────────────────────────────────────────────────────────────
 
 const STUDENT_BASE = '/api/v1/students'
@@ -243,3 +249,17 @@ export const getAttemptEventsApi = (
   attemptId: number
 ): Promise<IResponse<{ items: EvidenceEvent[] }>> =>
   request.get({ url: `${TEACHER_BASE}/exam-attempts/${attemptId}/events` })
+
+// ─── 12期补充：考试容器启动 API ──────────────────────────────────────────────
+
+import type { StudentSimulationStartResponse } from '@/api/experiment/types'
+
+/**
+ * 启动考试专用容器
+ *
+ * POST /api/v1/students/simulation/start-exam-container
+ */
+export const startExamContainerApi = (
+  data: ExamContainerStartRequest
+): Promise<IResponse<StudentSimulationStartResponse>> =>
+  request.post({ url: `${STUDENT_BASE}/simulation/start-exam-container`, data })

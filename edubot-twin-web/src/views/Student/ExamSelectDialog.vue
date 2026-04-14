@@ -18,7 +18,7 @@ import {
 } from 'element-plus'
 import { getPublishedExamsApi } from '@/api/exam/attempts'
 import type { PublishedExamItem } from '@/api/exam/attempts'
-import { ensureContainerRunning } from '@/views/Simulation/composables/useContainerStart'
+import { startContainerUnified } from '@/views/Simulation/composables/useContainerStart'
 
 const props = defineProps<{
   visible: boolean
@@ -82,19 +82,22 @@ async function handleConfirm() {
   }
 
   const loadingInstance = ElLoading.service({
-    text: '正在检查仿真容器...',
+    text: '正在检查容器状态...',
     background: 'rgba(0,0,0,0.8)'
   })
 
   try {
-    const ok = await ensureContainerRunning(loadingInstance)
+    const ok = await startContainerUnified(
+      { mode: 'exam', examId: selectedExamId.value },
+      loadingInstance
+    )
     if (!ok) {
       loadingInstance.close()
-      ElMessage.error('仿真容器未就绪，请检查状态或联系管理员')
+      ElMessage.error('考试容器启动失败，请重试')
       return
     }
 
-    loadingInstance.setText('仿真环境就绪，正在打开考试...')
+    loadingInstance.setText('考试环境就绪，正在打开...')
     loadingInstance.close()
     emit('update:visible', false)
 
@@ -110,7 +113,7 @@ async function handleConfirm() {
     }
   } catch (err) {
     loadingInstance.close()
-    ElMessage.error('启动仿真容器失败，请重试')
+    ElMessage.error('启动考试容器失败，请重试')
     console.error('[ExamSelectDialog] 容器启动失败:', err)
   }
 }

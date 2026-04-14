@@ -21,6 +21,9 @@ class ContainerCreate(BaseModel):
     startup_script_path: Optional[str] = Field(default=None, max_length=512)
     env_volumes: dict[str, str] = Field(default_factory=dict)
 
+    # 12期补充：容器用途标记
+    purpose: Optional[str] = Field(default=None, max_length=200)
+
     @property
     def student_id(self) -> int:
         """兼容旧代码中的 student_id 读取。"""
@@ -68,6 +71,7 @@ class ContainerStatusResponse(BaseModel):
     gzbridge_url: Optional[str] = None
     rosbridge_url: Optional[str] = None
     current_version_id: Optional[int] = None
+    purpose: Optional[str] = None  # 12期补充：容器用途标记
 
     model_config = {"from_attributes": True}
 
@@ -91,6 +95,7 @@ class ContainerStatusResponse(BaseModel):
             gzbridge_url=gzbridge_url,
             rosbridge_url=rosbridge_url,
             current_version_id=getattr(obj, "current_version_id", None),
+            purpose=getattr(obj, "purpose", None),
         )
 
 

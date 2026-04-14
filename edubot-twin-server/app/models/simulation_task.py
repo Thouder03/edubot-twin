@@ -39,7 +39,7 @@ class SimulationTask(Base):
     task_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     student_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     container_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    target_version_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    target_version_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
     status: Mapped[SimulationTaskStatus] = mapped_column(
         Enum(SimulationTaskStatus), default=SimulationTaskStatus.PENDING, nullable=False, index=True

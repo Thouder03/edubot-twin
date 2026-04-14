@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from pydantic import BaseModel
 from sqlalchemy.orm import object_session
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,11 +21,19 @@ from app.core.readiness_checker import (
     check_port_ready,
 )
 from app.core import container_manager
+from app.core.container_lifecycle import (
+    build_params_from_version,
+    build_params_from_exam,
+    run_container_lifecycle,
+)
 from app.crud import container as crud_container
 from app.crud import experiment as crud_experiment
 from app.crud import simulation_task as crud_task
+from app.crud import exam as crud_exam
+from app.crud import exam_file_snapshot as crud_file_snapshot
 from app.db.database import AsyncSessionLocal, get_db
 from app.models.container import ContainerStatus
+from app.models.exam import ExamMode, ExamStatus
 from app.models.simulation_task import SimulationTaskStage, SimulationTaskStatus
 from app.schemas.common import ApiResponse
 from app.schemas.container import ContainerCreate
@@ -77,298 +86,30 @@ async def _sync_container_runtime_state(db: AsyncSession, container) -> object:
 
 
 async def _run_rebuild_task(task_id: str, student_id: int, version_id: int) -> None:
-    started_at = time.perf_counter()
+    """仿真容器启动（向后兼容入口，委托给 container_lifecycle）"""
     async with AsyncSessionLocal() as db:
-        task = await crud_task.get_task(db, task_id)
         version = await crud_experiment.get_version(db, version_id)
-        if not task or not version:
+        if not version:
             logger.error(
-                "[SimStartDiag] rebuild_task_bootstrap_missing task_id=%s student_id=%s has_task=%s has_version=%s",
-                task_id,
-                student_id,
-                bool(task),
-                bool(version),
+                "[SimStartDiag] rebuild_task_bootstrap_missing task_id=%s student_id=%s has_version=False",
+                task_id, student_id,
             )
             return
 
-        logger.info(
-            "[SimStartDiag] rebuild_task_started task_id=%s student_id=%s version_id=%s task_status=%s task_stage=%s",
-            task_id,
-            student_id,
-            version_id,
-            getattr(task.status, "value", task.status),
-            getattr(task.current_stage, "value", task.current_stage),
-        )
+        env_bundle = None
+        if version.env_bundle_id:
+            env_bundle = await crud_experiment.get_env_bundle(db, version.env_bundle_id)
 
-        try:
-            await crud_task.mark_task_running(db, task=task)
-            logger.info(
-                "[SimStartDiag] stage_enter task_id=%s stage=%s status=%s",
-                task_id,
-                SimulationTaskStage.PREPARING_CONFIG.value,
-                SimulationTaskStatus.IN_PROGRESS.value,
-            )
+        experiment = await crud_experiment.get_experiment(db, version.experiment_id)
+        exp_name = experiment.name if experiment else ""
 
-            await crud_task.mark_stage(
-                db,
-                task=task,
-                stage=SimulationTaskStage.PREPARING_CONFIG,
-                status="SUCCEEDED",
-                elapsed_ms=10,
-            )
+        params = build_params_from_version(student_id, version, env_bundle, exp_name)
 
-            existing = await crud_container.get_container_by_user(db, student_id)
-            stop_start = time.perf_counter()
-            logger.info(
-                "[SimStartDiag] stage_enter task_id=%s stage=%s existing_container_id=%s existing_status=%s",
-                task_id,
-                SimulationTaskStage.STOPPING_OLD_CONTAINER.value,
-                (getattr(existing, "container_id", None) if existing else None),
-                (_container_status_value(existing) if existing else None),
-            )
-            if existing:
-                await crud_container.delete_container(db, existing)
-            await crud_task.mark_stage(
-                db,
-                task=task,
-                stage=SimulationTaskStage.STOPPING_OLD_CONTAINER,
-                status="SUCCEEDED",
-                elapsed_ms=int((time.perf_counter() - stop_start) * 1000),
-            )
-
-            logger.info(
-                "[SimStartDiag] stage_exit task_id=%s stage=%s elapsed_ms=%s",
-                task_id,
-                SimulationTaskStage.STOPPING_OLD_CONTAINER.value,
-                int((time.perf_counter() - stop_start) * 1000),
-            )
-
-            create_start = time.perf_counter()
-            logger.info(
-                "[SimStartDiag] stage_enter task_id=%s stage=%s version_id=%s",
-                task_id,
-                SimulationTaskStage.CREATING_NEW_CONTAINER.value,
-                version_id,
-            )
-            startup_script_path = None
-            env_volumes: dict[str, str] = {}
-            if version.env_bundle_id:
-                env_bundle = await crud_experiment.get_env_bundle(db, version.env_bundle_id)
-                if not env_bundle:
-                    raise RuntimeError("MISSING_ENV_BUNDLE")
-                startup_script = Path(env_bundle.storage_root) / "startup.sh"
-                if not startup_script.exists():
-                    raise RuntimeError("MISSING_STARTUP_SCRIPT")
-                startup_script_path = str(startup_script)
-                env_volumes[env_bundle.storage_root] = env_bundle.container_target_dir
-
-            container = await crud_container.create_container(
-                db,
-                ContainerCreate(
-                    user_id=student_id,
-                    image_name=version.image_name,
-                    current_version_id=version.id,
-                    launch_args=version.launch_args_template or {},
-                    startup_script_path=startup_script_path,
-                    env_volumes=env_volumes,
-                ),
-            )
-            if container.status.value == "error":
-                raise RuntimeError(container.error_message or "container create failed")
-            await crud_task.mark_stage(
-                db,
-                task=task,
-                stage=SimulationTaskStage.CREATING_NEW_CONTAINER,
-                status="SUCCEEDED",
-                elapsed_ms=int((time.perf_counter() - create_start) * 1000),
-            )
-            logger.info(
-                "[SimStartDiag] stage_exit task_id=%s stage=%s elapsed_ms=%s new_container_id=%s new_status=%s",
-                task_id,
-                SimulationTaskStage.CREATING_NEW_CONTAINER.value,
-                int((time.perf_counter() - create_start) * 1000),
-                getattr(container, "container_id", None),
-                _container_status_value(container),
-            )
-
-            health_start = time.perf_counter()
-
-            # 10-S1-8: 拆分健康检测为 CHECKING_GZWEB + CHECKING_ROSBRIDGE
-            # 使用模型字段中的宿主机映射端口
-            gz_port = getattr(container, "gzbridge_port", None)
-            ros_port = getattr(container, "rosbridge_port", None)
-
-            if gz_port:
-                await crud_task.mark_stage(
-                    db, task=task,
-                    stage=SimulationTaskStage.CHECKING_GZWEB,
-                    status="IN_PROGRESS", elapsed_ms=0,
-                )
-                gzweb_ok = False
-                gzweb_ms = 0.0
-                gz_start = time.perf_counter()
-                while (time.perf_counter() - gz_start) < 60.0:
-                    state = (
-                        await container_manager.inspect_container_state(container.container_id)
-                        if container.container_id else None
-                    )
-                    if state and state.get("status") in ("exited", "dead"):
-                        logs_tail = (
-                            await container_manager.get_container_logs_tail(container.container_id, tail=80)
-                            if container.container_id else None
-                        )
-                        logger.error(
-                            "[SimStartDiag] container exited during CHECKING_GZWEB task_id=%s docker_id=%s container_state=%s logs_tail=%s",
-                            task_id,
-                            container.container_id,
-                            state,
-                            (logs_tail[-2000:] if logs_tail else None),
-                        )
-                        raise RuntimeError("CONTAINER_EXITED_BEFORE_GZWEB_READY")
-
-                    probe_ok, probe_ms = await check_port_ready(
-                        "127.0.0.1", gz_port, timeout_s=2.0, interval_s=0.5
-                    )
-                    gzweb_ms = (time.perf_counter() - gz_start) * 1000
-                    if probe_ok:
-                        gzweb_ok = True
-                        break
-
-                if not gzweb_ok:
-                    failed_state = (
-                        await container_manager.inspect_container_state(container.container_id)
-                        if container.container_id else None
-                    )
-                    logs_tail = (
-                        await container_manager.get_container_logs_tail(container.container_id, tail=60)
-                        if container.container_id else None
-                    )
-                    logger.error(
-                        "[SimStartDiag] GZWEB_NOT_READY task_id=%s docker_id=%s elapsed_ms=%s container_state=%s logs_tail=%s",
-                        task_id,
-                        container.container_id,
-                        int(gzweb_ms),
-                        failed_state,
-                        (logs_tail[-2000:] if logs_tail else None),
-                    )
-                    raise RuntimeError("GZWEB_NOT_READY")
-                await crud_task.mark_stage(
-                    db, task=task,
-                    stage=SimulationTaskStage.CHECKING_GZWEB,
-                    status="SUCCEEDED",
-                    elapsed_ms=int(gzweb_ms),
-                )
-
-            if ros_port:
-                await crud_task.mark_stage(
-                    db, task=task,
-                    stage=SimulationTaskStage.CHECKING_ROSBRIDGE,
-                    status="IN_PROGRESS", elapsed_ms=0,
-                )
-                ros_ok, ros_ms = await check_rosbridge_ready(ros_port)
-                if not ros_ok:
-                    failed_state = (
-                        await container_manager.inspect_container_state(container.container_id)
-                        if container.container_id else None
-                    )
-                    logs_tail = (
-                        await container_manager.get_container_logs_tail(container.container_id, tail=60)
-                        if container.container_id else None
-                    )
-                    logger.error(
-                        "[SimStartDiag] ROSBRIDGE_NOT_READY task_id=%s docker_id=%s elapsed_ms=%s container_state=%s logs_tail=%s",
-                        task_id,
-                        container.container_id,
-                        int(ros_ms),
-                        failed_state,
-                        (logs_tail[-2000:] if logs_tail else None),
-                    )
-                    raise RuntimeError("ROSBRIDGE_NOT_READY")
-                await crud_task.mark_stage(
-                    db, task=task,
-                    stage=SimulationTaskStage.CHECKING_ROSBRIDGE,
-                    status="SUCCEEDED",
-                    elapsed_ms=int(ros_ms),
-                )
-
-            if not gz_port and not ros_port:
-                # 无端口信息时降级为简单状态检查（向后兼容）
-                if container.status.value != "running":
-                    raise RuntimeError("container health check failed")
-
-            await crud_task.finish_task(
-                db,
-                task=task,
-                status=SimulationTaskStatus.SUCCEEDED,
-                elapsed_ms=int((time.perf_counter() - started_at) * 1000),
-                retryable=False,
-            )
-            logger.info(
-                "[SimStartDiag] rebuild_task_succeeded task_id=%s student_id=%s total_elapsed_ms=%s final_container_id=%s final_container_status=%s",
-                task_id,
-                student_id,
-                int((time.perf_counter() - started_at) * 1000),
-                getattr(container, "container_id", None),
-                _container_status_value(container),
-            )
-        except asyncio.CancelledError:
-            logger.error(
-                "[SimStartDiag] rebuild_task_cancelled task_id=%s student_id=%s task_status=%s task_stage=%s",
-                task_id,
-                student_id,
-                (getattr(task.status, "value", task.status) if task else None),
-                (getattr(task.current_stage, "value", task.current_stage) if task else None),
-            )
-            try:
-                await crud_task.finish_task(
-                    db,
-                    task=task,
-                    status=SimulationTaskStatus.FAILED,
-                    elapsed_ms=int((time.perf_counter() - started_at) * 1000),
-                    retryable=True,
-                    error_code="CONTAINER_REBUILD_CANCELLED",
-                    error_message="rebuild task cancelled before completion",
-                )
-            except Exception as finish_err:
-                logger.error(
-                    "[SimStartDiag] rebuild_task_cancelled_finish_failed task_id=%s error=%s",
-                    task_id,
-                    str(finish_err),
-                )
-            raise
-        except Exception as e:
-            failed_container = locals().get("container")
-            if failed_container is None:
-                failed_container = await crud_container.get_container_by_user(db, student_id)
-            failed_container = await _sync_container_runtime_state(db, failed_container)
-            logger.error(
-                "[SimStartDiag] rebuild_failed task_id=%s student_id=%s error=%s failed_container_id=%s failed_container_status=%s failed_container_version_id=%s failed_container_error=%s",
-                task_id,
-                student_id,
-                str(e),
-                (getattr(failed_container, "container_id", None) if failed_container else None),
-                (_container_status_value(failed_container) if failed_container else None),
-                (getattr(failed_container, "current_version_id", None) if failed_container else None),
-                (getattr(failed_container, "error_message", None) if failed_container else None),
-            )
-            await crud_task.mark_stage(
-                db,
-                task=task,
-                stage=task.current_stage,
-                status="FAILED",
-                elapsed_ms=0,
-                error_code="CONTAINER_REBUILD_FAILED",
-                error_message=str(e),
-            )
-            await crud_task.finish_task(
-                db,
-                task=task,
-                status=SimulationTaskStatus.FAILED,
-                elapsed_ms=int((time.perf_counter() - started_at) * 1000),
-                retryable=True,
-                error_code="CONTAINER_REBUILD_FAILED",
-                error_message=str(e),
-            )
+    logger.info(
+        "[SimStartDiag] rebuild_task_delegated task_id=%s student_id=%s version_id=%s purpose=%s",
+        task_id, student_id, version_id, params.purpose,
+    )
+    await run_container_lifecycle(task_id, params)
 
 
 # ── 文件分发辅助函数（独立出来以便 monkeypatch 替换）─────────────────────────────
@@ -806,3 +547,169 @@ async def start_simulation(
         )
     )
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=payload.model_dump())
+
+
+# ─── 12期补充：考试容器启动 API ────────────────────────────────────────────────
+
+
+class _ExamContainerStartRequest(BaseModel):
+    exam_id: int
+
+
+class _ExamDistributeFilesRequest(BaseModel):
+    exam_id: int
+
+
+@router.post(
+    "/start-exam-container",
+    response_model=ApiResponse[StudentSimulationStartResponse],
+    summary="启动考试专用容器",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_exam_container(
+    data: _ExamContainerStartRequest,
+    db: AsyncSession = Depends(get_db),
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    启动考试专用容器（12期补充）。
+
+    校验规则：
+    - 考试存在且状态为 published
+    - 考试模式为 result_run（其他模式本期暂不支持）
+    - 如已有活跃重建任务，返回 409
+    - 考试有 env_snapshot_id 时，快照必须存在且包含 startup.sh
+    """
+    exam = await crud_exam.get_exam(db, data.exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="EXAM_NOT_FOUND")
+    if exam.status != ExamStatus.PUBLISHED:
+        raise HTTPException(status_code=409, detail="EXAM_NOT_PUBLISHED")
+    if exam.exam_mode != ExamMode.RESULT_RUN:
+        raise HTTPException(status_code=400, detail="EXAM_MODE_NOT_SUPPORTED_YET")
+
+    # 校验环境快照（若关联）
+    if exam.env_snapshot_id:
+        from app.crud import exam_env_snapshot as crud_env_snapshot
+        snapshot = await crud_env_snapshot.get_env_snapshot(db, exam.env_snapshot_id)
+        if not snapshot:
+            raise HTTPException(status_code=409, detail="EXAM_ENV_SNAPSHOT_MISSING")
+        startup_script = Path(snapshot.storage_root) / "startup.sh"
+        if not startup_script.exists():
+            raise HTTPException(status_code=409, detail="EXAM_STARTUP_SCRIPT_MISSING")
+
+    existing = await crud_container.get_container_by_user(db, student_id)
+    existing = await _sync_container_runtime_state(db, existing)
+
+    # 检查活跃重建任务（含孤儿自愈）
+    active_task = await crud_task.get_active_task_by_student(db, student_id)
+    if active_task:
+        updated_at = getattr(active_task, "updated_at", None)
+        task_age_seconds = (
+            (datetime.utcnow() - updated_at).total_seconds()
+            if updated_at is not None else None
+        )
+        if task_age_seconds is not None and task_age_seconds > REBUILD_TASK_STALE_SECONDS:
+            await crud_task.finish_task(
+                db, task=active_task,
+                status=SimulationTaskStatus.FAILED,
+                elapsed_ms=getattr(active_task, "elapsed_ms", 0) or 0,
+                retryable=True,
+                error_code="ORPHAN_TASK_RECOVERED",
+                error_message="检测到活跃任务超时未结束，已自动回收",
+            )
+            active_task = None
+
+    if active_task:
+        raise HTTPException(status_code=409, detail="CONTAINER_REBUILD_IN_PROGRESS")
+
+    # 构建考试容器参数（在此 db 会话内完成 snapshot 查询）
+    params = await build_params_from_exam(db, student_id, exam)
+
+    task = await crud_task.create_task(
+        db,
+        student_id=student_id,
+        target_version_id=None,
+        container_id=getattr(existing, "id", None) if existing else None,
+    )
+
+    logger.info(
+        "[ExamContainerStart] task_created task_id=%s student_id=%s exam_id=%s purpose=%s",
+        task.task_id, student_id, data.exam_id, params.purpose,
+    )
+
+    asyncio.create_task(run_container_lifecycle(task.task_id, params))
+
+    exam_payload = ApiResponse(
+        data=StudentSimulationStartResponse(
+            task_id=task.task_id,
+            container_status="creating",
+            experiment_context=None,
+        )
+    )
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=exam_payload.model_dump())
+
+
+@router.post(
+    "/distribute-exam-files",
+    summary="分发考试文件到容器",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def distribute_exam_files(
+    data: _ExamDistributeFilesRequest,
+    db: AsyncSession = Depends(get_db),
+    student_id: int = Depends(get_current_student_id),
+):
+    """
+    将考试文件快照中的文件分发到学生容器（12期补充）。
+
+    与实验文件分发 /files/distribute 对称，但来源为 ExamFileSnapshot。
+    """
+    exam = await crud_exam.get_exam(db, data.exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="EXAM_NOT_FOUND")
+    if exam.status != ExamStatus.PUBLISHED:
+        raise HTTPException(status_code=409, detail="EXAM_NOT_PUBLISHED")
+    if not exam.file_snapshot_id:
+        raise HTTPException(status_code=400, detail="NO_FILE_SNAPSHOT_ATTACHED")
+
+    snapshot = await crud_file_snapshot.get_file_snapshot(db, exam.file_snapshot_id)
+    if not snapshot:
+        raise HTTPException(status_code=409, detail="EXAM_FILE_SNAPSHOT_MISSING")
+
+    bundle_root = Path(snapshot.storage_root)
+    if not bundle_root.exists():
+        raise HTTPException(status_code=409, detail="EXAM_FILE_SNAPSHOT_STORAGE_MISSING")
+
+    manifest: list = snapshot.file_manifest or []
+    files_to_distribute = [
+        {
+            **item,
+            "source_abs_path": str((bundle_root / item["relative_path"]).resolve()),
+        }
+        for item in manifest
+    ]
+
+    task = await crud_task.create_task(
+        db,
+        student_id=student_id,
+        target_version_id=None,
+        container_id=None,
+    )
+
+    logger.info(
+        "[ExamDistribute] task_created task_id=%s student_id=%s exam_id=%s file_count=%s",
+        task.task_id, student_id, data.exam_id, len(files_to_distribute),
+    )
+
+    asyncio.create_task(_run_distribute_task(task.task_id, student_id, files_to_distribute))
+
+    dist_payload = ApiResponse(
+        data=FileDistributeResponse(
+            task_id=task.task_id,
+            task_status="PENDING",
+            accepted_at=datetime.utcnow().isoformat(),
+            target_dir="/home/student/experiment",
+        )
+    )
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=dist_payload.model_dump())

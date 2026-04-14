@@ -389,7 +389,7 @@ class StudentSimulationStartResponse(BaseModel):
     """开始仿真响应体"""
     task_id: Optional[str] = None
     container_status: str
-    experiment_context: dict
+    experiment_context: Optional[dict] = None
 
 
 class FileDistributeRequest(BaseModel):

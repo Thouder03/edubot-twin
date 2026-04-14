@@ -31,6 +31,7 @@ export interface ContainerStatusResponse {
   gzbridge_url: string | null
   rosbridge_url: string | null
   current_version_id: number | null
+  purpose?: string | null  // 12期补充：容器用途标记
 }
 
 /** 创建容器请求体 */

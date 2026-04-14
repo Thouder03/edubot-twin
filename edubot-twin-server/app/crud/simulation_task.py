@@ -14,7 +14,7 @@ async def create_task(
     db: AsyncSession,
     *,
     student_id: int,
-    target_version_id: int,
+    target_version_id: Optional[int],
     container_id: Optional[int],
 ) -> SimulationTask:
     task = SimulationTask(

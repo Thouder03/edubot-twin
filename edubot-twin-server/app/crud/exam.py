@@ -39,7 +39,9 @@ async def create_exam(
         runtime_policy_json={
             "max_duration_ms": 600000,
             "max_attempts": 3,
-            "allow_debug_before_start": True
+            "allow_debug_before_start": True,
+            "image": "gzweb_sim:v1",
+            "launch_args": {}
         },
         panel_policy_json={
             "lock_panels_during_exam": False,
