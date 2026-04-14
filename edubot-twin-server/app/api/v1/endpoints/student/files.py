@@ -456,9 +456,12 @@ async def move_files(
                 continue
             
             # 防止移动到自身或子目录
-            if target_dir.resolve().is_relative_to(source.resolve()):
+            try:
+                target_dir.resolve().relative_to(source.resolve())
                 failed_paths.append({"path": path, "reason": "不能移动到自身的子目录中"})
                 continue
+            except ValueError:
+                pass
 
             target = target_dir / source.name
 

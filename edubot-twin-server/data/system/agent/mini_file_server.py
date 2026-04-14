@@ -349,9 +349,12 @@ async def move_files(request: Request, body: FileMoveRequest):
             if not source.exists():
                 failed_paths.append({"path": path, "reason": "不存在"})
                 continue
-            if target_dir.resolve().is_relative_to(source.resolve()):
+            try:
+                target_dir.resolve().relative_to(source.resolve())
                 failed_paths.append({"path": path, "reason": "不能移动到自身子目录"})
                 continue
+            except ValueError:
+                pass
             target = target_dir / source.name
             if target.resolve() == source.resolve():
                 success_paths.append(str(target))
