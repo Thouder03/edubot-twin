@@ -52,7 +52,7 @@ async def create_exam(
             "scoring_mode": "objective_only"
         },
         sidecar_policy_json={
-            "image": "edubot/sidecar-runner:v1",
+            "image": "sidecar-runner:v1",
             "cpu_limit": 1.0,
             "memory_limit_mb": 512,
             "eval_script_id": None,

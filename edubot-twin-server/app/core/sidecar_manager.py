@@ -29,6 +29,7 @@ from app.core.docker_client import DockerConnectionError, get_docker_client
 from app.core.result_parser import ParseError, parse_result_json
 from app.core.workspace_snapshot import SnapshotError, create_code_snapshot, get_artifacts_path
 from app.crud import exam_attempt as crud_attempt
+from app.crud import container as crud_container
 from app.crud.exam_eval_script import EXAM_EVAL_SCRIPTS_BASE_DIR
 from app.crud.exam_env_snapshot import EXAM_ENV_SNAPSHOTS_BASE_DIR
 from app.crud.exam_file_snapshot import EXAM_FILE_SNAPSHOTS_BASE_DIR
@@ -74,12 +75,17 @@ class SidecarDockerConfig:
     artifacts_path: str
 
 
-def build_docker_config(attempt) -> SidecarDockerConfig:
+def build_docker_config(attempt, rosbridge_port: Optional[int] = None) -> SidecarDockerConfig:
     """
     只按 attempt 快照字段组装 Docker 参数，不回读 exams 当前配置。
 
     SDD §7.4 约束：build_docker_config 、超时处理、前端状态展示
     均以 attempt 快照字段为准。
+
+    Args:
+        attempt: ExamAttempt ORM 对象
+        rosbridge_port: 仿真容器内 rosbridge 实际监听端口（从 SimContainer.rosbridge_port 传入）；
+                        为 None 时回退到默认 9090（仅测试/兼容用）
     """
     sidecar_policy = attempt.attempt_sidecar_policy_json or {}
     runtime_policy = attempt.attempt_runtime_policy_json or {}
@@ -130,7 +136,7 @@ def build_docker_config(attempt) -> SidecarDockerConfig:
         "RESULT_PATH": "/opt/artifacts/result.json",
         "ARTIFACTS_DIR": "/opt/artifacts",
         "RUNTIME_POLICY_JSON": json.dumps(runtime_policy),
-        "ROSBRIDGE_URL": "ws://localhost:9090",
+        "ROSBRIDGE_URL": f"ws://localhost:{rosbridge_port or 9090}",
         "SIM_CONTAINER_NAME": attempt.sim_container_docker_id or "",
     }
 
@@ -146,7 +152,7 @@ def build_docker_config(attempt) -> SidecarDockerConfig:
         network_mode=network_mode,
         volumes=volumes,
         environment=environment,
-        user="1500:1500",
+        user="root",
         cpu_quota=int(cpu_limit * 100000),
         mem_limit=f"{memory_mb}m",
         attempt_id=attempt_id,
@@ -318,7 +324,14 @@ async def schedule_sidecar(attempt_id: int) -> None:
         )
 
         # ── 2. 构建 Docker 参数并启动 Sidecar ─────────────────────────────────
-        config = build_docker_config(attempt)
+        # 从关联的 SimContainer 取出实际 rosbridge 端口（非默认 9090）
+        rosbridge_port: Optional[int] = None
+        if attempt.container_id:
+            sim_container = await crud_container.get_container(db, attempt.container_id)
+            if sim_container:
+                rosbridge_port = sim_container.rosbridge_port
+
+        config = build_docker_config(attempt, rosbridge_port=rosbridge_port)
         sidecar_docker_id: Optional[str] = None
 
         try:
