@@ -17,8 +17,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# 快照存储根目录
-SUBMISSIONS_ROOT = Path("/data/exam_submissions")
+# 快照存储根目录（与 crud/ 下各资源目录保持一致，使用相对路径 resolve）
+SUBMISSIONS_ROOT = Path("data/exam_submissions").resolve()
 
 # 单快照大小上限（字节）
 MAX_SNAPSHOT_BYTES = 100 * 1024 * 1024  # 100MB
@@ -36,9 +36,9 @@ def _get_submission_path(attempt_id: int) -> Path:
     return SUBMISSIONS_ROOT / str(attempt_id)
 
 
-def _get_artifacts_path(attempt_id: int) -> Path:
+def get_artifacts_path(attempt_id: int) -> Path:
     """返回 attempt 对应的 artifacts 目录路径"""
-    artifacts_root = Path("/data/exam_artifacts")
+    artifacts_root = Path("data/exam_artifacts").resolve()
     return artifacts_root / str(attempt_id)
 
 
@@ -147,7 +147,7 @@ def create_code_snapshot(attempt_id: int, student_id: int) -> SnapshotResult:
     file_count = sum(1 for _ in target_content.rglob("*") if _.is_file())
 
     # 创建 artifacts 目录
-    artifacts = _get_artifacts_path(attempt_id)
+    artifacts = get_artifacts_path(attempt_id)
     try:
         artifacts.mkdir(parents=True, exist_ok=True)
         artifacts.chmod(0o700)

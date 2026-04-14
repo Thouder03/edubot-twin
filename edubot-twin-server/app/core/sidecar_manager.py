@@ -27,8 +27,11 @@ from docker.errors import APIError, NotFound
 
 from app.core.docker_client import DockerConnectionError, get_docker_client
 from app.core.result_parser import ParseError, parse_result_json
-from app.core.workspace_snapshot import SnapshotError, create_code_snapshot
+from app.core.workspace_snapshot import SnapshotError, create_code_snapshot, get_artifacts_path
 from app.crud import exam_attempt as crud_attempt
+from app.crud.exam_eval_script import EXAM_EVAL_SCRIPTS_BASE_DIR
+from app.crud.exam_env_snapshot import EXAM_ENV_SNAPSHOTS_BASE_DIR
+from app.crud.exam_file_snapshot import EXAM_FILE_SNAPSHOTS_BASE_DIR
 from app.db.database import AsyncSessionLocal
 from app.models.exam_attempt import (
     EvidenceEventType,
@@ -41,7 +44,7 @@ logger = logging.getLogger(__name__)
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sidecar")
 
 # Sidecar 默认镜像（可由 sidecar_policy.image 覆盖）
-DEFAULT_SIDECAR_IMAGE = "edubot/sidecar-runner:v1"
+DEFAULT_SIDECAR_IMAGE = "sidecar-runner:v1"
 
 # Sidecar 容器名前缀
 CONTAINER_NAME_PREFIX = "sidecar-exam-"
@@ -90,7 +93,7 @@ def build_docker_config(attempt) -> SidecarDockerConfig:
 
     attempt_id = attempt.id
     submission_path = attempt.submission_snapshot_path or ""
-    artifacts_path = attempt.artifacts_path or f"/data/exam_artifacts/{attempt_id}"
+    artifacts_path = attempt.artifacts_path or str(get_artifacts_path(attempt_id))
 
     # 约定目录挂载（SDD §7.1）
     volumes: dict = {}
@@ -106,17 +109,17 @@ def build_docker_config(attempt) -> SidecarDockerConfig:
 
     # 教师测评脚本（只读，若配置了 eval_script_id）
     if eval_script_id:
-        eval_script_path = f"/data/exam_eval_scripts/{eval_script_id}"
+        eval_script_path = str(EXAM_EVAL_SCRIPTS_BASE_DIR / str(eval_script_id))
         volumes[eval_script_path] = {"bind": "/opt/evaluate", "mode": "ro"}
 
     # 考试环境快照（只读，若配置了 env_snapshot_id）
     if env_snapshot_id:
-        env_path = f"/data/exam_env_snapshots/{env_snapshot_id}"
+        env_path = str(EXAM_ENV_SNAPSHOTS_BASE_DIR / str(env_snapshot_id))
         volumes[env_path] = {"bind": "/opt/env", "mode": "ro"}
 
     # 考试文件快照（只读，若配置了 file_snapshot_id）
     if file_snapshot_id:
-        file_path = f"/data/exam_file_snapshots/{file_snapshot_id}"
+        file_path = str(EXAM_FILE_SNAPSHOTS_BASE_DIR / str(file_snapshot_id))
         volumes[file_path] = {"bind": "/opt/files", "mode": "ro"}
 
     # 约定环境变量（SDD §7.1）
