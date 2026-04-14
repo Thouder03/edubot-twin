@@ -166,6 +166,14 @@ async def update_exam(
                 value = ExamMode(value)
             setattr(exam, model_field, value)
 
+    # 强制同步资源引用到 sidecar_policy_json 保证单一事实来源
+    if getattr(exam, "sidecar_policy_json", None) is not None:
+        policy_data = dict(exam.sidecar_policy_json)
+        policy_data["eval_script_id"] = exam.eval_script_id
+        policy_data["env_snapshot_id"] = exam.env_snapshot_id
+        policy_data["file_snapshot_id"] = exam.file_snapshot_id
+        exam.sidecar_policy_json = policy_data
+
     exam.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(exam)
