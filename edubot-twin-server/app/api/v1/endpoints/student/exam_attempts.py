@@ -15,7 +15,7 @@ import asyncio
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user_id
@@ -401,6 +401,53 @@ async def get_attempt_detail(
         )
 
     return ApiResponse(code=0, data=_build_student_detail(attempt))
+
+
+# ─── GET /students/exam-attempts/{id} ─────────────────────────────────────────
+
+
+@router.get(
+    "/exam-attempts/{attempt_id}/logs",
+    response_model=ApiResponse[dict],
+    summary="获取 Sidecar 容器执行日志",
+)
+async def get_attempt_sidecar_logs(
+    attempt_id: int,
+    lines: int = Query(default=500, ge=1, le=2000),
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    attempt = await crud_attempt.get_attempt(db, attempt_id)
+    if attempt is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error_code": "ATTEMPT_NOT_FOUND", "message": "考试尝试不存在"},
+        )
+
+    if attempt.student_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error_code": "FORBIDDEN_NOT_OWNER", "message": "无权查看此考试尝试"},
+        )
+
+    if not attempt.sidecar_container_id:
+        return ApiResponse(code=0, data={"logs": "Sidecar container not yet created.", "lines_requested": lines})
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "logs", "--tail", str(lines), attempt.sidecar_container_id,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        logs = stdout.decode("utf-8", errors="replace")
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="获取日志超时")
+    except Exception as e:
+        logger.warning("[exam_attempts] docker logs 失败: %s", e)
+        raise HTTPException(status_code=500, detail=f"获取日志失败: {e}")
+
+    return ApiResponse(code=0, data={"logs": logs, "lines_requested": lines})
 
 
 # ─── POST /students/exam-attempts/{id}/abort ─────────────────────────────────

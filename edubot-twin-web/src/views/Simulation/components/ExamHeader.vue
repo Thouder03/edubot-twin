@@ -6,9 +6,19 @@
  *   考试名称 | 模式 | 倒计时 | 状态 | 剩余尝试 | 操作按钮
  */
 import { computed, ref, onBeforeUnmount, watch } from 'vue'
-import { ElButton, ElTag, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus'
+import {
+  ElButton,
+  ElTag,
+  ElDropdown,
+  ElDropdownMenu,
+  ElDropdownItem,
+  ElDialog,
+  ElMessage,
+  ElSwitch
+} from 'element-plus'
 import { Icon } from '@/components/Icon'
 import type { ExamRunInfo, AttemptDetail, ExamAttemptStatus } from '@/api/exam/attempts'
+import { getAttemptSidecarLogsApi } from '@/api/exam/attempts'
 import { availablePanels } from '../config/predefined-layouts'
 import SimControlBar from './SimControlBar.vue'
 import { confirmExit } from '../composables/useExitConfirm'
@@ -131,6 +141,53 @@ const statusTagType = computed<'success' | 'warning' | 'info' | 'danger'>(() => 
 })
 
 const countdownWarning = computed(() => countdownPercent.value < 20)
+
+// ─── 容器日志弹窗 ─────────────────────────────────────────────────────────────
+const showLogsDialog = ref(false)
+const logsContent = ref('')
+const loadingLogs = ref(false)
+
+const autoRefreshLogs = ref(false)
+let logsRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+function stopAutoRefreshLogs() {
+  if (logsRefreshTimer) {
+    clearInterval(logsRefreshTimer)
+    logsRefreshTimer = null
+  }
+}
+
+watch(autoRefreshLogs, (val) => {
+  if (val) {
+    logsRefreshTimer = setInterval(() => handleViewLogs(true), 2000)
+  } else {
+    stopAutoRefreshLogs()
+  }
+})
+
+watch(showLogsDialog, (val) => {
+  if (!val) {
+    autoRefreshLogs.value = false
+    stopAutoRefreshLogs()
+  }
+})
+
+async function handleViewLogs(silent = false) {
+  if (!props.attempt?.attempt_id) return
+  showLogsDialog.value = true
+  if (!silent) {
+    loadingLogs.value = true
+    logsContent.value = '正在加载日志...'
+  }
+  try {
+    const res = await getAttemptSidecarLogsApi(props.attempt.attempt_id)
+    logsContent.value = res.data?.logs || '暂无日志输出'
+  } catch (e) {
+    if (!silent) logsContent.value = '加载日志失败或容器尚未启动'
+  } finally {
+    if (!silent) loadingLogs.value = false
+  }
+}
 </script>
 
 <template>
@@ -210,6 +267,9 @@ const countdownWarning = computed(() => countdownPercent.value < 20)
 
       <!-- running：评测中 -->
       <template v-else-if="props.attempt.status === 'running'">
+        <ElButton class="header-action-btn" plain @click="() => handleViewLogs(false)">
+          📄 日志
+        </ElButton>
         <ElButton type="warning" loading disabled>🔄 评测中</ElButton>
         <ElButton type="danger" plain :loading="props.aborting" @click="emit('abort')">
           ⛔ 放弃
@@ -218,6 +278,9 @@ const countdownWarning = computed(() => countdownPercent.value < 20)
 
       <!-- scoring：计分中 -->
       <template v-else-if="props.attempt.status === 'scoring'">
+        <ElButton class="header-action-btn" plain @click="() => handleViewLogs(false)">
+          📄 日志
+        </ElButton>
         <ElButton type="info" loading disabled>📊 计分中…</ElButton>
       </template>
 
@@ -229,10 +292,41 @@ const countdownWarning = computed(() => countdownPercent.value < 20)
 
       <!-- error / aborted -->
       <template v-else>
+        <ElButton class="header-action-btn" plain @click="() => handleViewLogs(false)">
+          📄 日志
+        </ElButton>
         <ElButton type="danger" plain @click="emit('view-result')">❌ 查看详情</ElButton>
         <ElButton @click="handleBack()">← 返回</ElButton>
       </template>
     </div>
+
+    <!-- 容器日志弹窗 -->
+    <ElDialog
+      v-model="showLogsDialog"
+      title="评测容器引擎日志 (Sidecar)"
+      width="700px"
+      draggable
+      :modal="false"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div v-loading="loadingLogs" class="logs-container">
+        <pre class="logs-content">{{ logsContent }}</pre>
+      </div>
+      <template #footer>
+        <div
+          style="display: flex; align-items: center; justify-content: space-between; width: 100%"
+        >
+          <ElSwitch v-model="autoRefreshLogs" active-text="自动刷新(2s)" />
+          <div>
+            <ElButton @click="showLogsDialog = false">关闭</ElButton>
+            <ElButton type="primary" :loading="loadingLogs" @click="handleViewLogs(false)">
+              刷新
+            </ElButton>
+          </div>
+        </div>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
@@ -350,6 +444,54 @@ const countdownWarning = computed(() => countdownPercent.value < 20)
   }
   to {
     opacity: 0.5;
+  }
+}
+
+.logs-container {
+  background: #1e1e2d;
+  border-radius: 6px;
+  padding: 12px;
+  min-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #3a4060;
+
+  .logs-content {
+    margin: 0;
+    color: #a0d9f8;
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+}
+</style>
+
+<style lang="less">
+/* 全局控制容器日志弹窗的可缩放逻辑 */
+.el-dialog:has(.logs-container) {
+  resize: both;
+  overflow: hidden;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex !important;
+  flex-direction: column;
+
+  /* 修复: 取消左右 auto 居中，改为固定左侧起点，使得调整大小时仅向右下延展 */
+  margin-left: max(0px, calc(50vw - 350px)) !important;
+  margin-right: auto !important;
+
+  .el-dialog__body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 12px;
+
+    .logs-container {
+      flex: 1;
+      max-height: none;
+    }
   }
 }
 </style>

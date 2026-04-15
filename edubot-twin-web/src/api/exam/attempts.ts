@@ -268,6 +268,16 @@ export const startAttemptApi = (attemptId: number): Promise<IResponse<AttemptDet
 export const getAttemptDetailApi = (attemptId: number): Promise<IResponse<AttemptDetail>> =>
   request.get({ url: `${STUDENT_BASE}/exam-attempts/${attemptId}` })
 
+/** 获取 Sidecar 容器执行日志 */
+export const getAttemptSidecarLogsApi = (
+  attemptId: number,
+  lines = 500
+): Promise<IResponse<{ logs: string; lines_requested: number }>> =>
+  request.get({
+    url: `${STUDENT_BASE}/exam-attempts/${attemptId}/logs`,
+    params: { lines }
+  })
+
 /** 学生主动放弃考试 */
 export const abortAttemptApi = (
   attemptId: number,
