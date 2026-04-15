@@ -56,6 +56,35 @@ class AbortAttemptRequest(BaseModel):
     reason: Optional[str] = Field(None, description="放弃原因（可选）", max_length=200)
 
 
+# ─── 第13期：人工评分 / 覆盖请求 ─────────────────────────────────────────────
+
+
+class ManualScoreBreakdown(BaseModel):
+    """人工评分细项分（字段推荐但非强制，额外字段允许）"""
+    operation_quality: Optional[float] = Field(None, ge=0, le=100, description="操作规范性")
+    path_rationality: Optional[float] = Field(None, ge=0, le=100, description="路径合理性")
+    recovery_ability: Optional[float] = Field(None, ge=0, le=100, description="恢复能力")
+    stability: Optional[float] = Field(None, ge=0, le=100, description="运行稳定性")
+    extra_comment: Optional[str] = Field(None, max_length=500, description="附加评语")
+
+    class Config:
+        extra = "allow"
+
+
+class ManualScoreRequest(BaseModel):
+    """POST /teachers/exam-attempts/{id}/manual-score 请求体"""
+    manual_score: float = Field(..., ge=0, le=100, description="综合人工分（0-100）")
+    breakdown: ManualScoreBreakdown = Field(default_factory=ManualScoreBreakdown, description="细项分")
+    comment: Optional[str] = Field(None, max_length=1000, description="教师评语")
+
+
+class OverrideRequest(BaseModel):
+    """POST /teachers/exam-attempts/{id}/override 请求体"""
+    objective_score: Optional[float] = Field(None, ge=0, le=100, description="覆盖客观分（需 allow_override_objective=true）")
+    pass_flag: Optional[bool] = Field(None, description="覆盖 pass 标记（需 allow_override_pass_flag=true）")
+    override_reason: str = Field(..., min_length=1, max_length=500, description="覆盖原因（必填，写入审计日志）")
+
+
 # ─── 考试运行信息（学生进入考试页时获取） ────────────────────────────────────
 
 
@@ -268,13 +297,18 @@ class TeacherAttemptFullSchema(AttemptBaseSchema):
     GET /teachers/exam-attempts/{id} 响应体
 
     教师端完整详情：公共基础字段 + 学生信息 + 考试信息 + artifacts 下载信息。
+    第13期扩展：manual_score / final_score / breakdown_json。
     """
     student: AttemptStudentInfo
     exam: AttemptExamInfo
     review_status: str
+    manual_score: Optional[float] = None
+    final_score: Optional[float] = None
+    breakdown_json: Optional[dict] = None
     teacher_comment: Optional[str] = None
     artifact_index_json: dict = Field(default_factory=dict)
     sidecar_container_id: Optional[str] = None
+    attempt_scoring_policy_json: dict = Field(default_factory=dict)
 
 
 # ─── 生命周期事件 Schema ──────────────────────────────────────────────────────

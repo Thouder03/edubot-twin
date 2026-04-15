@@ -29,7 +29,8 @@ class ExamAttemptStatus(str, enum.Enum):
     PENDING = "pending"       # 已创建，未开始执行
     RUNNING = "running"       # Sidecar 容器运行中
     SCORING = "scoring"       # 解析 result.json 中
-    COMPLETED = "completed"   # 客观分已入库，等待第13期人工评分
+    COMPLETED = "completed"   # 客观分已入库，等待人工评分
+    REVIEWED = "reviewed"     # 第13期：教师已完成人工评分，最终成绩入库
     ABORTED = "aborted"       # 超时 / 学生放弃 / 容器异常
     ERROR = "error"           # 快照失败 / Sidecar 启动失败 / JSON 解析失败
 
@@ -51,6 +52,10 @@ class EvidenceEventType(str, enum.Enum):
     EXAM_ATTEMPT_FINALIZED = "exam_attempt_finalized"
     SYSTEM_WARNING = "system_warning"
     SYSTEM_ERROR = "system_error"
+    # 第13期新增：人工复核事件
+    MANUAL_SCORE_SUBMITTED = "manual_score_submitted"   # 教师提交人工评分
+    TEACHER_OVERRIDE = "teacher_override"               # 教师覆盖客观分/pass
+    FINAL_SCORE_CALCULATED = "final_score_calculated"  # 最终成绩核算完成
 
 
 class ExamAttemptReviewStatus(str, enum.Enum):
@@ -140,6 +145,9 @@ class ExamAttempt(Base):
     )
     manual_score: Mapped[Optional[float]] = mapped_column(
         Float, nullable=True, comment="人工分（第13期写入）"
+    )
+    breakdown_json: Mapped[Optional[dict]] = mapped_column(
+        JSON, nullable=True, comment="人工评分细项分 JSON（第13期写入）"
     )
     final_score: Mapped[Optional[float]] = mapped_column(
         Float, nullable=True, comment="最终分（第13期核算）"

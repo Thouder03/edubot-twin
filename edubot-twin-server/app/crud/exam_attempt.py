@@ -285,6 +285,53 @@ async def find_stale_pending_attempts(
     return list(result.scalars().all())
 
 
+async def apply_manual_score(
+    db: AsyncSession,
+    attempt: ExamAttempt,
+    *,
+    manual_score: float,
+    breakdown_json: Optional[dict] = None,
+    teacher_comment: Optional[str] = None,
+    final_score: float,
+    pass_: bool,
+) -> ExamAttempt:
+    """写入人工评分并核算最终成绩（completed → reviewed）"""
+    attempt.manual_score = manual_score
+    if breakdown_json is not None:
+        attempt.breakdown_json = breakdown_json
+    if teacher_comment is not None:
+        attempt.teacher_comment = teacher_comment
+    attempt.final_score = final_score
+    attempt.pass_ = pass_
+    attempt.status = ExamAttemptStatus.REVIEWED
+    attempt.review_status = ExamAttemptReviewStatus.REVIEWED
+    attempt.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(attempt)
+    return attempt
+
+
+async def apply_override(
+    db: AsyncSession,
+    attempt: ExamAttempt,
+    *,
+    objective_score: Optional[float] = None,
+    pass_flag: Optional[bool] = None,
+    final_score: Optional[float] = None,
+) -> ExamAttempt:
+    """教师覆盖客观分 / pass 并重算最终成绩"""
+    if objective_score is not None:
+        attempt.objective_score = max(0.0, min(100.0, objective_score))
+    if pass_flag is not None:
+        attempt.pass_ = pass_flag
+    if final_score is not None:
+        attempt.final_score = final_score
+    attempt.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(attempt)
+    return attempt
+
+
 async def find_timeout_running_attempts(db: AsyncSession) -> list[ExamAttempt]:
     """查询超过运行时限 + 30s 缓冲的 running attempt（需强制终止）"""
     now = datetime.utcnow()

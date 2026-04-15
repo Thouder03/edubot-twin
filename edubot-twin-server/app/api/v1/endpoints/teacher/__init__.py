@@ -15,7 +15,7 @@ from . import (
     containers, students, monitor, experiments, file_bundles, env_bundles,
     dry_run_tools, container_files, container_proxy,
     exams, exam_env_snapshots, exam_file_snapshots, exam_eval_scripts,
-    exam_attempts,
+    exam_attempts, exam_attempts_review,
 )
 
 # 创建教师路由聚合器
@@ -66,3 +66,7 @@ router.include_router(students.router, prefix="/students", tags=["教师-学生�
 
 # 考试运行记录（第12期）
 router.include_router(exam_attempts.router, tags=["教师-考试运行记录"])
+
+# 考试复核 API（第13期：artifacts / manual-score / override）
+# ⚠️ 注意：/exam-attempts/{id}/artifacts/file 含二级路径，必须在 exam_attempts 后注册
+router.include_router(exam_attempts_review.router, tags=["教师-考试复核"])
