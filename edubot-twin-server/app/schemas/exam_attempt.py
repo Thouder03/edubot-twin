@@ -286,6 +286,8 @@ class TeacherAttemptListItemSchema(BaseModel):
     duration_ms: Optional[int] = None
     error_code: Optional[str] = None
     review_status: str
+    manual_score: Optional[float] = None
+    final_score: Optional[float] = None
     created_at: datetime
 
     class Config:

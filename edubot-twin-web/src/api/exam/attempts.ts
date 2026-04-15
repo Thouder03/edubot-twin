@@ -136,6 +136,8 @@ export interface TeacherAttemptListItem {
   duration_ms: number | null
   error_code: string | null
   review_status: string
+  manual_score: number | null
+  final_score: number | null
   created_at: string
 }
 

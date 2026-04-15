@@ -132,6 +132,8 @@ async def list_exam_attempts(
             duration_ms=attempt.duration_ms,
             error_code=attempt.error_code,
             review_status=attempt.review_status.value,
+            manual_score=attempt.manual_score,
+            final_score=attempt.final_score,
             created_at=attempt.created_at,
         ))
 
@@ -187,6 +189,8 @@ async def list_all_attempts(
             duration_ms=attempt.duration_ms,
             error_code=attempt.error_code,
             review_status=attempt.review_status.value,
+            manual_score=attempt.manual_score,
+            final_score=attempt.final_score,
             created_at=attempt.created_at,
         ))
 

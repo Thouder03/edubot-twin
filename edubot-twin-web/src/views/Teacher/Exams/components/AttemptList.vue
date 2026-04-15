@@ -53,6 +53,17 @@ const STATUS_TYPE: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
   scoring: 'info'
 }
 
+const REVIEW_STATUS_LABEL: Record<string, string> = {
+  not_required: '-',
+  pending: '待复核',
+  reviewed: '已复核'
+}
+const REVIEW_STATUS_TYPE: Record<string, 'success' | 'warning' | 'info'> = {
+  not_required: 'info',
+  pending: 'warning',
+  reviewed: 'success'
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return '-'
   return new Date(iso).toLocaleString('zh-CN', { hour12: false })
@@ -132,6 +143,22 @@ onMounted(load)
       </ElTableColumn>
       <ElTableColumn label="客观分" prop="objective_score" width="72">
         <template #default="{ row }">{{ row.objective_score ?? '-' }}</template>
+      </ElTableColumn>
+      <ElTableColumn label="人工分" width="72">
+        <template #default="{ row }">{{ row.manual_score ?? '-' }}</template>
+      </ElTableColumn>
+      <ElTableColumn label="最终分" width="72">
+        <template #default="{ row }">
+          <b v-if="row.final_score != null">{{ row.final_score }}</b>
+          <span v-else>-</span>
+        </template>
+      </ElTableColumn>
+      <ElTableColumn label="复核" width="80">
+        <template #default="{ row }">
+          <ElTag :type="REVIEW_STATUS_TYPE[row.review_status] ?? 'info'" size="small">
+            {{ REVIEW_STATUS_LABEL[row.review_status] ?? row.review_status }}
+          </ElTag>
+        </template>
       </ElTableColumn>
       <ElTableColumn label="通过" width="60">
         <template #default="{ row }">
