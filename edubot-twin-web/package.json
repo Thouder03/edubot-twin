@@ -128,6 +128,8 @@
     "typescript": "5.7.3",
     "typescript-eslint": "^8.19.1",
     "unocss": "^0.65.4",
+    "unplugin-auto-import": "^0.18.6",
+    "unplugin-vue-components": "^0.27.5",
     "vite": "6.0.7",
     "vite-plugin-ejs": "^1.7.0",
     "vite-plugin-eslint": "^1.8.1",
