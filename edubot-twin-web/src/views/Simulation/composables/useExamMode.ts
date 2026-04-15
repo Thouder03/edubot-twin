@@ -53,7 +53,11 @@ export function useExamMode(examId: Ref<number | null>) {
   /** 倒计时剩余毫秒（running 时计算） */
   const countdownMs = computed<number | null>(() => {
     if (!examRunInfo.value || !attempt.value?.started_at) return null
-    const elapsed = Date.now() - new Date(attempt.value.started_at).getTime()
+    let startedStr = attempt.value.started_at
+    if (!startedStr.endsWith('Z') && !startedStr.includes('+')) {
+      startedStr += 'Z'
+    }
+    const elapsed = Date.now() - new Date(startedStr).getTime()
     const remaining = examRunInfo.value.time_limit_ms - elapsed
     return Math.max(0, remaining)
   })
@@ -152,8 +156,8 @@ export function useExamMode(examId: Ref<number | null>) {
     if (!attempt.value) return
     aborting.value = true
     try {
-      const res = await abortAttemptApi(attempt.value.attempt_id, reason)
-      attempt.value = res.data ?? attempt.value
+      await abortAttemptApi(attempt.value.attempt_id, reason)
+      attempt.value = null
       stopPolling()
     } catch {
       ElMessage.error('放弃考试失败')

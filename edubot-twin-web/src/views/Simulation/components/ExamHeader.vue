@@ -57,7 +57,11 @@ function updateCountdown() {
     countdownDisplay.value = '--:--'
     return
   }
-  const elapsed = Date.now() - new Date(props.attempt.started_at).getTime()
+  let startedStr = props.attempt.started_at
+  if (!startedStr.endsWith('Z') && !startedStr.includes('+')) {
+    startedStr += 'Z'
+  }
+  const elapsed = Date.now() - new Date(startedStr).getTime()
   const remaining = Math.max(0, props.examRunInfo.time_limit_ms - elapsed)
   const totalMs = props.examRunInfo.time_limit_ms
 
