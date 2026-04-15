@@ -11,7 +11,7 @@
  *   student       — 容器 Sidecar，student_limited scope（CONTAINER_FILES_API_BASE，绝对路径）
  *                   通过路径预设按钮切换当前根目录
  */
-import { onMounted, ref, computed, onUnmounted, watch } from 'vue'
+import { onMounted, ref, computed, onUnmounted, watch, inject, type Ref } from 'vue'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { ElButton, ElTooltip } from 'element-plus'
 import FileTree from './FileTree.vue'
@@ -27,6 +27,10 @@ import {
   CONTAINER_FILES_API_BASE,
   SHADOW_CONTAINER_FILES_API_BASE
 } from '@/api/files'
+
+// ─── 考试锁定（第13期 SDD §7.2）
+// running/scoring 状态时 Monaco 进入只读模式
+const isExamLocked = inject<Ref<boolean>>('isExamLocked', ref(false))
 
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('workspace-panel')
@@ -429,6 +433,7 @@ onUnmounted(() => {
           :file-cache="workspace.fileCache"
           :dirty-map="workspace.dirtyMap"
           :settings="settings"
+          :read-only="isExamLocked"
           @content-change="
             (content) => {
               if (workspace.activePath.value) {

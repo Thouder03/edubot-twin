@@ -29,10 +29,13 @@ import { buildComponentMap } from '../panels/registry'
 // ---------- Props ----------
 interface Props {
   initialLayout?: LayoutConfig
+  /** 可选：考试模式下注入过滤后的 componentMap（面板策略）*/
+  overrideComponentMap?: Record<string, VueComponent>
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  initialLayout: undefined
+  initialLayout: undefined,
+  overrideComponentMap: undefined
 })
 
 // ---------- Events ----------
@@ -41,7 +44,8 @@ const emit = defineEmits<{
 }>()
 
 // ---------- 组件映射 ----------
-const componentMap: Record<string, VueComponent> = buildComponentMap()
+// 优先使用父组件传入的过滤 map，否则用完整 map
+const componentMap: Record<string, VueComponent> = props.overrideComponentMap ?? buildComponentMap()
 
 // ---------- 状态 ----------
 const glContainerRef = ref<HTMLElement>()

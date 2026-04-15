@@ -12,6 +12,7 @@ const props = defineProps<{
   fileCache: Record<string, any>
   dirtyMap: Record<string, boolean>
   settings: WorkspaceSettings
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -83,6 +84,7 @@ const currentTabs = computed(() => {
         :model-value="fileCache[activePath]?.content || ''"
         :language="fileCache[activePath]?.extension || 'plaintext'"
         :settings="settings"
+        :readonly="readOnly"
         @update:model-value="emit('content-change', $event)"
         @save="emit('save', $event)"
       />

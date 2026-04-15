@@ -891,6 +891,19 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
               title: '测评脚本',
               icon: 'vi-carbon:script'
             }
+          },
+          {
+            path: 'attempts/:attempt_id/review',
+            component: () => import('@/views/Teacher/Exams/ExamAttemptReview.vue'),
+            name: 'TeacherExamAttemptReview',
+            meta: {
+              title: '考试复核',
+              noTagsView: true,
+              noCache: true,
+              hidden: true,
+              canTo: true,
+              activeMenu: '/teacher/exams/list'
+            }
           }
         ]
       },

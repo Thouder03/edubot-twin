@@ -34,6 +34,7 @@ import { defaultLayout } from './config/predefined-layouts'
 import { usePanelState } from './stores/panelState'
 import { useGzBridge } from './composables/useGzBridge'
 import { useExamMode } from './composables/useExamMode'
+import { usePanelPolicy } from './composables/usePanelPolicy'
 import { defaultConfig as gzDefaultConfig } from './panels/GzWebViewer/settings'
 import {
   getMyContainerApi,
@@ -57,6 +58,16 @@ const examIdFromQuery = computed<number | null>(() => {
 })
 const isExamMode = computed(() => examIdFromQuery.value !== null)
 const examMode = useExamMode(examIdFromQuery)
+
+// ---------- 面板策略（第13期）----------
+const panelPolicyJson = computed<Record<string, unknown>>(
+  () => (examMode.examRunInfo.value?.panel_policy ?? {}) as Record<string, unknown>
+)
+const panelPolicy = usePanelPolicy(isExamMode, examMode.attempt, panelPolicyJson)
+
+// 向子面板提供考试锁定状态
+provide('isExamLocked', panelPolicy.isExamLocked)
+provide('allowDebugDuringExam', panelPolicy.allowDebugDuringExam)
 
 const showStartDialog = ref(false)
 const showResultDialog = ref(false)
@@ -508,6 +519,7 @@ async function handleBack(_mode: 'temporary' | 'stopAndExit') {
       <GLayout
         ref="glLayoutRef"
         :initial-layout="currentLayout"
+        :override-component-map="isExamMode ? panelPolicy.filteredComponentMap.value : undefined"
         @settings-toggle="handleSettingsToggle"
       />
     </div>

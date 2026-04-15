@@ -31,6 +31,13 @@ const isRunning = computed(() => containerStatus.value === 'running')
 
 const statusText = computed(() => getContainerStatusText(containerStatus.value))
 
+// ---------- 考试锁定（第13期 SDD §7.2）----------
+// running/scoring 状态时，根据 allow_debug_during_exam 决定是否禁用终端输入
+const isExamLocked = inject<Ref<boolean>>('isExamLocked', ref(false))
+const allowDebugDuringExam = inject<Ref<boolean>>('allowDebugDuringExam', ref(true))
+// 终端禁用条件：考试锁定且不允许调试
+const isTerminalDisabled = computed(() => isExamLocked.value && !allowDebugDuringExam.value)
+
 // ---------- 用户 Token ----------
 const userStore = useUserStore()
 
@@ -170,8 +177,9 @@ function initTerminal() {
   terminal.open(terminalEl.value)
   fitAddon.fit()
 
-  // 用户输入 → 发到 ws
+  // 用户输入 → 发到 ws（考试锁定时禁止输入）
   terminal.onData((data) => {
+    if (isTerminalDisabled.value) return
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(data)
     }
@@ -260,8 +268,17 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
+      <!-- 考试锁定提示条 -->
+      <div v-if="isTerminalDisabled" class="container-terminal__exam-lock">
+        🔒 考试进行中：终端输入已禁用
+      </div>
+
       <!-- xterm 容器 -->
-      <div ref="terminalEl" class="container-terminal__xterm"></div>
+      <div
+        ref="terminalEl"
+        class="container-terminal__xterm"
+        :class="{ 'is-locked': isTerminalDisabled }"
+      ></div>
     </template>
   </div>
 </template>
@@ -395,5 +412,19 @@ onBeforeUnmount(() => {
   50% {
     opacity: 0.3;
   }
+}
+
+.container-terminal__exam-lock {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: rgba(245, 108, 108, 0.15);
+  color: #f56c6c;
+  border-bottom: 1px solid rgba(245, 108, 108, 0.3);
+  text-align: center;
+}
+
+.container-terminal__xterm.is-locked {
+  opacity: 0.8;
+  cursor: not-allowed;
 }
 </style>

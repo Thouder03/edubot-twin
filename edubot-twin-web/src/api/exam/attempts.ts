@@ -1,5 +1,5 @@
 /**
- * 考试运行记录 API（第12期）
+ * 考试运行记录 API（第12/13期）
  *
  * 学生端：
  *   GET  /students/exams/{id}                   → ExamRunInfo
@@ -9,11 +9,17 @@
  *   GET  /students/exam-attempts/{id}            → 尝试详情
  *   POST /students/exam-attempts/{id}/abort      → 放弃考试
  *
- * 教师端：
+ * 教师端（第12期）：
  *   GET  /teachers/exams/{id}/attempts           → 单考试运行记录列表
  *   GET  /teachers/exam-attempts                 → 全局运行记录列表
  *   GET  /teachers/exam-attempts/{id}            → 完整详情
  *   GET  /teachers/exam-attempts/{id}/events     → 生命周期事件
+ *
+ * 教师端（第13期复核）：
+ *   GET  /teachers/exam-attempts/{id}/artifacts         → artifacts 目录树
+ *   GET  /teachers/exam-attempts/{id}/artifacts/file    → 读取单文件
+ *   POST /teachers/exam-attempts/{id}/manual-score      → 提交人工评分
+ *   POST /teachers/exam-attempts/{id}/override          → 覆盖客观分/pass
  */
 
 import request from '@/axios'
@@ -133,14 +139,63 @@ export interface TeacherAttemptListItem {
   created_at: string
 }
 
-/** 教师端完整详情 */
+/** 教师端完整详情（第13期扩展：manual_score / final_score / breakdown_json） */
 export interface TeacherAttemptFull extends AttemptDetail {
   student: AttemptStudentInfo
   exam: AttemptExamInfo
   review_status: string
+  manual_score: number | null
+  final_score: number | null
+  breakdown_json: Record<string, unknown> | null
   teacher_comment: string | null
   artifact_index_json: Record<string, string>
   sidecar_container_id: string | null
+  attempt_scoring_policy_json: Record<string, unknown>
+}
+
+// ─── 第13期：复核相关类型 ─────────────────────────────────────────────────────
+
+export interface ManualScoreBreakdown {
+  operation_quality?: number | null
+  path_rationality?: number | null
+  recovery_ability?: number | null
+  stability?: number | null
+  extra_comment?: string | null
+  [key: string]: unknown
+}
+
+export interface ManualScoreRequest {
+  manual_score: number
+  breakdown: ManualScoreBreakdown
+  comment?: string | null
+}
+
+export interface OverrideRequest {
+  objective_score?: number | null
+  pass_flag?: boolean | null
+  override_reason: string
+}
+
+/** artifacts 目录树响应 */
+export interface ArtifactFileInfo {
+  name: string
+  size: number
+  mime: string
+  preview_type: 'text' | 'image' | 'download' | 'unsupported'
+  too_large: boolean
+}
+
+export interface ArtifactsTreeResponse {
+  artifact_index: Record<string, string>
+  files: ArtifactFileInfo[]
+  artifacts_available: boolean
+}
+
+/** 单文件预览响应 */
+export interface ArtifactFileContent {
+  content: string
+  encoding: 'utf-8' | 'base64'
+  mime: string
 }
 
 /** 生命周期事件 */
@@ -249,6 +304,38 @@ export const getAttemptEventsApi = (
   attemptId: number
 ): Promise<IResponse<{ items: EvidenceEvent[] }>> =>
   request.get({ url: `${TEACHER_BASE}/exam-attempts/${attemptId}/events` })
+
+// ─── 第13期：复核 API ─────────────────────────────────────────────────────────
+
+/** artifacts 目录树 */
+export const getArtifactsTreeApi = (
+  attemptId: number
+): Promise<IResponse<ArtifactsTreeResponse>> =>
+  request.get({ url: `${TEACHER_BASE}/exam-attempts/${attemptId}/artifacts` })
+
+/** 读取单个 artifact 文件 */
+export const getArtifactFileApi = (
+  attemptId: number,
+  path: string
+): Promise<IResponse<ArtifactFileContent>> =>
+  request.get({
+    url: `${TEACHER_BASE}/exam-attempts/${attemptId}/artifacts/file`,
+    params: { path }
+  })
+
+/** 提交人工评分 */
+export const submitManualScoreApi = (
+  attemptId: number,
+  data: ManualScoreRequest
+): Promise<IResponse<TeacherAttemptFull>> =>
+  request.post({ url: `${TEACHER_BASE}/exam-attempts/${attemptId}/manual-score`, data })
+
+/** 覆盖客观分 / pass */
+export const overrideScoresApi = (
+  attemptId: number,
+  data: OverrideRequest
+): Promise<IResponse<TeacherAttemptFull>> =>
+  request.post({ url: `${TEACHER_BASE}/exam-attempts/${attemptId}/override`, data })
 
 // ─── 12期补充：考试容器启动 API ──────────────────────────────────────────────
 

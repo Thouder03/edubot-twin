@@ -5,6 +5,7 @@
  * 显示该考试的所有学生尝试，点击行打开 AttemptDetailDialog。
  */
 import { ref, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   ElButton,
   ElTable,
@@ -18,6 +19,8 @@ import {
 import { getExamAttemptsApi } from '@/api/exam/attempts'
 import type { TeacherAttemptListItem } from '@/api/exam/attempts'
 import AttemptDetailDialog from './AttemptDetailDialog.vue'
+
+const router = useRouter()
 
 const props = defineProps<{
   examId: number
@@ -79,8 +82,8 @@ async function load() {
 }
 
 function handleRowClick(row: TeacherAttemptListItem) {
-  selectedAttemptId.value = row.attempt_id
-  showDetail.value = true
+  // 第13期：跳转到独立复核页（替代弹窗）
+  router.push(`/teacher/exams/attempts/${row.attempt_id}/review`)
 }
 
 watch([page, pageSize, statusFilter], load)
