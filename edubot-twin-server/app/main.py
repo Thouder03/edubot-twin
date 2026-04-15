@@ -245,7 +245,7 @@ async def _orphan_container_reconcile_once() -> dict[str, int]:
 
         # ── 阶段 B：DB → Docker 校准 ────────────────────────
         try:
-            active = await crud_container.find_active_db_containers(db)
+            active = await crud_container.find_db_containers(db)
         except Exception as e:
             logger.error(f"[孤儿清洗] 阶段 B 查询失败: {e}")
             active = []
@@ -254,14 +254,19 @@ async def _orphan_container_reconcile_once() -> dict[str, int]:
             try:
                 docker_status = await inspect_container(c.container_id)
                 if docker_status is None:
-                    c.status = ContainerStatus.ERROR
-                    c.error_message = "orphan: docker container missing"
-                    c.updated_at = datetime.utcnow()
+                    # 物理容器已不存在：直接删除 DB 孤儿记录，避免列表长期残留“幽灵容器”
+                    orphan_db_id = c.id
+                    orphan_user_id = c.user_id
+                    orphan_container_id = c.container_id
+                    await db.delete(c)
                     log_container_event(
                         event_type="orphan_reconcile",
-                        container_id=c.id,
-                        student_id=c.user_id,
-                        message="DB 记录孤儿化（docker 已无此容器）",
+                        container_id=orphan_db_id,
+                        student_id=orphan_user_id,
+                        message=(
+                            "DB 孤儿记录已清理（docker 已无此容器）"
+                            f" docker_id={orphan_container_id}"
+                        ),
                         level="WARNING",
                     )
                     stats["db_corrected"] += 1

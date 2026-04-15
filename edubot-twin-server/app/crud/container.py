@@ -254,7 +254,7 @@ async def find_zombie_state_containers(
     return list(result.scalars().all())
 
 
-async def find_active_db_containers(db: AsyncSession) -> list[SimContainer]:
+async def find_db_containers(db: AsyncSession) -> list[SimContainer]:
     """
     查找 DB 中所有「应当存在对应 Docker 容器」的活跃记录，
     用于孤儿清洗循环阶段 B（DB → Docker 校准）。
@@ -263,12 +263,6 @@ async def find_active_db_containers(db: AsyncSession) -> list[SimContainer]:
     """
     result = await db.execute(
         select(SimContainer).where(
-            SimContainer.status.in_(
-                [
-                    ContainerStatus.RUNNING,
-                    ContainerStatus.CREATING,
-                ]
-            ),
             SimContainer.container_id.isnot(None),
         )
     )

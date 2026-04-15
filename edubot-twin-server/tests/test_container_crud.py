@@ -1,6 +1,9 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import select
+
 from app.core.port_allocator import allocate_ports
 from app.crud import container as container_crud
 from app.models.container import ContainerStatus, SimContainer
@@ -81,3 +84,73 @@ async def test_allocate_ports_skips_stopping_container_ports(db_session):
 
     assert gz_port != 9000
     assert ros_port != 9500
+
+
+@pytest.mark.asyncio
+async def test_orphan_reconcile_removes_db_record_when_docker_missing(db_session, monkeypatch):
+    """回归测试：阶段 B 发现物理容器不存在时，应删除 DB 孤儿记录。"""
+    import app.main as main_module
+
+    container = SimContainer(
+        container_id="orphan-db-only-container",
+        user_id=1,
+        image_name="edubot/gazebo-ros:latest",
+        status=ContainerStatus.RUNNING,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db_session.add(container)
+    await db_session.commit()
+    await db_session.refresh(container)
+
+    @asynccontextmanager
+    async def fake_session():
+        yield db_session
+
+    async def fake_find_zombie_state_containers(_db, timeout_seconds):
+        return []
+
+    async def fake_find_active_db_containers(_db):
+        result = await _db.execute(
+            select(SimContainer).where(SimContainer.id == container.id)
+        )
+        target = result.scalar_one_or_none()
+        return [target] if target else []
+
+    async def fake_inspect_container(_container_id):
+        return None
+
+    async def fake_list_edubot_simulation_containers():
+        return []
+
+    async def fake_get_known_container_ids(_db):
+        return set()
+
+    monkeypatch.setattr(main_module, "AsyncSessionLocal", fake_session)
+    monkeypatch.setattr(
+        main_module.crud_container,
+        "find_zombie_state_containers",
+        fake_find_zombie_state_containers,
+    )
+    monkeypatch.setattr(
+        main_module.crud_container,
+        "find_active_db_containers",
+        fake_find_active_db_containers,
+    )
+    monkeypatch.setattr(main_module, "inspect_container", fake_inspect_container)
+    monkeypatch.setattr(
+        main_module,
+        "list_edubot_simulation_containers",
+        fake_list_edubot_simulation_containers,
+    )
+    monkeypatch.setattr(
+        main_module.crud_container,
+        "get_known_container_ids",
+        fake_get_known_container_ids,
+    )
+
+    stats = await main_module._orphan_container_reconcile_once()
+
+    deleted = await container_crud.get_container(db_session, container.id)
+    assert deleted is None
+    assert stats["db_corrected"] == 1
