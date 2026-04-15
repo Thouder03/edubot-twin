@@ -36,6 +36,10 @@ function formatMinutes(ms: number): string {
         <span class="label">考试名称：</span>
         <span class="value font-bold">{{ props.examRunInfo.name }}</span>
       </div>
+      <div class="info-row" v-if="props.examRunInfo.description">
+        <span class="label">考试说明：</span>
+        <span class="value">{{ props.examRunInfo.description }}</span>
+      </div>
       <div class="info-row">
         <span class="label">时限：</span>
         <span class="value">{{ formatMinutes(props.examRunInfo.time_limit_ms) }}</span>
@@ -45,7 +49,7 @@ function formatMinutes(ms: number): string {
         <span class="value">{{ props.examRunInfo.remaining_attempts }} 次</span>
       </div>
       <div class="warning-box">
-        ⚠ 点击确认后，平台将冻结当前代码快照并自动运行评测脚本。本次尝试将计入剩余次数。
+        ⚠ 点击确认后，平台将冻结当前代码快照并自动运行评测脚本。本次尝试将计入剩余次数（异常情况除外）。
       </div>
     </div>
 
@@ -62,17 +66,21 @@ function formatMinutes(ms: number): string {
 .start-dialog-body {
   .info-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 10px;
     font-size: 14px;
+    line-height: 1.4;
 
     .label {
-      color: #909399;
+      color: #cccccc;
       width: 80px;
       flex-shrink: 0;
     }
     .value {
-      color: #303133;
+      color: #e2e9ff;
+      flex: 1;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
   }
 

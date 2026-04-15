@@ -118,12 +118,13 @@ async def count_completed_attempts(
 async def count_all_attempts(
     db: AsyncSession, student_id: int, exam_id: int
 ) -> int:
-    """统计该学生对该考试的全部尝试次数（含 pending/running/scoring）"""
+    """统计该学生对该考试的有效尝试次数（不含 error）"""
     result = await db.execute(
         select(func.count()).select_from(ExamAttempt).where(
             and_(
                 ExamAttempt.student_id == student_id,
                 ExamAttempt.exam_id == exam_id,
+                ExamAttempt.status != ExamAttemptStatus.ERROR,
             )
         )
     )
