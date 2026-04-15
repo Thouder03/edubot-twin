@@ -21,6 +21,7 @@ Edubot Twin 是一个面向移动机器人实训的数字孪生评测平台，�
 | 脚本 | 用途 |
 |---|---|
 | `ts_check_web.sh` | 前端类型检查（提交前必跑） |
+| `migrate_db.sh` | SQLite 增量迁移（新增 ORM 字段后运行，幂等） |
 | `test_sidecar.sh` | Sidecar 文件服务 & 代理层联调测试 |
 | `test_server_container_crud.sh` | 容器 CRUD 接口测试 |
 | `test_server_status_toggle.sh` | 容器状态切换测试 |
