@@ -9,13 +9,10 @@
 
 set -euo pipefail
 
-# 定位数据库：优先 edubot-twin-server/edubot.db（服务运行目录），其次项目根
-if [ -f "edubot-twin-server/edubot.db" ]; then
-  DB="edubot-twin-server/edubot.db"
-elif [ -f "edubot.db" ]; then
-  DB="edubot.db"
-else
-  echo "❌ 未找到 edubot.db，请先运行 init_db.py"
+# 服务固定从 edubot-twin-server/ 启动，数据库始终是这个文件
+DB="edubot-twin-server/edubot.db"
+if [ ! -f "$DB" ]; then
+  echo "❌ 未找到 $DB，请先在 edubot-twin-server/ 目录下运行 init_db.py"
   exit 1
 fi
 
