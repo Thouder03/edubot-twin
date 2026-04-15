@@ -15,6 +15,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:visible', v: boolean): void
   (e: 'close'): void
+  (e: 'retake'): void
 }>()
 
 const isCompleted = computed(() => props.attempt?.status === 'completed')
@@ -107,6 +108,7 @@ function formatDuration(ms: number | null): string {
     </div>
 
     <template #footer>
+      <ElButton @click="emit('retake')">重新考试</ElButton>
       <ElButton type="primary" @click="emit('close')">关闭</ElButton>
     </template>
   </ElDialog>
@@ -157,7 +159,7 @@ function formatDuration(ms: number | null): string {
     .summary-text {
       font-size: 14px;
       line-height: 1.6;
-      color: #303133;
+      color: #e5e5e5;
     }
   }
 

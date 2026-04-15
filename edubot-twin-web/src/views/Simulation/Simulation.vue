@@ -89,6 +89,13 @@ function handleViewResult() {
   showResultDialog.value = true
 }
 
+async function handleRetake() {
+  showResultDialog.value = false
+  examMode.attempt.value = null
+  await examMode.loadExamRunInfo()
+  handleExamStart()
+}
+
 // attempt 变为终态时自动弹出结果弹窗
 watch(
   () => examMode.attempt.value?.status,
@@ -540,6 +547,7 @@ async function handleBack(_mode: 'temporary' | 'stopAndExit') {
       v-model:visible="showResultDialog"
       :attempt="examMode.attempt.value"
       @close="showResultDialog = false"
+      @retake="handleRetake"
     />
   </div>
 </template>
