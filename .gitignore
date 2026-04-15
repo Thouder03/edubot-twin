@@ -1,3 +1,4 @@
 tmp/
 .gstack/
 edubot.db
+edubot-twin-web/auto-imports.d.ts

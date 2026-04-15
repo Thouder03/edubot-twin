@@ -106,20 +106,10 @@ export function usePanelPolicy(
     () => !!(panelPolicyJson.value as PanelPolicy).allow_debug_during_exam
   )
 
-  /**
-   * 顶栏"手动重启"按钮是否显示（manual_restart_enabled）
-   */
-  const manualRestartEnabled = computed<boolean>(() => {
-    if (!isExamMode.value) return true
-    const val = (panelPolicyJson.value as PanelPolicy).manual_restart_enabled
-    return val !== false
-  })
-
   return {
     filteredComponentMap,
     filteredPanelRegistry,
     isExamLocked,
-    allowDebugDuringExam,
-    manualRestartEnabled
+    allowDebugDuringExam
   }
 }
