@@ -103,6 +103,11 @@ function formatDuration(ms: number | null): string {
             {{ props.attempt.error_message }}
           </div>
           <div v-else-if="props.attempt.status === 'aborted'" class="error-msg"> 考试已放弃 </div>
+          <br />
+          <div v-if="props.attempt.summary">
+            <div>原因:</div>
+            <div>{{ props.attempt.summary }}</div>
+          </div>
         </div>
       </template>
     </div>

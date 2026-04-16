@@ -8,8 +8,10 @@
 """
 
 import logging
+import shutil
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import and_, func, select
@@ -270,6 +272,135 @@ async def list_attempts_for_teacher(
     offset = (page - 1) * page_size
     result = await db.execute(query.offset(offset).limit(page_size))
     return list(result.scalars().all()), total
+
+
+_SCORED_STATUSES = frozenset([ExamAttemptStatus.COMPLETED, ExamAttemptStatus.REVIEWED])
+_NON_ERROR_STATUSES = frozenset([
+    ExamAttemptStatus.COMPLETED,
+    ExamAttemptStatus.REVIEWED,
+    ExamAttemptStatus.ABORTED,
+])
+
+
+async def count_attempts_for_quota(
+    db: AsyncSession,
+    student_id: int,
+    exam_id: int,
+    runtime_policy: dict,
+) -> int:
+    """按 runtime_policy.valid_attempts_only 决定哪些状态消耗配额。"""
+    valid_only = bool(runtime_policy.get("valid_attempts_only", False))
+    statuses = list(_NON_ERROR_STATUSES) if valid_only else [
+        ExamAttemptStatus.COMPLETED,
+        ExamAttemptStatus.REVIEWED,
+        ExamAttemptStatus.ABORTED,
+        ExamAttemptStatus.ERROR,
+    ]
+    result = await db.execute(
+        select(func.count()).select_from(ExamAttempt).where(
+            and_(
+                ExamAttempt.student_id == student_id,
+                ExamAttempt.exam_id == exam_id,
+                ExamAttempt.status.in_(statuses),
+            )
+        )
+    )
+    return result.scalar_one()
+
+
+def _default_submission_root(attempt_id: int) -> Path:
+    return Path("data/exam_submissions").resolve() / str(attempt_id)
+
+
+def _default_artifacts_root(attempt_id: int) -> Path:
+    return Path("data/exam_artifacts").resolve() / str(attempt_id)
+
+
+def _safe_remove_tree(path: Path) -> None:
+    if not path.exists():
+        return
+    if path.is_file():
+        path.unlink(missing_ok=True)
+        return
+    shutil.rmtree(str(path), ignore_errors=True)
+
+
+def _cleanup_attempt_storage(attempt: ExamAttempt) -> None:
+    submission_root = (
+        Path(attempt.submission_snapshot_path).resolve().parent
+        if attempt.submission_snapshot_path
+        else _default_submission_root(attempt.id)
+    )
+    artifacts_root = (
+        Path(attempt.artifacts_path).resolve()
+        if attempt.artifacts_path
+        else _default_artifacts_root(attempt.id)
+    )
+    _safe_remove_tree(submission_root)
+    _safe_remove_tree(artifacts_root)
+
+
+async def delete_attempt_with_storage(
+    db: AsyncSession,
+    attempt: ExamAttempt,
+) -> None:
+    """删除 attempt 及其 submissions/artifacts 目录。"""
+    _cleanup_attempt_storage(attempt)
+    await db.delete(attempt)
+    await db.commit()
+
+
+async def batch_delete_attempts_with_storage(
+    db: AsyncSession,
+    attempts: list[ExamAttempt],
+) -> list[int]:
+    """批量删除 attempt 及其 submissions/artifacts。"""
+    deleted_ids: list[int] = []
+    for attempt in attempts:
+        _cleanup_attempt_storage(attempt)
+        deleted_ids.append(attempt.id)
+        await db.delete(attempt)
+    await db.commit()
+    return deleted_ids
+
+
+async def list_non_error_attempts_for_exam_student(
+    db: AsyncSession,
+    exam_id: int,
+    student_id: int,
+) -> list[ExamAttempt]:
+    """查询某学生在某考试下全部非 error 尝试（按创建时间升序）。"""
+    result = await db.execute(
+        select(ExamAttempt)
+        .where(
+            and_(
+                ExamAttempt.exam_id == exam_id,
+                ExamAttempt.student_id == student_id,
+                ExamAttempt.status.in_(list(_NON_ERROR_STATUSES)),
+            )
+        )
+        .order_by(ExamAttempt.created_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def prune_lower_non_error_attempts(
+    db: AsyncSession,
+    *,
+    exam_id: int,
+    student_id: int,
+) -> list[int]:
+    """仅保留一个客观分最高的非 error 尝试，其余全部删除。"""
+    attempts = await list_non_error_attempts_for_exam_student(db, exam_id, student_id)
+    if len(attempts) <= 1:
+        return []
+
+    # objective_score 为空按 -1 处理；同分保留最新记录
+    keeper = max(attempts, key=lambda a: ((a.objective_score if a.objective_score is not None else -1.0), a.created_at))
+    to_delete = [a for a in attempts if a.id != keeper.id]
+    if not to_delete:
+        return []
+    return await batch_delete_attempts_with_storage(db, to_delete)
 
 
 async def find_stale_pending_attempts(

@@ -173,7 +173,7 @@ async def get_exam_run_info(
 
     runtime_policy = exam.runtime_policy_json or {}
     max_attempts = runtime_policy.get("max_attempts", 3)
-    used_attempts = await crud_attempt.count_all_attempts(db, user_id, exam_id)
+    used_attempts = await crud_attempt.count_attempts_for_quota(db, user_id, exam_id, runtime_policy)
     remaining = max(0, max_attempts - used_attempts)
 
     return ApiResponse(
@@ -279,7 +279,7 @@ async def create_attempt(
     # 尝试次数限制
     runtime_policy = exam.runtime_policy_json or {}
     max_attempts = runtime_policy.get("max_attempts", 3)
-    used_attempts = await crud_attempt.count_all_attempts(db, user_id, body.exam_id)
+    used_attempts = await crud_attempt.count_attempts_for_quota(db, user_id, body.exam_id, runtime_policy)
     if used_attempts >= max_attempts:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

@@ -93,6 +93,11 @@ class RuntimePolicySchema(BaseModel):
     max_duration_ms: int = Field(default=600000, description="最大考试时限（毫秒）")
     max_attempts: int = Field(default=3, description="最大尝试次数")
     allow_debug_before_start: bool = Field(default=True, description="开始前是否允许调试")
+    valid_attempts_only: bool = Field(default=False, description="仅统计非 error 尝试为配额消耗")
+    highest_objective_only: bool = Field(
+        default=False,
+        description="仅保留一个客观分最高的非 error 尝试，低分尝试将被删除",
+    )
 
     class Config:
         extra = "allow"  # 容忍未知字段
@@ -254,6 +259,16 @@ class CreateAttemptResponse(BaseModel):
     """POST /students/exam-attempts 成功响应"""
     attempt_id: int
     status: str
+
+
+class TeacherBatchDeleteAttemptsRequest(BaseModel):
+    """POST /teachers/exam-attempts/batch-delete 请求体"""
+    attempt_ids: list[int] = Field(default_factory=list, min_length=1)
+
+
+class TeacherBatchDeleteAttemptsResponse(BaseModel):
+    """POST /teachers/exam-attempts/batch-delete 响应体"""
+    deleted_ids: list[int] = Field(default_factory=list)
 
 
 # ─── TeacherAttemptFullSchema（教师端：含学生信息 + 考试信息） ────────────────

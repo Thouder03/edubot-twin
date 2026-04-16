@@ -29,6 +29,8 @@ from app.schemas.exam_attempt import (
     EvidenceEventSchema,
     TeacherAttemptFullSchema,
     TeacherAttemptListItemSchema,
+    TeacherBatchDeleteAttemptsRequest,
+    TeacherBatchDeleteAttemptsResponse,
 )
 
 router = APIRouter()
@@ -95,6 +97,25 @@ def _build_teacher_full(attempt, student: AttemptStudentInfo, exam: AttemptExamI
 # ─── GET /teachers/exams/{exam_id}/attempts ───────────────────────────────────
 
 
+def _build_list_item(attempt, student: AttemptStudentInfo) -> TeacherAttemptListItemSchema:
+    return TeacherAttemptListItemSchema(
+        attempt_id=attempt.id,
+        exam_id=attempt.exam_id,
+        status=attempt.status.value,
+        student=student,
+        objective_score=attempt.objective_score,
+        **{"pass": attempt.pass_},
+        started_at=attempt.started_at,
+        ended_at=attempt.ended_at,
+        duration_ms=attempt.duration_ms,
+        error_code=attempt.error_code,
+        review_status=attempt.review_status.value,
+        manual_score=attempt.manual_score,
+        final_score=attempt.final_score,
+        created_at=attempt.created_at,
+    )
+
+
 @router.get(
     "/exams/{exam_id}/attempts",
     response_model=ApiResponse[AttemptListResponse],
@@ -109,7 +130,7 @@ async def list_exam_attempts(
     _user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    attempts, total = await crud_attempt.list_attempts_for_teacher(
+    page_attempts, total = await crud_attempt.list_attempts_for_teacher(
         db,
         exam_id=exam_id,
         student_id=student_id,
@@ -119,24 +140,9 @@ async def list_exam_attempts(
     )
 
     items = []
-    for attempt in attempts:
+    for attempt in page_attempts:
         student = await _get_student_info(db, attempt.student_id)
-        items.append(TeacherAttemptListItemSchema(
-            attempt_id=attempt.id,
-            exam_id=attempt.exam_id,
-            status=attempt.status.value,
-            student=student,
-            objective_score=attempt.objective_score,
-            **{"pass": attempt.pass_},
-            started_at=attempt.started_at,
-            ended_at=attempt.ended_at,
-            duration_ms=attempt.duration_ms,
-            error_code=attempt.error_code,
-            review_status=attempt.review_status.value,
-            manual_score=attempt.manual_score,
-            final_score=attempt.final_score,
-            created_at=attempt.created_at,
-        ))
+        items.append(_build_list_item(attempt, student))
 
     return ApiResponse(
         code=0,
@@ -178,22 +184,7 @@ async def list_all_attempts(
     items = []
     for attempt in attempts:
         student = await _get_student_info(db, attempt.student_id)
-        items.append(TeacherAttemptListItemSchema(
-            attempt_id=attempt.id,
-            exam_id=attempt.exam_id,
-            status=attempt.status.value,
-            student=student,
-            objective_score=attempt.objective_score,
-            **{"pass": attempt.pass_},
-            started_at=attempt.started_at,
-            ended_at=attempt.ended_at,
-            duration_ms=attempt.duration_ms,
-            error_code=attempt.error_code,
-            review_status=attempt.review_status.value,
-            manual_score=attempt.manual_score,
-            final_score=attempt.final_score,
-            created_at=attempt.created_at,
-        ))
+        items.append(_build_list_item(attempt, student))
 
     return ApiResponse(
         code=0,
@@ -262,3 +253,26 @@ async def get_attempt_events(
         code=0,
         data={"items": items},
     )
+
+
+@router.post(
+    "/exam-attempts/batch-delete",
+    response_model=ApiResponse[TeacherBatchDeleteAttemptsResponse],
+    summary="批量删除考试尝试（含 artifacts/submissions）",
+)
+async def batch_delete_attempts(
+    body: TeacherBatchDeleteAttemptsRequest,
+    _user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    ids = list(dict.fromkeys(body.attempt_ids or []))
+    if not ids:
+        return ApiResponse(code=0, data=TeacherBatchDeleteAttemptsResponse(deleted_ids=[]))
+
+    result = await db.execute(select(ExamAttempt).where(ExamAttempt.id.in_(ids)))
+    attempts = list(result.scalars().all())
+    if not attempts:
+        return ApiResponse(code=0, data=TeacherBatchDeleteAttemptsResponse(deleted_ids=[]))
+
+    deleted_ids = await crud_attempt.batch_delete_attempts_with_storage(db, attempts)
+    return ApiResponse(code=0, data=TeacherBatchDeleteAttemptsResponse(deleted_ids=deleted_ids))

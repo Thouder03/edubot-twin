@@ -370,7 +370,8 @@ class TestExamAttemptCRUD:
         assert await crud_attempt.count_all_attempts(db_session, STUDENT_ID, exam.id) == 0
         await _create_attempt(db_session, exam, status=ExamAttemptStatus.COMPLETED)
         await _create_attempt(db_session, exam, status=ExamAttemptStatus.ERROR)
-        assert await crud_attempt.count_all_attempts(db_session, STUDENT_ID, exam.id) == 2
+        # count_all_attempts 语义：有效尝试（不含 error）
+        assert await crud_attempt.count_all_attempts(db_session, STUDENT_ID, exam.id) == 1
 
     @pytest.mark.asyncio
     async def test_c4_count_completed_attempts_excludes_pending(self, db_session):
@@ -795,6 +796,84 @@ class TestStudentExamAttemptAPI:
 class TestTeacherExamAttemptAPI:
 
     @pytest.mark.asyncio
+    async def test_a11b_valid_attempts_only_error_not_counted(self, db_session):
+        """valid_attempts_only=true 时 error 不计配额。"""
+        from app.models.exam import Exam
+        from app.api.v1.endpoints.student.exam_attempts import create_attempt
+        from app.schemas.exam_attempt import CreateAttemptRequest
+
+        exam = Exam(
+            name="valid_only_exam",
+            code=f"valid_only_{id(db_session)}",
+            exam_mode=ExamMode.RESULT_RUN,
+            status=ExamStatus.PUBLISHED,
+            runtime_policy_json={
+                "max_duration_ms": 300000,
+                "max_attempts": 1,
+                "allow_debug_before_start": True,
+                "valid_attempts_only": True,
+            },
+            panel_policy_json={},
+            scoring_policy_json={},
+            sidecar_policy_json={"image": "edubot/sidecar-runner:v1"},
+            created_by=TEACHER_ID,
+        )
+        db_session.add(exam)
+        await db_session.commit()
+        await db_session.refresh(exam)
+
+        container = await _create_running_container(db_session)
+        await _create_attempt(db_session, exam, container, status=ExamAttemptStatus.ERROR)
+
+        # 仍允许创建下一次尝试
+        resp = await create_attempt(
+            body=CreateAttemptRequest(exam_id=exam.id),
+            user_id=STUDENT_ID,
+            db=db_session,
+        )
+        assert resp.code == 0
+
+    @pytest.mark.asyncio
+    async def test_a11c_valid_attempts_only_false_error_counted(self, db_session):
+        """valid_attempts_only=false 时 error 计配额。"""
+        from app.models.exam import Exam
+        from fastapi import HTTPException
+        from app.api.v1.endpoints.student.exam_attempts import create_attempt
+        from app.schemas.exam_attempt import CreateAttemptRequest
+
+        exam = Exam(
+            name="all_count_exam",
+            code=f"all_count_{id(db_session)}",
+            exam_mode=ExamMode.RESULT_RUN,
+            status=ExamStatus.PUBLISHED,
+            runtime_policy_json={
+                "max_duration_ms": 300000,
+                "max_attempts": 1,
+                "allow_debug_before_start": True,
+                "valid_attempts_only": False,
+            },
+            panel_policy_json={},
+            scoring_policy_json={},
+            sidecar_policy_json={"image": "edubot/sidecar-runner:v1"},
+            created_by=TEACHER_ID,
+        )
+        db_session.add(exam)
+        await db_session.commit()
+        await db_session.refresh(exam)
+
+        container = await _create_running_container(db_session)
+        await _create_attempt(db_session, exam, container, status=ExamAttemptStatus.ERROR)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await create_attempt(
+                body=CreateAttemptRequest(exam_id=exam.id),
+                user_id=STUDENT_ID,
+                db=db_session,
+            )
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["error_code"] == "MAX_ATTEMPTS_EXCEEDED"
+
+    @pytest.mark.asyncio
     async def test_a12_list_all_attempts_pagination(self, db_session):
         from app.api.v1.endpoints.teacher.exam_attempts import list_all_attempts
         exam = await _create_published_exam(db_session, "t12")
@@ -887,6 +966,31 @@ class TestTeacherExamAttemptAPI:
         assert resp.code == 0
         assert resp.data.total == 2
 
+    @pytest.mark.asyncio
+    async def test_a16_teacher_batch_delete_attempts(self, db_session):
+        from app.api.v1.endpoints.teacher.exam_attempts import batch_delete_attempts
+        from app.schemas.exam_attempt import TeacherBatchDeleteAttemptsRequest
+        from app.models.exam_attempt import ExamAttempt
+        from sqlalchemy import select
+
+        exam = await _create_published_exam(db_session, "t16")
+        container = await _create_running_container(db_session)
+        a1 = await _create_attempt(db_session, exam, container, status=ExamAttemptStatus.COMPLETED)
+        a2 = await _create_attempt(db_session, exam, container, status=ExamAttemptStatus.ERROR)
+
+        resp = await batch_delete_attempts(
+            body=TeacherBatchDeleteAttemptsRequest(attempt_ids=[a1.id, a2.id]),
+            _user_id=TEACHER_ID,
+            db=db_session,
+        )
+        assert resp.code == 0
+        assert set(resp.data.deleted_ids) == {a1.id, a2.id}
+
+        result = await db_session.execute(
+            select(ExamAttempt).where(ExamAttempt.id.in_([a1.id, a2.id]))
+        )
+        assert len(list(result.scalars().all())) == 0
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  sidecar_manager 关键逻辑单元测试（mock Docker）
@@ -960,3 +1064,61 @@ class TestSidecarManagerUnit:
         await db_session.refresh(attempt)
         assert attempt.status == ExamAttemptStatus.ERROR
         assert attempt.error_code == "SNAPSHOT_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_schedule_sidecar_zero_score_marked_as_error(self, db_session):
+        """0 分尝试应按评测异常写入 error。"""
+        from app.core import sidecar_manager
+        from app.core.workspace_snapshot import SnapshotResult
+        from app.core.result_parser import ParseResult
+
+        exam = await _create_published_exam(db_session, "mgr_zero_score")
+        container = await _create_running_container(db_session)
+        attempt = await _create_attempt(db_session, exam, container)
+
+        snapshot_result = SnapshotResult(
+            snapshot_path=f"/tmp/submissions/{attempt.id}/workspace",
+            artifacts_path=f"/tmp/artifacts/{attempt.id}",
+            file_count=1,
+            total_bytes=16,
+        )
+        parse_result = ParseResult(
+            raw={
+                "status": "completed",
+                "objective_score": 0,
+                "pass": False,
+                "summary": "0分",
+            },
+            status="completed",
+            objective_score=0.0,
+            pass_=False,
+            summary="0分",
+            metrics=None,
+            artifacts={},
+            custom_fields=None,
+            score_clamped=False,
+        )
+
+        with patch("app.core.sidecar_manager.AsyncSessionLocal") as mock_session_cls:
+            mock_ctx = MagicMock()
+            mock_ctx.__aenter__ = AsyncMock(return_value=db_session)
+            mock_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_session_cls.return_value = mock_ctx
+
+            with patch(
+                "app.core.sidecar_manager._run_in_executor",
+                new_callable=AsyncMock,
+                side_effect=[
+                    snapshot_result,
+                    "sidecar_zero_001",
+                    (0, ""),
+                    parse_result,
+                    None,
+                ],
+            ):
+                await sidecar_manager.schedule_sidecar(attempt.id)
+
+        await db_session.refresh(attempt)
+        assert attempt.status == ExamAttemptStatus.ERROR
+        assert attempt.error_code == "OBJECTIVE_SCORE_ZERO"
+        assert attempt.objective_score == 0.0
