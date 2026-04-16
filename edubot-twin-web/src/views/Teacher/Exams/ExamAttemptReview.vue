@@ -115,7 +115,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Back } from '@element-plus/icons-vue'
@@ -166,7 +166,25 @@ const canSubmitScore = computed(
 )
 
 // ─── 生命周期 ──────────────────────────────────────────────
-onMounted(loadAll)
+onMounted(async () => {
+  await scrollToPageTop()
+  loadAll()
+})
+
+async function scrollToPageTop() {
+  await nextTick()
+  const contentWrap = document.querySelector<HTMLElement>(
+    '.v-layout-content-scrollbar .el-scrollbar__wrap, .layout-content-scrollbar .el-scrollbar__wrap'
+  )
+
+  if (contentWrap) {
+    contentWrap.scrollTo({ top: 0, behavior: 'auto' })
+  }
+
+  window.scrollTo({ top: 0, behavior: 'auto' })
+  document.documentElement.scrollTop = 0
+  document.body.scrollTop = 0
+}
 
 async function loadAll() {
   loading.value = true
