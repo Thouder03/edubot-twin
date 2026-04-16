@@ -633,3 +633,128 @@ async def list_events(
         .order_by(ExamEvidenceEvent.sequence_no)
     )
     return list(result.scalars().all())
+
+
+# ─── 第16期：成绩预览 CRUD ────────────────────────────────────────────────────
+
+
+async def list_grade_preview_attempts(
+    db: AsyncSession,
+    *,
+    exam_id: Optional[int] = None,
+    student_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[tuple], int]:
+    """
+    教师端成绩预览：查询 completed/reviewed 状态的尝试，支持考试/学生筛选，
+    返回 (ExamAttempt, exam_name, student_username, student_real_name) 行列表。
+    """
+    from app.models.exam import Exam  # 避免循环导入
+    from app.models.student import User
+
+    conds: list = [ExamAttempt.status.in_(_BEST_STATUSES)]
+    if exam_id is not None:
+        conds.append(ExamAttempt.exam_id == exam_id)
+    if student_id is not None:
+        conds.append(ExamAttempt.student_id == student_id)
+
+    q = (
+        select(
+            ExamAttempt,
+            Exam.name.label("exam_name"),
+            User.username.label("student_username"),
+            User.real_name.label("student_real_name"),
+        )
+        .join(Exam, ExamAttempt.exam_id == Exam.id)
+        .join(User, ExamAttempt.student_id == User.id)
+        .where(and_(*conds))
+        .order_by(ExamAttempt.created_at.desc())
+    )
+    count_q = (
+        select(func.count())
+        .select_from(ExamAttempt)
+        .join(Exam, ExamAttempt.exam_id == Exam.id)
+        .join(User, ExamAttempt.student_id == User.id)
+        .where(and_(*conds))
+    )
+
+    total_result = await db.execute(count_q)
+    total = total_result.scalar_one()
+
+    offset = (page - 1) * page_size
+    result = await db.execute(q.offset(offset).limit(page_size))
+    return list(result.all()), total
+
+
+async def list_my_grade_summary(
+    db: AsyncSession,
+    *,
+    student_id: int,
+) -> list[tuple]:
+    """
+    学生端：查询当前学生所有已完成考试的最高分摘要。
+    每 (exam_id) 取 objective_score 最高的那条（NULL 视为 -1）。
+    返回 (ExamAttempt, exam_name, exam_code) 行列表，按 ended_at DESC 排序。
+    """
+    from app.models.exam import Exam  # 避免循环导入
+
+    score_expr = func.coalesce(ExamAttempt.objective_score, -1.0)
+
+    # 子查询：对每 exam_id 按分数降序+时间降序取 row_number=1
+    inner = (
+        select(
+            ExamAttempt.id,
+            func.row_number()
+            .over(
+                partition_by=[ExamAttempt.exam_id],
+                order_by=[score_expr.desc(), ExamAttempt.created_at.desc()],
+            )
+            .label("rn"),
+        )
+        .where(
+            and_(
+                ExamAttempt.student_id == student_id,
+                ExamAttempt.status.in_(_BEST_STATUSES),
+            )
+        )
+    ).subquery()
+
+    best_ids_q = select(inner.c.id).where(inner.c.rn == 1)
+
+    q = (
+        select(
+            ExamAttempt,
+            Exam.name.label("exam_name"),
+            Exam.code.label("exam_code"),
+        )
+        .join(Exam, ExamAttempt.exam_id == Exam.id)
+        .where(ExamAttempt.id.in_(best_ids_q))
+        .order_by(ExamAttempt.ended_at.desc().nullslast())
+    )
+
+    result = await db.execute(q)
+    return list(result.all())
+
+
+async def list_grade_detail_for_student(
+    db: AsyncSession,
+    *,
+    student_id: int,
+    exam_id: int,
+) -> list[ExamAttempt]:
+    """
+    学生端：查询该学生在指定考试下的所有尝试（不过滤状态），
+    按 created_at DESC 排序。
+    """
+    result = await db.execute(
+        select(ExamAttempt)
+        .where(
+            and_(
+                ExamAttempt.student_id == student_id,
+                ExamAttempt.exam_id == exam_id,
+            )
+        )
+        .order_by(ExamAttempt.created_at.desc())
+    )
+    return list(result.scalars().all())

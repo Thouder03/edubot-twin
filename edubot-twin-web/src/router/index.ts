@@ -935,6 +935,16 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
               canTo: true,
               activeMenu: '/teacher/exams/list'
             }
+          },
+          // 第16期：成绩预览
+          {
+            path: 'grade-preview',
+            component: () => import('@/views/Teacher/Exams/TeacherGradePreview.vue'),
+            name: 'TeacherGradePreview',
+            meta: {
+              title: '成绩预览',
+              icon: 'vi-carbon:chart-bar'
+            }
           }
         ]
       },
@@ -996,6 +1006,42 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         meta: {
           title: '代码编辑器',
           icon: 'vi-carbon:code'
+        }
+      },
+      // 第16期：学生成绩预览
+      {
+        path: 'grades',
+        component: () => import('@/views/Student/Grades.vue'),
+        name: 'StudentGrades',
+        meta: {
+          title: '我的成绩',
+          icon: 'vi-carbon:certificate'
+        }
+      },
+      {
+        path: 'grades/:exam_id',
+        component: () => import('@/views/Student/StudentGradeDetail.vue'),
+        name: 'StudentGradeDetail',
+        meta: {
+          title: '成绩详情',
+          noTagsView: true,
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/student/grades'
+        }
+      },
+      {
+        path: 'grades/:exam_id/attempt/:attempt_id/code',
+        component: () => import('@/views/Student/StudentAttemptCodeView.vue'),
+        name: 'StudentAttemptCodeView',
+        meta: {
+          title: '查看提交代码',
+          noTagsView: true,
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/student/grades'
         }
       }
     ]

@@ -171,7 +171,11 @@ async def get_user_routes(role: str):
             "/student",
             "/student/home",
             "/student/files",
-            "/student/editor"
+            "/student/editor",
+            # 第16期：学生成绩预览
+            "/student/grades",
+            "/student/grades/:exam_id",
+            "/student/grades/:exam_id/attempt/:attempt_id/code",
         ],
         "teacher": [
             "/teacher",
@@ -193,7 +197,9 @@ async def get_user_routes(role: str):
             "/teacher/exams/attempts/:attempt_id/review",
             "/teacher/exams/attempts/:attempt_id/submission",
             "/teacher/exams/attempts",
-            "/teacher/exams/review-list"
+            "/teacher/exams/review-list",
+            # 第16期：教师成绩预览
+            "/teacher/exams/grade-preview",
         ],
         "admin": [
             "/dashboard",

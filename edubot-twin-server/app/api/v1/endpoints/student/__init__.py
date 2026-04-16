@@ -11,7 +11,7 @@
 """
 
 from fastapi import APIRouter
-from . import basic, container, terminal, files, experiments, simulation, tasks, container_files_proxy, exam_attempts
+from . import basic, container, terminal, files, experiments, simulation, tasks, container_files_proxy, exam_attempts, grade_preview
 
 # 创建学生路由聚合器
 router = APIRouter()
@@ -37,6 +37,10 @@ router.include_router(container_files_proxy.router, prefix="/container-files", t
 
 # 第12期：考试运行闭环
 router.include_router(exam_attempts.router, tags=["学生-考试运行"])
+
+# 第16期：成绩预览（含 submission 只读端点）
+# ⚠️ 必须在 basic.router 之前注册，避免 /{student_id} 路径拦截 /my-grade-summary 等
+router.include_router(grade_preview.router, tags=["学生-成绩预览"])
 
 # 挂载基本 CRUD 路由 (放到最后，以免 /{student_id} 拦截 /exams 等具体路径)
 router.include_router(basic.router, tags=["学生-基本信息"])

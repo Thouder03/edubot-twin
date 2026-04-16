@@ -845,6 +845,16 @@ const adminList = [
               canTo: true,
               activeMenu: '/teacher/exams/list'
             }
+          },
+          // 第16期：成绩预览
+          {
+            path: 'grade-preview',
+            component: 'views/Teacher/Exams/TeacherGradePreview',
+            name: 'TeacherGradePreview',
+            meta: {
+              title: '成绩预览',
+              icon: 'vi-carbon:chart-bar'
+            }
           }
         ]
       },
@@ -910,6 +920,42 @@ const studentList = [
         meta: {
           title: '代码编辑器',
           icon: 'vi-carbon:code'
+        }
+      },
+      // 第16期：学生成绩预览
+      {
+        path: 'grades',
+        component: 'views/Student/Grades',
+        name: 'StudentGrades',
+        meta: {
+          title: '我的成绩',
+          icon: 'vi-carbon:certificate'
+        }
+      },
+      {
+        path: 'grades/:exam_id',
+        component: 'views/Student/StudentGradeDetail',
+        name: 'StudentGradeDetail',
+        meta: {
+          title: '成绩详情',
+          noTagsView: true,
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/student/grades'
+        }
+      },
+      {
+        path: 'grades/:exam_id/attempt/:attempt_id/code',
+        component: 'views/Student/StudentAttemptCodeView',
+        name: 'StudentAttemptCodeView',
+        meta: {
+          title: '查看提交代码',
+          noTagsView: true,
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/student/grades'
         }
       }
     ]
