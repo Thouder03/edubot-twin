@@ -13,6 +13,16 @@
           {{ statusLabel(attempt.status) }}
         </el-tag>
       </div>
+      <!-- 第14期：查看提交代码入口 -->
+      <el-button
+        v-if="attempt?.submission_snapshot_path"
+        type="primary"
+        plain
+        size="small"
+        @click="router.push(`/teacher/exams/attempts/${attemptId}/submission`)"
+      >
+        📂 查看提交代码
+      </el-button>
     </div>
 
     <div v-if="loading" class="page-loading">

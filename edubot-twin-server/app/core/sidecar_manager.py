@@ -275,9 +275,13 @@ async def schedule_sidecar(attempt_id: int) -> None:
             payload={"student_id": attempt.student_id},
         )
 
+        # 从固化的 sidecar_policy 中取 submission_paths（第14期：评测文件范围控制）
+        sidecar_policy = attempt.attempt_sidecar_policy_json or {}
+        submission_paths: Optional[list[str]] = sidecar_policy.get("submission_paths") or None
+
         try:
             snapshot_result = await _run_in_executor(
-                create_code_snapshot, attempt_id, attempt.student_id
+                create_code_snapshot, attempt_id, attempt.student_id, submission_paths
             )
         except SnapshotError as e:
             logger.error(f"[Sidecar] 快照失败 attempt={attempt_id}: {e}")

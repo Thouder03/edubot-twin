@@ -819,6 +819,32 @@ const adminList = [
               title: '测评脚本',
               icon: 'vi-carbon:script'
             }
+          },
+          {
+            path: 'attempts/:attempt_id/review',
+            component: 'views/Teacher/Exams/ExamAttemptReview',
+            name: 'TeacherExamAttemptReview',
+            meta: {
+              title: '考试复核',
+              noTagsView: true,
+              noCache: true,
+              hidden: true,
+              canTo: true,
+              activeMenu: '/teacher/exams/list'
+            }
+          },
+          {
+            path: 'attempts/:attempt_id/submission',
+            component: 'views/Teacher/Exams/ExamAttemptSubmission',
+            name: 'TeacherExamAttemptSubmission',
+            meta: {
+              title: '查看提交代码',
+              noTagsView: true,
+              noCache: true,
+              hidden: true,
+              canTo: true,
+              activeMenu: '/teacher/exams/list'
+            }
           }
         ]
       },

@@ -1,25 +1,34 @@
 """
-教师端考试复核 API（第13期 SDD §5.1 / §8）
+教师端考试复核 API（第13期 SDD §5.1 / §8 | 第14期 submission 只读端点）
 
 路由前缀在 teacher/__init__.py 中注册（无 prefix，与 exam_attempts 共用路径空间）：
   GET  /teachers/exam-attempts/{id}/artifacts         → artifacts 目录树
   GET  /teachers/exam-attempts/{id}/artifacts/file    → 读取单文件（?path=xxx）
   POST /teachers/exam-attempts/{id}/manual-score      → 提交人工评分
   POST /teachers/exam-attempts/{id}/override          → 覆盖客观分 / pass
+
+第14期新增（提交代码只读查看）：
+  GET  /teachers/exam-attempts/{id}/submission/files         → 列目录
+  GET  /teachers/exam-attempts/{id}/submission/files/read    → 读文件
+  GET  /teachers/exam-attempts/{id}/submission/files/download→ 下载文件/目录
 """
 
+import io
 import logging
 import mimetypes
 import os
+import zipfile
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.final_score_calculator import calculate_final_score, validate_override_allowed
-from app.core.security import get_current_user_id
+from app.core.security import get_current_user_id, get_current_teacher
 from app.core.workspace_snapshot import get_artifacts_path
 from app.crud import exam_attempt as crud_attempt
 from app.crud import exam as crud_exam
@@ -113,6 +122,7 @@ def _build_teacher_full(attempt, student: AttemptStudentInfo, exam: AttemptExamI
         artifact_index_json=attempt.artifact_index_json or {},
         sidecar_container_id=attempt.sidecar_container_id,
         attempt_scoring_policy_json=attempt.attempt_scoring_policy_json or {},
+        submission_snapshot_path=attempt.submission_snapshot_path,
     )
 
 
@@ -410,3 +420,172 @@ async def override_scores(
     )
 
     return ApiResponse(code=0, data=_build_teacher_full(attempt, student, exam))
+
+
+# ─── 第14期：学生提交代码只读查看 ──────────────────────────────────────────────
+
+
+def _resolve_submission_dir(attempt):
+    """返回提交代码快照目录 Path（不存在时返回 None）"""
+    from pathlib import Path as _Path
+    if attempt.submission_snapshot_path:
+        p = _Path(attempt.submission_snapshot_path)
+        return p if p.exists() and p.is_dir() else None
+    return None
+
+
+def _build_content_disposition(filename: str) -> str:
+    """RFC 5987 兼容的 Content-Disposition，支持中文文件名"""
+    from urllib.parse import quote as _quote
+    try:
+        filename.encode("latin-1")
+        return f'attachment; filename="{filename}"'
+    except UnicodeEncodeError:
+        quoted = _quote(filename, safe="")
+        return f'attachment; filename="download"; filename*=UTF-8''{quoted}'
+
+
+def _submission_safe_path(submission_dir, rel_path: str):
+    """校验相对路径不越出 submission_dir，越界时抛 403"""
+    try:
+        candidate = (submission_dir / rel_path).resolve()
+        candidate.relative_to(submission_dir.resolve())
+    except (ValueError, Exception):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error_code": "PATH_TRAVERSAL", "message": "非法文件路径"},
+        )
+    return candidate
+
+
+SUBMISSION_TEXT_EXTENSIONS = TEXT_EXTENSIONS | {
+    ".cpp", ".c", ".h", ".hpp", ".java", ".js", ".ts", ".vue", ".html", ".css",
+    ".xml", ".launch", ".urdf", ".xacro", ".cmake", ".msg", ".srv", ".action",
+    ".conf", ".cfg", ".ini", ".toml", ".rs",
+}
+SUBMISSION_PREVIEW_MAX_BYTES = 5 * 1024 * 1024
+
+
+@router.get(
+    "/exam-attempts/{attempt_id}/submission/files",
+    response_model=ApiResponse[dict],
+    summary="（教师只读）列出学生提交代码文件树",
+)
+async def list_submission_files(
+    attempt_id: int,
+    path: Optional[str] = Query(default=None),
+    _teacher_id: int = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    attempt = await _get_attempt_or_404(db, attempt_id)
+    submission_dir = _resolve_submission_dir(attempt)
+    if submission_dir is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error_code": "SUBMISSION_NOT_FOUND", "message": "提交代码快照不存在或尚未生成"},
+        )
+    base = submission_dir if not path else _submission_safe_path(submission_dir, path)
+    if not base.exists() or not base.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error_code": "PATH_NOT_FOUND", "message": "目录不存在"},
+        )
+    items = []
+    for entry in sorted(base.iterdir(), key=lambda e: (e.is_file(), e.name)):
+        rel = str(entry.relative_to(submission_dir).as_posix())
+        mime, _ = mimetypes.guess_type(entry.name)
+        items.append({
+            "name": entry.name,
+            "relative_path": rel,
+            "type": "file" if entry.is_file() else "dir",
+            "size": entry.stat().st_size if entry.is_file() else None,
+            "mime": mime or ("application/octet-stream" if entry.is_file() else None),
+        })
+    return ApiResponse(code=0, data={"items": items, "path": path or ""})
+
+
+@router.get(
+    "/exam-attempts/{attempt_id}/submission/files/read",
+    response_model=ApiResponse[dict],
+    summary="（教师只读）读取学生提交代码文件内容",
+)
+async def read_submission_file(
+    attempt_id: int,
+    path: str = Query(...),
+    _teacher_id: int = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    attempt = await _get_attempt_or_404(db, attempt_id)
+    submission_dir = _resolve_submission_dir(attempt)
+    if submission_dir is None:
+        raise HTTPException(status_code=404, detail={"error_code": "SUBMISSION_NOT_FOUND", "message": "快照不存在"})
+    file_path = _submission_safe_path(submission_dir, path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail={"error_code": "FILE_NOT_FOUND", "message": "文件不存在"})
+    size = file_path.stat().st_size
+    if size > SUBMISSION_PREVIEW_MAX_BYTES:
+        raise HTTPException(status_code=413, detail={"error_code": "FILE_TOO_LARGE", "message": "超出5MB限制"})
+    ext = file_path.suffix.lower()
+    mime, _ = mimetypes.guess_type(file_path.name)
+    if ext in SUBMISSION_TEXT_EXTENSIONS:
+        content = file_path.read_text(encoding="utf-8", errors="replace")
+        return ApiResponse(code=0, data={"content": content, "encoding": "utf-8", "mime": mime or "text/plain", "modified_at": file_path.stat().st_mtime})
+    elif ext in IMAGE_EXTENSIONS:
+        import base64
+        b64 = base64.b64encode(file_path.read_bytes()).decode()
+        return ApiResponse(code=0, data={"content": b64, "encoding": "base64", "mime": mime or "image/png"})
+    else:
+        raise HTTPException(status_code=415, detail={"error_code": "PREVIEW_NOT_SUPPORTED", "message": "不支持预览"})
+
+
+@router.get(
+    "/exam-attempts/{attempt_id}/submission/files/download",
+    summary="（教师只读）下载学生提交代码文件或目录",
+)
+async def download_submission_file(
+    attempt_id: int,
+    path: str = Query(...),
+    _teacher_id: int = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    import io as _io, zipfile as _zip
+    from urllib.parse import quote as _quote
+    attempt = await _get_attempt_or_404(db, attempt_id)
+    submission_dir = _resolve_submission_dir(attempt)
+    if submission_dir is None:
+        raise HTTPException(status_code=404, detail={"error_code": "SUBMISSION_NOT_FOUND", "message": "快照不存在"})
+    target = _submission_safe_path(submission_dir, path)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail={"error_code": "PATH_NOT_FOUND", "message": "路径不存在"})
+    if target.is_file():
+        filename = target.name
+        try:
+            filename.encode("latin-1")
+            cd = f'attachment; filename="{filename}"'
+        except UnicodeEncodeError:
+            cd = f'attachment; filename="download"; filename*=UTF-8\'\'{_quote(filename, safe="")}'
+
+        def _gen():
+            with open(target, "rb") as f:
+                while c := f.read(65536):
+                    yield c
+
+        return StreamingResponse(_gen(), media_type="application/octet-stream", headers={"Content-Disposition": cd, "Content-Length": str(target.stat().st_size)})
+    zip_name = target.name + ".zip"
+    try:
+        zip_name.encode("latin-1")
+        cd = f'attachment; filename="{zip_name}"'
+    except UnicodeEncodeError:
+        cd = f'attachment; filename="download"; filename*=UTF-8\'\'{_quote(zip_name, safe="")}'
+
+    def _zip_gen():
+        buf = _io.BytesIO()
+        with _zip.ZipFile(buf, "w", _zip.ZIP_DEFLATED) as zf:
+            for f in target.rglob("*"):
+                if f.is_file():
+                    zf.write(f, target.name + "/" + str(f.relative_to(target)))
+        buf.seek(0)
+        while c := buf.read(65536):
+            yield c
+
+    return StreamingResponse(_zip_gen(), media_type="application/zip", headers={"Content-Disposition": cd})

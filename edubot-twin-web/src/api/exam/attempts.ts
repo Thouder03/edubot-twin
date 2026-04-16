@@ -153,6 +153,8 @@ export interface TeacherAttemptFull extends AttemptDetail {
   artifact_index_json: Record<string, string>
   sidecar_container_id: string | null
   attempt_scoring_policy_json: Record<string, unknown>
+  /** 第14期新增：学生代码快照路径（非 null 时显示"查看提交代码"按钮） */
+  submission_snapshot_path: string | null
 }
 
 // ─── 第13期：复核相关类型 ─────────────────────────────────────────────────────
@@ -320,9 +322,7 @@ export const getAttemptEventsApi = (
 // ─── 第13期：复核 API ─────────────────────────────────────────────────────────
 
 /** artifacts 目录树 */
-export const getArtifactsTreeApi = (
-  attemptId: number
-): Promise<IResponse<ArtifactsTreeResponse>> =>
+export const getArtifactsTreeApi = (attemptId: number): Promise<IResponse<ArtifactsTreeResponse>> =>
   request.get({ url: `${TEACHER_BASE}/exam-attempts/${attemptId}/artifacts` })
 
 /** 读取单个 artifact 文件 */
@@ -362,3 +362,44 @@ export const startExamContainerApi = (
   data: ExamContainerStartRequest
 ): Promise<IResponse<StudentSimulationStartResponse>> =>
   request.post({ url: `${STUDENT_BASE}/simulation/start-exam-container`, data })
+
+// ─── 第14期：提交代码只读查看 API ────────────────────────────────────────────
+
+export interface SubmissionFileItem {
+  name: string
+  relative_path: string
+  type: 'file' | 'directory'
+  size: number | null
+  mime: string | null
+}
+
+export interface SubmissionFileContent {
+  content: string
+  encoding: 'utf-8' | 'base64'
+  mime: string
+  modified_at?: number
+}
+
+/** 列出学生提交代码文件树 */
+export const listSubmissionFilesApi = (
+  attemptId: number,
+  path?: string
+): Promise<IResponse<{ items: SubmissionFileItem[]; path: string }>> =>
+  request.get({
+    url: `${TEACHER_BASE}/exam-attempts/${attemptId}/submission/files`,
+    params: path ? { path } : undefined
+  })
+
+/** 读取学生提交代码文件内容 */
+export const readSubmissionFileApi = (
+  attemptId: number,
+  path: string
+): Promise<IResponse<SubmissionFileContent>> =>
+  request.get({
+    url: `${TEACHER_BASE}/exam-attempts/${attemptId}/submission/files/read`,
+    params: { path }
+  })
+
+/** 生成提交代码下载 URL（直接嵌 a[href]） */
+export const getSubmissionDownloadUrl = (attemptId: number, path: string): string =>
+  `/api/v1/teachers/exam-attempts/${attemptId}/submission/files/download?path=${encodeURIComponent(path)}`

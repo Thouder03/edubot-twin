@@ -77,9 +77,13 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
       { name: 'image', desc: 'Sidecar 镜像名，默认 sidecar-runner:v1' },
       { name: 'cpu_limit', desc: 'CPU 核数上限，默认 1.0' },
       { name: 'memory_limit_mb', desc: '内存上限（MB），默认 512' },
-      { name: 'eval_script_id', desc: '关联测评脚本 ID（通常由上方"资源引用"自动同步）' },
-      { name: 'env_snapshot_id', desc: '考试环境快照 ID（可选，供脚本读取参数）' },
-      { name: 'file_snapshot_id', desc: '考试文件快照 ID（可选）' }
+      {
+        name: 'submission_paths',
+        desc: '评测文件路径列表，支持精确路径和通配符（如 ["catkin_ws/src/*", "*.py"]）'
+      },
+      { name: 'eval_script_id', desc: '关联测评脚本 ID（自动同步）' },
+      { name: 'env_snapshot_id', desc: '考试环境快照 ID（自动同步）' },
+      { name: 'file_snapshot_id', desc: '考试文件快照 ID（自动同步）' }
     ]
   }
 }

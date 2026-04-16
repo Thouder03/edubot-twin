@@ -88,6 +88,7 @@ def _build_teacher_full(attempt, student: AttemptStudentInfo, exam: AttemptExamI
         artifact_index_json=attempt.artifact_index_json or {},
         sidecar_container_id=attempt.sidecar_container_id,
         attempt_scoring_policy_json=attempt.attempt_scoring_policy_json or {},
+        submission_snapshot_path=attempt.submission_snapshot_path,
     )
 
 

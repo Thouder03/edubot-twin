@@ -1,5 +1,5 @@
 """
-学生 workspace 代码快照工具（第12期 S3）
+学生 workspace 代码快照工具（第12期 S3 / 第14期 submission_paths 扩展）
 
 与第11期教师资源冻结复制（exam_env_snapshot/exam_file_snapshot）不同：
 本工具仅面向学生实时 workspace 的只读副本，供 Sidecar 挂载使用。
@@ -7,6 +7,10 @@
 安全约束（SDD §9）：
 - 单 attempt 快照上限 100MB
 - 快照目录权限 700（只有后端进程可读）
+
+submission_paths 字段（第14期新增）：
+- 由 sidecar_policy_json.submission_paths 驱动
+- 非空时只复制指定相对路径（文件/目录），留空则复制整个 workspace
 """
 
 import logging
@@ -82,7 +86,79 @@ class SnapshotResult:
         self.total_bytes = total_bytes
 
 
-def create_code_snapshot(attempt_id: int, student_id: int) -> SnapshotResult:
+def _copy_one(src: Path, dst: Path, ignore) -> None:
+    """复制单个文件或目录到目标路径（内部辅助）"""
+    try:
+        if src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dst))
+        elif src.is_dir():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(str(src), str(dst), dirs_exist_ok=True, ignore=ignore)
+    except OSError as e:
+        logger.warning(f"[快照] 复制 {src} 失败: {e}")
+
+
+def _copy_selected_paths(
+    workspace: Path,
+    target_content: Path,
+    submission_paths: list[str],
+) -> None:
+    """
+    按 submission_paths 选择性复制 workspace 中的指定路径到 target_content。
+
+    支持：
+    - 精确路径（文件或目录）："catkin_ws/src/my_pkg"
+    - 通配符（单层）："catkin_ws/src/*"
+    - 通配符（递归）："catkin_ws/src/**/*.py"
+    - 路径不存在 / glob 无匹配：跳过并记录 warning
+    """
+    target_content.mkdir(parents=True, exist_ok=True)
+    _IGNORE = shutil.ignore_patterns("*.pyc", "__pycache__", ".git")
+
+    for pattern in submission_paths:
+        # 去除首尾空白和斜杠，保证 glob / Path 运算正确
+        pattern = pattern.strip().strip("/").strip("\\")
+        if not pattern:
+            continue
+
+        if "*" in pattern:
+            # glob 模式：支持 * 和 ** 通配符
+            matched = sorted(workspace.glob(pattern))
+            if not matched:
+                logger.warning(f"[快照] submission_paths glob 无匹配: {pattern}")
+                continue
+            for src in matched:
+                # 只保留最后的文件/目录名，直接落在 target_content 根目录下
+                # 避免把 "catkin_ws/src/*" 展开后仍嵌套在 catkin_ws/src/ 里
+                _copy_one(src, target_content / src.name, _IGNORE)
+        else:
+            src = workspace / pattern
+            if not src.exists():
+                # 直接路径不存在时，在 workspace 内递归搜索同名文件/目录
+                candidates = sorted(workspace.rglob(pattern))
+                if not candidates:
+                    logger.warning(f"[快照] submission_paths 中路径不存在且递归搜索无匹配，跳过: {pattern}")
+                    continue
+                if len(candidates) > 1:
+                    logger.warning(
+                        f"[快照] submission_paths '{pattern}' 递归搜索到 {len(candidates)} 个匹配，"
+                        f"全部复制: {[str(c.relative_to(workspace)) for c in candidates]}"
+                    )
+                for src in candidates:
+                    _copy_one(src, target_content / src.name, _IGNORE)
+                continue
+            # 只保留最后的文件/目录名，直接落在 target_content 根目录下
+            # 例：submission_paths=["catkin_ws/src"] → target_content/src/
+            #     而非 target_content/catkin_ws/src/（会把子文件埋得过深）
+            _copy_one(src, target_content / src.name, _IGNORE)
+
+
+def create_code_snapshot(
+    attempt_id: int,
+    student_id: int,
+    submission_paths: Optional[list[str]] = None,
+) -> SnapshotResult:
     """
     复制学生 workspace 到快照目录。
 
@@ -92,6 +168,8 @@ def create_code_snapshot(attempt_id: int, student_id: int) -> SnapshotResult:
     Args:
         attempt_id: 考试尝试 ID（用于目录名）
         student_id: 学生 ID（用于定位 workspace）
+        submission_paths: 仅复制这些相对路径（文件/目录）；
+                          为 None 或空列表时复制整个 workspace（默认行为）
 
     Returns:
         SnapshotResult
@@ -126,15 +204,22 @@ def create_code_snapshot(attempt_id: int, student_id: int) -> SnapshotResult:
     except OSError as e:
         raise SnapshotError(f"创建快照目录失败: {e}") from e
 
-    # 复制目录
     target_content = target / "workspace"
+
+    effective_paths = [p for p in (submission_paths or []) if p.strip()]
+
     try:
-        shutil.copytree(
-            str(workspace),
-            str(target_content),
-            dirs_exist_ok=False,
-            ignore=shutil.ignore_patterns("*.pyc", "__pycache__", ".git"),
-        )
+        if effective_paths:
+            # 按指定路径选择性复制
+            _copy_selected_paths(workspace, target_content, effective_paths)
+        else:
+            # 全量复制（默认行为）
+            shutil.copytree(
+                str(workspace),
+                str(target_content),
+                dirs_exist_ok=False,
+                ignore=shutil.ignore_patterns("*.pyc", "__pycache__", ".git"),
+            )
     except OSError as e:
         # 清理不完整的快照
         try:
@@ -154,9 +239,10 @@ def create_code_snapshot(attempt_id: int, student_id: int) -> SnapshotResult:
     except OSError as e:
         logger.warning(f"创建 artifacts 目录失败（非致命）: {e}")
 
+    mode = f"选择路径 {effective_paths}" if effective_paths else "全量"
     logger.info(
         f"[快照] attempt={attempt_id} 学生={student_id} "
-        f"文件数={file_count} 大小={total_bytes}B "
+        f"模式={mode} 文件数={file_count} 大小={total_bytes}B "
         f"快照路径={target_content}"
     )
 

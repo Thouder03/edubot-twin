@@ -311,6 +311,8 @@ class TeacherAttemptFullSchema(AttemptBaseSchema):
     artifact_index_json: dict = Field(default_factory=dict)
     sidecar_container_id: Optional[str] = None
     attempt_scoring_policy_json: dict = Field(default_factory=dict)
+    # 第14期新增：学生代码快照路径（用于判断是否可查看提交代码）
+    submission_snapshot_path: Optional[str] = None
 
 
 # ─── 生命周期事件 Schema ──────────────────────────────────────────────────────

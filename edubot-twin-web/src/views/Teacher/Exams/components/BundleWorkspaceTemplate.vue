@@ -20,7 +20,7 @@
  *   - 复用 FileTree.vue / EditorWorkbench.vue 与学生端编辑体验一致
  *   - 仅依赖 apiPrefix 字符串，不硬编码任何 bundle 类型
  */
-import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { ContentWrap } from '@/components/ContentWrap'
 import FileTree from '@/views/Simulation/panels/WorkspacePanel/FileTree.vue'
 import EditorWorkbench from '@/views/Simulation/panels/WorkspacePanel/EditorWorkbench.vue'
@@ -50,6 +50,17 @@ interface Props {
   refreshListOnSave?: boolean
   /** 当前列表行是否高亮的判定 */
   isSelected?: (item: T, selected: T | null) => boolean
+  /**
+   * 只读模式（第14期）
+   * - 隐藏标题栏的「保存」按钮
+   * - 文件树上传区域默认不显示上传按钮
+   */
+  readonly?: boolean
+  /**
+   * 自动进入第一个条目的文件树视图（第14期）
+   * 适用于列表只有单条目、无需选择的场景（如查看提交代码）
+   */
+  autoEnterFirst?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -57,7 +68,9 @@ const props = withDefaults(defineProps<Props>(), {
   protectedPaths: () => [],
   autoOpenPath: undefined,
   refreshListOnSave: true,
-  isSelected: (item, selected) => !!selected && item.id === selected.id
+  isSelected: (item, selected) => !!selected && item.id === selected.id,
+  readonly: false,
+  autoEnterFirst: false
 })
 
 // ─── Emits ───────────────────────────────────────────────────────────────────
@@ -190,6 +203,14 @@ onBeforeRouteLeave(async (_to, _from, next) => {
   next(ok ? undefined : false)
 })
 
+// ─── 自动进入第一个条目的文件树（autoEnterFirst）────────────────────────────
+
+onMounted(async () => {
+  if (props.autoEnterFirst && props.items.length > 0) {
+    await handleItemDblClick(props.items[0])
+  }
+})
+
 // ─── 可拖拽分隔（文件树 / 基本设置） ────────────────────────────────────────
 
 const treeHeightPercent = ref(60)
@@ -269,7 +290,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="flex items-center gap-8px">
         <ElButton
-          v-if="viewMode === 'tree' && editor.activePath.value"
+          v-if="!props.readonly && viewMode === 'tree' && editor.activePath.value"
           type="primary"
           size="small"
           :disabled="!editor.dirtyMap[editor.activePath.value]"
@@ -325,7 +346,7 @@ onBeforeUnmount(() => {
             <div class="tree-header">
               <div class="tree-header__name">文件树</div>
               <slot name="tree-header" :selected-item="selectedItem">
-                <ElTooltip content="上传文件">
+                <ElTooltip v-if="!props.readonly" content="上传文件">
                   <ElButton link type="primary" @click="triggerUpload">↑ 上传</ElButton>
                 </ElTooltip>
               </slot>

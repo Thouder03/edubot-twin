@@ -904,6 +904,19 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
               canTo: true,
               activeMenu: '/teacher/exams/list'
             }
+          },
+          {
+            path: 'attempts/:attempt_id/submission',
+            component: () => import('@/views/Teacher/Exams/ExamAttemptSubmission.vue'),
+            name: 'TeacherExamAttemptSubmission',
+            meta: {
+              title: '查看提交代码',
+              noTagsView: true,
+              noCache: true,
+              hidden: true,
+              canTo: true,
+              activeMenu: '/teacher/exams/list'
+            }
           }
         ]
       },
