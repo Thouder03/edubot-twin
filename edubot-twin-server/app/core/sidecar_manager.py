@@ -27,6 +27,7 @@ from docker.errors import APIError, NotFound
 
 from app.core.docker_client import DockerConnectionError, get_docker_client
 from app.core.result_parser import ParseError, parse_result_json
+from app.core.final_score_calculator import calculate_final_score, get_scoring_mode
 from app.core.workspace_snapshot import SnapshotError, create_code_snapshot, get_artifacts_path
 from app.crud import exam_attempt as crud_attempt
 from app.crud import container as crud_container
@@ -490,6 +491,17 @@ async def _wait_and_finalize(
 
         # ── 6. 固化结果 ───────────────────────────────────────────────────────
         artifact_index = parse_result.artifacts or {}
+
+        # objective_only 模式：直接以客观分作为最终成绩，无需等待人工评分
+        scoring_policy = attempt.attempt_scoring_policy_json or {}
+        auto_final_score: Optional[float] = None
+        if get_scoring_mode(scoring_policy) == "objective_only":
+            auto_final_score, _ = calculate_final_score(
+                objective_score=parse_result.objective_score,
+                manual_score=None,
+                scoring_policy=scoring_policy,
+            )
+
         attempt = await crud_attempt.finalize_attempt(
             db, attempt,
             status=ExamAttemptStatus.COMPLETED,
@@ -499,6 +511,7 @@ async def _wait_and_finalize(
             result_json=parse_result.raw,
             custom_fields_json=parse_result.custom_fields,
             artifact_index_json=artifact_index,
+            final_score=auto_final_score,
         )
 
         await crud_attempt.record_event(
@@ -507,6 +520,8 @@ async def _wait_and_finalize(
             payload={
                 "objective_score": parse_result.objective_score,
                 "pass": parse_result.pass_,
+                "final_score": auto_final_score,
+                "scoring_mode": get_scoring_mode(scoring_policy),
             },
         )
         await crud_attempt.record_event(

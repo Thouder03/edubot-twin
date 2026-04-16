@@ -6,6 +6,10 @@
                 + manual_score   × weight_manual
     pass_final  = final_score ≥ pass_threshold
 
+评分模式（scoring_mode）：
+    objective_only  纯客观分，weight_objective=1.0，不需要人工评分
+    mixed           混合评分，按 manual_score_ratio(%) 拆分权重
+
 覆盖场景（allow_override_*）见 calculate_with_override()。
 """
 
@@ -18,6 +22,7 @@ logger = logging.getLogger(__name__)
 # ─── 默认策略值（与第11/12期 scoring_policy 默认值对齐）─────────────────────
 
 
+DEFAULT_SCORING_MODE = "objective_only"
 DEFAULT_WEIGHT_OBJECTIVE = 1.0  # 默认全靠客观分
 DEFAULT_WEIGHT_MANUAL = 0.0
 DEFAULT_PASS_THRESHOLD = 60.0
@@ -25,13 +30,36 @@ DEFAULT_ALLOW_OVERRIDE_OBJECTIVE = False
 DEFAULT_ALLOW_OVERRIDE_PASS = False
 
 
+def get_scoring_mode(scoring_policy: dict) -> str:
+    """返回 scoring_mode 字段值（objective_only / mixed）。"""
+    return str(scoring_policy.get("scoring_mode", DEFAULT_SCORING_MODE))
+
+
 def _parse_scoring_policy(scoring_policy: dict) -> tuple[float, float, float, bool, bool]:
-    """从 attempt_scoring_policy_json 解析权重与阈值。"""
-    w_obj = float(scoring_policy.get("weight_objective", DEFAULT_WEIGHT_OBJECTIVE))
-    w_man = float(scoring_policy.get("weight_manual", DEFAULT_WEIGHT_MANUAL))
+    """从 attempt_scoring_policy_json 解析权重与阈值。
+
+    scoring_mode 优先级高于旧版 weight_objective / weight_manual 字段：
+      - objective_only → weight_objective=1.0, weight_manual=0.0
+      - mixed          → manual_score_ratio(0-100) → weight_manual=ratio/100
+      - 其他/缺失      → 向后兼容，读取旧 weight_* 字段
+    """
+    mode = get_scoring_mode(scoring_policy)
     threshold = float(scoring_policy.get("pass_threshold", DEFAULT_PASS_THRESHOLD))
     allow_obj = bool(scoring_policy.get("allow_override_objective", DEFAULT_ALLOW_OVERRIDE_OBJECTIVE))
     allow_pass = bool(scoring_policy.get("allow_override_pass_flag", DEFAULT_ALLOW_OVERRIDE_PASS))
+
+    if mode == "objective_only":
+        w_obj, w_man = 1.0, 0.0
+    elif mode == "mixed":
+        ratio = float(scoring_policy.get("manual_score_ratio", 0))
+        ratio = max(0.0, min(100.0, ratio))
+        w_man = ratio / 100.0
+        w_obj = 1.0 - w_man
+    else:
+        # 向后兼容：读取旧 weight_* 字段
+        w_obj = float(scoring_policy.get("weight_objective", DEFAULT_WEIGHT_OBJECTIVE))
+        w_man = float(scoring_policy.get("weight_manual", DEFAULT_WEIGHT_MANUAL))
+
     return w_obj, w_man, threshold, allow_obj, allow_pass
 
 

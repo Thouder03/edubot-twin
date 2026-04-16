@@ -184,6 +184,7 @@ async def finalize_attempt(
     artifact_index_json: Optional[dict] = None,
     error_code: Optional[str] = None,
     error_message: Optional[str] = None,
+    final_score: Optional[float] = None,
 ) -> ExamAttempt:
     """固化考试结果（scoring → completed/error）"""
     attempt.status = status
@@ -210,6 +211,8 @@ async def finalize_attempt(
         attempt.error_code = error_code
     if error_message is not None:
         attempt.error_message = error_message
+    if final_score is not None:
+        attempt.final_score = max(0.0, min(100.0, final_score))
 
     attempt.updated_at = datetime.utcnow()
     await db.commit()

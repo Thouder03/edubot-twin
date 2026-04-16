@@ -27,6 +27,7 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
+  ElInputNumber,
   ElMessage,
   ElMessageBox,
   ElOption,
@@ -35,7 +36,7 @@ import {
   ElTag,
   ElTooltip
 } from 'element-plus'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 // ─── 各策略字段说明 ────────────────────────────────────────────────────────────
@@ -64,11 +65,17 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
   scoring_policy: {
     label: '评分策略',
     fields: [
-      { name: 'pass_threshold', desc: '及格线（0-100），默认 60' },
       {
         name: 'scoring_mode',
-        desc: '评分模式：objective_only（纯客观分）或 mixed（第13期人工评分）'
-      }
+        desc: 'objective_only（纯客观分，自动核算 final_score）或 mixed（需人工评分后才核算）'
+      },
+      {
+        name: 'manual_score_ratio',
+        desc: '人工评分占比（%，仅 mixed 模式生效），客观分占比 = 100 - 该值'
+      },
+      { name: 'pass_threshold', desc: '及格线（0-100），默认 60' },
+      { name: 'allow_override_objective', desc: '是否允许教师覆盖客观分，默认 false' },
+      { name: 'allow_override_pass_flag', desc: '是否允许教师覆盖 pass 标记，默认 false' }
     ]
   },
   sidecar_policy: {
@@ -159,6 +166,11 @@ async function loadExam() {
       editForm.value.panel_policy = JSON.stringify(exam.value.panel_policy_json || {}, null, 2)
       editForm.value.scoring_policy = JSON.stringify(exam.value.scoring_policy_json || {}, null, 2)
       editForm.value.sidecar_policy = JSON.stringify(exam.value.sidecar_policy_json || {}, null, 2)
+      // 初始化评分策略 UI 控件
+      const sp = exam.value.scoring_policy_json || {}
+      scoringConfig.value.scoring_mode = sp.scoring_mode === 'mixed' ? 'mixed' : 'objective_only'
+      scoringConfig.value.manual_score_ratio = Number(sp.manual_score_ratio ?? 0)
+      scoringConfig.value.pass_threshold = Number(sp.pass_threshold ?? 60)
     }
   } catch {
     ElMessage.error('加载考试详情失败')
@@ -190,6 +202,56 @@ function tryParseJSON(str: string): Record<string, unknown> | null {
     return null
   }
 }
+
+// ─── 评分策略 UI 状态（与 editForm.scoring_policy JSON 双向同步）────────────
+
+const scoringConfig = ref({
+  scoring_mode: 'objective_only' as 'objective_only' | 'mixed',
+  manual_score_ratio: 0,
+  pass_threshold: 60
+})
+
+let _scoringFromJson = false
+let _scoringFromUi = false
+
+// JSON → UI（Monaco 手动修改时反向更新控件）
+watch(
+  () => editForm.value.scoring_policy,
+  (jsonStr) => {
+    if (_scoringFromUi) return
+    const parsed = tryParseJSON(jsonStr)
+    if (!parsed) return
+    _scoringFromJson = true
+    scoringConfig.value.scoring_mode = parsed.scoring_mode === 'mixed' ? 'mixed' : 'objective_only'
+    scoringConfig.value.manual_score_ratio = Number(parsed.manual_score_ratio ?? 0)
+    scoringConfig.value.pass_threshold = Number(parsed.pass_threshold ?? 60)
+    nextTick(() => {
+      _scoringFromJson = false
+    })
+  }
+)
+
+// UI → JSON（控件修改时合并进 JSON）
+watch(
+  scoringConfig,
+  (cfg) => {
+    if (_scoringFromJson) return
+    const parsed = tryParseJSON(editForm.value.scoring_policy) ?? {}
+    parsed.scoring_mode = cfg.scoring_mode
+    if (cfg.scoring_mode === 'mixed') {
+      parsed.manual_score_ratio = cfg.manual_score_ratio
+    } else {
+      delete parsed.manual_score_ratio
+    }
+    parsed.pass_threshold = cfg.pass_threshold
+    _scoringFromUi = true
+    editForm.value.scoring_policy = JSON.stringify(parsed, null, 2)
+    nextTick(() => {
+      _scoringFromUi = false
+    })
+  },
+  { deep: true }
+)
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -617,6 +679,45 @@ onMounted(() => {
               </ElTooltip>
             </div>
           </template>
+          <!-- 评分策略快捷控件 -->
+          <div class="scoring-bar">
+            <div class="scoring-bar__item">
+              <span class="scoring-bar__label">评分模式</span>
+              <ElSelect v-model="scoringConfig.scoring_mode" size="small" style="width: 130px">
+                <ElOption value="objective_only" label="纯客观分" />
+                <ElOption value="mixed" label="混合评分" />
+              </ElSelect>
+            </div>
+            <template v-if="scoringConfig.scoring_mode === 'mixed'">
+              <div class="scoring-bar__item">
+                <span class="scoring-bar__label">人工占比</span>
+                <ElInputNumber
+                  v-model="scoringConfig.manual_score_ratio"
+                  :min="0"
+                  :max="100"
+                  :step="5"
+                  size="small"
+                  style="width: 100px"
+                />
+                <span class="scoring-bar__unit">%</span>
+                <span class="scoring-bar__hint">
+                  （客观 {{ 100 - scoringConfig.manual_score_ratio }}%）</span
+                >
+              </div>
+            </template>
+            <div class="scoring-bar__item">
+              <span class="scoring-bar__label">及格线</span>
+              <ElInputNumber
+                v-model="scoringConfig.pass_threshold"
+                :min="0"
+                :max="100"
+                :step="5"
+                size="small"
+                style="width: 90px"
+              />
+              <span class="scoring-bar__unit">分</span>
+            </div>
+          </div>
           <div class="monaco-card monaco-card--short">
             <MonacoEditor
               v-model="editForm.scoring_policy"
@@ -685,6 +786,36 @@ onMounted(() => {
 
   &--short {
     height: 160px;
+  }
+}
+
+.scoring-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 10px 0 12px;
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  &__label {
+    font-size: 13px;
+    color: var(--el-text-color-regular);
+    white-space: nowrap;
+  }
+
+  &__unit {
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+  }
+
+  &__hint {
+    font-size: 12px;
+    color: var(--el-text-color-placeholder);
   }
 }
 </style>
