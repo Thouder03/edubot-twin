@@ -796,46 +796,8 @@ class TestStudentExamAttemptAPI:
 class TestTeacherExamAttemptAPI:
 
     @pytest.mark.asyncio
-    async def test_a11b_valid_attempts_only_error_not_counted(self, db_session):
-        """valid_attempts_only=true 时 error 不计配额。"""
-        from app.models.exam import Exam
-        from app.api.v1.endpoints.student.exam_attempts import create_attempt
-        from app.schemas.exam_attempt import CreateAttemptRequest
-
-        exam = Exam(
-            name="valid_only_exam",
-            code=f"valid_only_{id(db_session)}",
-            exam_mode=ExamMode.RESULT_RUN,
-            status=ExamStatus.PUBLISHED,
-            runtime_policy_json={
-                "max_duration_ms": 300000,
-                "max_attempts": 1,
-                "allow_debug_before_start": True,
-                "valid_attempts_only": True,
-            },
-            panel_policy_json={},
-            scoring_policy_json={},
-            sidecar_policy_json={"image": "edubot/sidecar-runner:v1"},
-            created_by=TEACHER_ID,
-        )
-        db_session.add(exam)
-        await db_session.commit()
-        await db_session.refresh(exam)
-
-        container = await _create_running_container(db_session)
-        await _create_attempt(db_session, exam, container, status=ExamAttemptStatus.ERROR)
-
-        # 仍允许创建下一次尝试
-        resp = await create_attempt(
-            body=CreateAttemptRequest(exam_id=exam.id),
-            user_id=STUDENT_ID,
-            db=db_session,
-        )
-        assert resp.code == 0
-
-    @pytest.mark.asyncio
-    async def test_a11c_valid_attempts_only_false_error_counted(self, db_session):
-        """valid_attempts_only=false 时 error 计配额。"""
+    async def test_a11b_error_counted(self, db_session):
+        """默认情况下 error 计配额。"""
         from app.models.exam import Exam
         from fastapi import HTTPException
         from app.api.v1.endpoints.student.exam_attempts import create_attempt
@@ -850,7 +812,6 @@ class TestTeacherExamAttemptAPI:
                 "max_duration_ms": 300000,
                 "max_attempts": 1,
                 "allow_debug_before_start": True,
-                "valid_attempts_only": False,
             },
             panel_policy_json={},
             scoring_policy_json={},

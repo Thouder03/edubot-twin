@@ -52,14 +52,7 @@ DEFAULT_SIDECAR_IMAGE = "sidecar-runner:v1"
 CONTAINER_NAME_PREFIX = "sidecar-exam-"
 
 
-async def _maybe_delete_error_attempt(db, attempt) -> bool:
-    """runtime_policy.valid_attempts_only=true 时，错误尝试不入库（连同文件一起删除）。"""
-    policy = attempt.attempt_runtime_policy_json or {}
-    if not bool(policy.get("valid_attempts_only", False)):
-        return False
-    await crud_attempt.delete_attempt_with_storage(db, attempt)
-    logger.info("[Sidecar] valid_attempts_only=true，已删除 error attempt=%s", attempt.id)
-    return True
+
 
 
 async def _maybe_prune_lower_attempts(db, attempt) -> None:
@@ -324,13 +317,11 @@ async def schedule_sidecar(attempt_id: int) -> None:
                 error_code=e.error_code,
                 error_message=str(e),
             )
-            deleted = await _maybe_delete_error_attempt(db, attempt)
-            if not deleted:
-                await crud_attempt.record_event(
-                    db, attempt_id=attempt_id,
-                    event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
-                    payload={"final_status": "error"},
-                )
+            await crud_attempt.record_event(
+                db, attempt_id=attempt_id,
+                event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
+                payload={"final_status": "error"},
+            )
             return
         except Exception as e:
             logger.error(f"[Sidecar] 快照异常 attempt={attempt_id}: {e}")
@@ -339,7 +330,6 @@ async def schedule_sidecar(attempt_id: int) -> None:
                 error_code="SNAPSHOT_FAILED",
                 error_message=str(e),
             )
-            await _maybe_delete_error_attempt(db, attempt)
             return
 
         # 更新 attempt 路径
@@ -384,13 +374,11 @@ async def schedule_sidecar(attempt_id: int) -> None:
                 error_code="SIDECAR_START_FAILED",
                 error_message=str(e),
             )
-            deleted = await _maybe_delete_error_attempt(db, attempt)
-            if not deleted:
-                await crud_attempt.record_event(
-                    db, attempt_id=attempt_id,
-                    event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
-                    payload={"final_status": "error"},
-                )
+            await crud_attempt.record_event(
+                db, attempt_id=attempt_id,
+                event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
+                payload={"final_status": "error"},
+            )
             return
 
         # 更新为 running 状态
@@ -465,13 +453,11 @@ async def _wait_and_finalize(
                 error_code="SCRIPT_FAILED",
                 error_message=f"exit_code={exit_code} stderr={stderr[:300]}",
             )
-            deleted = await _maybe_delete_error_attempt(db, attempt)
-            if not deleted:
-                await crud_attempt.record_event(
-                    db, attempt_id=attempt_id,
-                    event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
-                    payload={"final_status": "error"},
-                )
+            await crud_attempt.record_event(
+                db, attempt_id=attempt_id,
+                event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
+                payload={"final_status": "error"},
+            )
             await _run_in_executor(_docker_remove_container, sidecar_docker_id)
             return
 
@@ -505,13 +491,11 @@ async def _wait_and_finalize(
                 error_code=e.error_code,
                 error_message=str(e),
             )
-            deleted = await _maybe_delete_error_attempt(db, attempt)
-            if not deleted:
-                await crud_attempt.record_event(
-                    db, attempt_id=attempt_id,
-                    event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
-                    payload={"final_status": "error"},
-                )
+            await crud_attempt.record_event(
+                db, attempt_id=attempt_id,
+                event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
+                payload={"final_status": "error"},
+            )
             await _run_in_executor(_docker_remove_container, sidecar_docker_id)
             return
 
@@ -552,14 +536,12 @@ async def _wait_and_finalize(
                 error_code="OBJECTIVE_SCORE_ZERO",
                 error_message="客观分为0，按评测异常处理",
             )
-            deleted = await _maybe_delete_error_attempt(db, attempt)
-            if not deleted:
-                await crud_attempt.record_event(
-                    db,
-                    attempt_id=attempt_id,
-                    event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
-                    payload={"final_status": "error"},
-                )
+            await crud_attempt.record_event(
+                db,
+                attempt_id=attempt_id,
+                event_type=EvidenceEventType.EXAM_ATTEMPT_FINALIZED,
+                payload={"final_status": "error"},
+            )
         else:
             # objective_only 模式：直接以客观分作为最终成绩，无需等待人工评分
             scoring_policy = attempt.attempt_scoring_policy_json or {}

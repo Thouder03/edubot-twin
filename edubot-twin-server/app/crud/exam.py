@@ -40,7 +40,6 @@ async def create_exam(
             "max_duration_ms": 600000,
             "max_attempts": 3,
             "allow_debug_before_start": True,
-            "valid_attempts_only": False,
             "highest_objective_only": False,
             "image": "gzweb_sim:v1",
             "launch_args": {}

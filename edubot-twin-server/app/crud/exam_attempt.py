@@ -288,9 +288,8 @@ async def count_attempts_for_quota(
     exam_id: int,
     runtime_policy: dict,
 ) -> int:
-    """按 runtime_policy.valid_attempts_only 决定哪些状态消耗配额。"""
-    valid_only = bool(runtime_policy.get("valid_attempts_only", False))
-    statuses = list(_NON_ERROR_STATUSES) if valid_only else [
+    """统计消耗配额的尝试数目（包括 error）。"""
+    statuses = [
         ExamAttemptStatus.COMPLETED,
         ExamAttemptStatus.REVIEWED,
         ExamAttemptStatus.ABORTED,

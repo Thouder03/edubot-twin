@@ -51,10 +51,6 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
       { name: 'image', desc: '启动考试容器的镜像' },
       { name: 'launch_args', desc: '考试环境中 roslaunch 的启动参数' },
       {
-        name: 'valid_attempts_only',
-        desc: '只保留非错误尝试：true 时 error 尝试不入库'
-      },
-      {
         name: 'highest_objective_only',
         desc: '仅保留一个客观分最高的非错误尝试，低分尝试会被删除'
       }
