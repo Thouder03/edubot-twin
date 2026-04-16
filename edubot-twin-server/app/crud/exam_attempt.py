@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam_attempt import (
@@ -464,6 +464,102 @@ async def apply_override(
     await db.commit()
     await db.refresh(attempt)
     return attempt
+
+
+_ABNORMAL_STATUSES = [ExamAttemptStatus.ERROR, ExamAttemptStatus.ABORTED]
+_BEST_STATUSES = [ExamAttemptStatus.COMPLETED, ExamAttemptStatus.REVIEWED]
+
+
+async def list_best_attempts_per_student(
+    db: AsyncSession,
+    *,
+    exam_id: Optional[int] = None,
+    review_status: Optional[str] = None,
+    sort: str = "review_pending_first",
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[tuple], int]:
+    """每学生每考试最高分视图（仅 completed/reviewed），返回 (ExamAttempt, exam_name) 行列表"""
+    from app.models.exam import Exam  # 避免循环导入
+
+    score_expr = func.coalesce(ExamAttempt.objective_score, -1.0)
+
+    # 内层子查询：对每 (student_id, exam_id) 按分数降序+时间降序排序，取 row_number
+    base_conds: list = [ExamAttempt.status.in_(_BEST_STATUSES)]
+    if exam_id is not None:
+        base_conds.append(ExamAttempt.exam_id == exam_id)
+
+    inner = (
+        select(
+            ExamAttempt.id,
+            func.row_number()
+            .over(
+                partition_by=[ExamAttempt.student_id, ExamAttempt.exam_id],
+                order_by=[score_expr.desc(), ExamAttempt.created_at.desc()],
+            )
+            .label("rn"),
+        )
+        .where(and_(*base_conds))
+    ).subquery()
+
+    best_ids_q = select(inner.c.id).where(inner.c.rn == 1)
+
+    # 主查询 JOIN Exam 获取 exam_name
+    q = (
+        select(ExamAttempt, Exam.name.label("exam_name"))
+        .join(Exam, ExamAttempt.exam_id == Exam.id)
+        .where(ExamAttempt.id.in_(best_ids_q))
+    )
+    count_q = (
+        select(func.count())
+        .select_from(ExamAttempt)
+        .where(ExamAttempt.id.in_(best_ids_q))
+    )
+
+    # 按 review_status 筛选
+    if review_status == "pending":
+        q = q.where(ExamAttempt.review_status == ExamAttemptReviewStatus.PENDING)
+        count_q = count_q.where(ExamAttempt.review_status == ExamAttemptReviewStatus.PENDING)
+    elif review_status == "reviewed":
+        q = q.where(ExamAttempt.review_status == ExamAttemptReviewStatus.REVIEWED)
+        count_q = count_q.where(ExamAttempt.review_status == ExamAttemptReviewStatus.REVIEWED)
+
+    # 排序
+    pending_first = case(
+        (ExamAttempt.review_status == ExamAttemptReviewStatus.PENDING, 0),
+        else_=1,
+    )
+    sort_map = {
+        "review_pending_first": [pending_first, score_expr.desc()],
+        "score_desc": [score_expr.desc()],
+        "score_asc": [func.coalesce(ExamAttempt.objective_score, -1.0).asc()],
+        "created_at_desc": [ExamAttempt.created_at.desc()],
+    }
+    q = q.order_by(*sort_map.get(sort, sort_map["review_pending_first"]))
+
+    total_result = await db.execute(count_q)
+    total = total_result.scalar_one()
+
+    offset = (page - 1) * page_size
+    result = await db.execute(q.offset(offset).limit(page_size))
+    return list(result.all()), total
+
+
+async def delete_abnormal_attempts(
+    db: AsyncSession,
+    *,
+    exam_id: Optional[int] = None,
+) -> list[int]:
+    """删除 status∈{error,aborted} 的 attempt 及文件，返回已删除 id 列表"""
+    conds: list = [ExamAttempt.status.in_(_ABNORMAL_STATUSES)]
+    if exam_id is not None:
+        conds.append(ExamAttempt.exam_id == exam_id)
+
+    result = await db.execute(select(ExamAttempt).where(and_(*conds)))
+    attempts = list(result.scalars().all())
+    if not attempts:
+        return []
+    return await batch_delete_attempts_with_storage(db, attempts)
 
 
 async def find_timeout_running_attempts(db: AsyncSession) -> list[ExamAttempt]:

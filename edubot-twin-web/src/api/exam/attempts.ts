@@ -342,6 +342,12 @@ export const submitManualScoreApi = (
 ): Promise<IResponse<TeacherAttemptFull>> =>
   request.post({ url: `${TEACHER_BASE}/exam-attempts/${attemptId}/manual-score`, data })
 
+/** 批量删除考试尝试（含 artifacts/submissions） */
+export const batchDeleteAttemptsApi = (data: {
+  attempt_ids: number[]
+}): Promise<IResponse<{ deleted_ids: number[] }>> =>
+  request.post({ url: `${TEACHER_BASE}/exam-attempts/batch-delete`, data })
+
 /** 覆盖客观分 / pass */
 export const overrideScoresApi = (
   attemptId: number,

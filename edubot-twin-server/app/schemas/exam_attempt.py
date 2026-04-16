@@ -368,3 +368,29 @@ class AttemptListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# ─── 第15期：复核列表 & 删除异常尝试 Schema ───────────────────────────────────
+
+
+class ExamReviewListItem(TeacherAttemptListItemSchema):
+    """考试结果复核列表条目（继承 TeacherAttemptListItemSchema，追加 exam_name）"""
+    exam_name: str
+
+
+class ExamReviewListResponse(BaseModel):
+    items: list[ExamReviewListItem]
+    total: int
+    page: int
+    page_size: int
+
+
+class DeleteAbnormalRequest(BaseModel):
+    """POST /teachers/exam-attempts/delete-abnormal 请求体"""
+    exam_id: Optional[int] = Field(None, description="不传则删除全局所有异常尝试")
+
+
+class DeleteAbnormalResponse(BaseModel):
+    """POST /teachers/exam-attempts/delete-abnormal 响应体"""
+    deleted_ids: list[int] = Field(default_factory=list)
+    count: int = 0

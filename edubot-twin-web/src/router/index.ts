@@ -893,6 +893,24 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
             }
           },
           {
+            path: 'attempts',
+            component: () => import('@/views/Teacher/Exams/ExamAttemptsManager.vue'),
+            name: 'TeacherExamAttemptsManager',
+            meta: {
+              title: '尝试管理',
+              icon: 'vi-carbon:task-settings'
+            }
+          },
+          {
+            path: 'review-list',
+            component: () => import('@/views/Teacher/Exams/ExamReviewList.vue'),
+            name: 'TeacherExamReviewList',
+            meta: {
+              title: '复核列表',
+              icon: 'vi-carbon:review'
+            }
+          },
+          {
             path: 'attempts/:attempt_id/review',
             component: () => import('@/views/Teacher/Exams/ExamAttemptReview.vue'),
             name: 'TeacherExamAttemptReview',

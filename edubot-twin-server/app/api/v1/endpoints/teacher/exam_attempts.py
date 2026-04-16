@@ -1,11 +1,14 @@
 """
-教师端考试运行记录 API（第12期 S7 + S10）
+教师端考试运行记录 API（第12期 S7 + S10，第15期扩展）
 
 路由前缀：/api/v1/teachers/
-  GET /exams/{exam_id}/attempts         → 单考试的运行记录列表
-  GET /exam-attempts                    → 全局运行记录列表
-  GET /exam-attempts/{id}              → 运行记录详情
-  GET /exam-attempts/{id}/events       → 生命周期事件时间轴
+  GET /exams/{exam_id}/attempts                → 单考试的运行记录列表
+  GET /exam-attempts                           → 全局运行记录列表
+  GET /exam-attempts/{id}                      → 运行记录详情
+  GET /exam-attempts/{id}/events               → 生命周期事件时间轴
+  POST /exam-attempts/batch-delete             → 批量删除
+  GET /exam-review-list                        → 每学生每考试最高分视图（第15期）
+  POST /exam-attempts/delete-abnormal          → 一键删除异常尝试（第15期）
 """
 
 import logging
@@ -26,7 +29,11 @@ from app.schemas.exam_attempt import (
     AttemptExamInfo,
     AttemptListResponse,
     AttemptStudentInfo,
+    DeleteAbnormalRequest,
+    DeleteAbnormalResponse,
     EvidenceEventSchema,
+    ExamReviewListItem,
+    ExamReviewListResponse,
     TeacherAttemptFullSchema,
     TeacherAttemptListItemSchema,
     TeacherBatchDeleteAttemptsRequest,
@@ -276,3 +283,91 @@ async def batch_delete_attempts(
 
     deleted_ids = await crud_attempt.batch_delete_attempts_with_storage(db, attempts)
     return ApiResponse(code=0, data=TeacherBatchDeleteAttemptsResponse(deleted_ids=deleted_ids))
+
+
+# ─── GET /teachers/exam-review-list（第15期）─────────────────────────────────
+
+
+@router.get(
+    "/exam-review-list",
+    response_model=ApiResponse[ExamReviewListResponse],
+    summary="考试结果复核列表（每学生每考试最高分视图）",
+)
+async def list_exam_review(
+    exam_id: Optional[int] = Query(default=None),
+    review_status: Optional[str] = Query(default=None, description="pending / reviewed"),
+    sort: str = Query(default="review_pending_first"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    _user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    rows, total = await crud_attempt.list_best_attempts_per_student(
+        db,
+        exam_id=exam_id,
+        review_status=review_status,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+    )
+
+    items: list[ExamReviewListItem] = []
+    for attempt, exam_name in rows:
+        student = await _get_student_info(db, attempt.student_id)
+        items.append(
+            ExamReviewListItem(
+                attempt_id=attempt.id,
+                exam_id=attempt.exam_id,
+                exam_name=exam_name,
+                status=attempt.status.value,
+                student=student,
+                objective_score=attempt.objective_score,
+                **{"pass": attempt.pass_},
+                started_at=attempt.started_at,
+                ended_at=attempt.ended_at,
+                duration_ms=attempt.duration_ms,
+                error_code=attempt.error_code,
+                review_status=attempt.review_status.value,
+                manual_score=attempt.manual_score,
+                final_score=attempt.final_score,
+                created_at=attempt.created_at,
+            )
+        )
+
+    return ApiResponse(
+        code=0,
+        data=ExamReviewListResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+        ),
+    )
+
+
+# ─── POST /teachers/exam-attempts/delete-abnormal（第15期）────────────────────
+
+
+@router.post(
+    "/exam-attempts/delete-abnormal",
+    response_model=ApiResponse[DeleteAbnormalResponse],
+    summary="一键删除异常尝试（error/aborted，含文件清理）",
+)
+async def delete_abnormal_attempts(
+    body: DeleteAbnormalRequest,
+    _user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    deleted_ids = await crud_attempt.delete_abnormal_attempts(
+        db, exam_id=body.exam_id
+    )
+    logger.info(
+        "[delete_abnormal] teacher_id=%s exam_id=%s deleted_count=%d",
+        _user_id,
+        body.exam_id,
+        len(deleted_ids),
+    )
+    return ApiResponse(
+        code=0,
+        data=DeleteAbnormalResponse(deleted_ids=deleted_ids, count=len(deleted_ids)),
+    )
