@@ -43,6 +43,19 @@ def add_column(table: str, column: str, typedef: str):
 print("\n[第13期] exam_attempts 补列")
 add_column("exam_attempts", "breakdown_json",  "TEXT DEFAULT NULL")
 
+# ─── 容器全局资源配置表（新建表，幂等）──────────────────────────────────────
+print("\n[容器配置] container_default_config 建表（若不存在）")
+cur.execute("""
+    CREATE TABLE IF NOT EXISTS container_default_config (
+        id               INTEGER PRIMARY KEY DEFAULT 1,
+        cpu_limit        REAL    NOT NULL DEFAULT 2.0,
+        memory_limit_mb  INTEGER NOT NULL DEFAULT 1024,
+        shm_size_mb      INTEGER NOT NULL DEFAULT 512,
+        updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+""")
+print("  ✅ container_default_config 已就绪")
+
 # ─── 未来新期次在此追加 ─────────────────────────────────────────────────────
 # add_column("exam_attempts", "new_field", "TEXT DEFAULT NULL")
 

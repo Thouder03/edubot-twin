@@ -8,7 +8,9 @@ import type {
   StudentListResponse,
   StudentInfo,
   StudentImportResult,
-  ContainerMonitorListResponse
+  ContainerMonitorListResponse,
+  ContainerDefaultConfig,
+  ContainerDefaultConfigUpdate
 } from './types'
 
 // ─── 学生管理 API ────────────────────────────────────────────
@@ -87,5 +89,24 @@ export const batchDeleteContainersApi = (container_ids: number[]): Promise<IResp
   return request.post({
     url: '/api/v1/teachers/containers/batch-delete',
     data: { container_ids }
+  })
+}
+
+// ─── 容器全局默认资源配置 API ─────────────────────────────────
+
+/** 获取仿真容器全局默认资源配置 */
+export const getContainerDefaultConfigApi = (): Promise<IResponse<ContainerDefaultConfig>> => {
+  return request.get<ContainerDefaultConfig>({
+    url: '/api/v1/teachers/containers/config'
+  })
+}
+
+/** 更新仿真容器全局默认资源配置 */
+export const updateContainerDefaultConfigApi = (
+  data: ContainerDefaultConfigUpdate
+): Promise<IResponse<ContainerDefaultConfig>> => {
+  return request.put<ContainerDefaultConfig>({
+    url: '/api/v1/teachers/containers/config',
+    data
   })
 }

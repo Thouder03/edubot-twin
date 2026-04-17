@@ -183,6 +183,7 @@ async def get_user_routes(role: str):
             "/teacher/students",
             "/teacher/containers",
             "/teacher/containers/monitor",
+            "/teacher/containers/config",
             "/teacher/experiments",
             "/teacher/experiments/list",
             "/teacher/experiments/:id/detail",
@@ -224,6 +225,7 @@ async def get_user_routes(role: str):
             "/teacher/students",
             "/teacher/containers",
             "/teacher/containers/monitor",
+            "/teacher/containers/config",
             "/teacher/experiments",
             "/teacher/experiments/:id"
         ]

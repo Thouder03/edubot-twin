@@ -19,6 +19,7 @@ from app.db.database import AsyncSessionLocal, engine
 
 # ── 导入全部 ORM 模型，确保 Base.metadata 包含所有表 ────────────────────────
 from app.models.container import SimContainer  # noqa: F401
+from app.models.container_config import ContainerDefaultConfig  # noqa: F401
 from app.models.container_metrics import ContainerMetrics  # noqa: F401
 from app.models.experiment import (
     Experiment,

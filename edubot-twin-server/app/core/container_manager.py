@@ -112,6 +112,10 @@ async def create_container(
     gz_port: int,
     ros_port: int,
     *,
+    # ── 资源限制（教师配置页可调） ──────────────────────────────────
+    cpu_limit: float = 2.0,
+    memory_limit_mb: int = 1024,
+    shm_size_mb: int = 512,
     # ── 启动配置（10-S1-7）──────────────────────────────────────────
     launch_args: Optional[dict[str, str]] = None,
     startup_script_path: Optional[str] = None,
@@ -239,14 +243,14 @@ async def create_container(
                 f"{ros_port}/tcp": ros_port, # 同端口映射，避免 rosbridge Host header 检查失败
             },
             volumes=volumes,
-            mem_limit="2g",
-            nano_cpus=2_000_000_000,  # 2 CPU cores
+            mem_limit=f"{memory_limit_mb}m",
+            nano_cpus=int(cpu_limit * 1_000_000_000),
             labels=labels,
             remove=False,
             privileged=False,
             security_opt=["no-new-privileges:true"],
             network=EDUBOT_NETWORK,
-            shm_size="512m",
+            shm_size=f"{shm_size_mb}m",
             devices=["/dev/dri:/dev/dri"],
             environment=environment,
         )

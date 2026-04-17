@@ -12,7 +12,7 @@
 
 from fastapi import APIRouter
 from . import (
-    containers, students, monitor, experiments, file_bundles, env_bundles,
+    containers, students, monitor, container_config, experiments, file_bundles, env_bundles,
     dry_run_tools, container_files, container_proxy,
     exams, exam_env_snapshots, exam_file_snapshots, exam_eval_scripts,
     exam_attempts, exam_attempts_review, grade_preview,
@@ -53,6 +53,9 @@ router.include_router(container_files.router, prefix="/dry-run-tools/files", tag
 
 # Dry Run 容器文件系统 Sidecar 代理（新方案，替代 docker exec）
 router.include_router(container_proxy.router, prefix="/dry-run-tools/container-files", tags=["教师-DryRun文件代理"])
+
+# 容器全局配置 —— 具体路径，优先注册（必须在含 {container_id} 的路由之前）
+router.include_router(container_config.router, prefix="/containers/config", tags=["教师-容器配置"])
 
 # 容器监控（第五期）—— 具体路径，优先注册
 router.include_router(monitor.router, prefix="/containers/monitor", tags=["教师-容器监控"])

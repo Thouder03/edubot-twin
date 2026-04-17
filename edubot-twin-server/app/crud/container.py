@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import container_manager
 from app.core.docker_client import DockerConnectionError
 from app.core.port_allocator import allocate_ports
+from app.crud import container_config as crud_config
 from app.models.container import ContainerStatus, SimContainer
 from app.schemas.container import ContainerCreate
 
@@ -44,6 +45,9 @@ async def create_container(
     await db.commit()
     await db.refresh(container)
 
+    # 读取全局资源默认配置
+    cfg = await crud_config.get_default_config(db)
+
     # 调用 Docker SDK 创建并启动容器
     try:
         docker_id = await container_manager.create_container(
@@ -51,6 +55,9 @@ async def create_container(
             student_id=data.user_id,
             gz_port=gz_port,
             ros_port=ros_port,
+            cpu_limit=cfg.cpu_limit,
+            memory_limit_mb=cfg.memory_limit_mb,
+            shm_size_mb=cfg.shm_size_mb,
             launch_args=data.launch_args,
             startup_script_path=data.startup_script_path,
             env_volumes=data.env_volumes,

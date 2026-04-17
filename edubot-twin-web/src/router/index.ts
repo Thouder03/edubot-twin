@@ -967,6 +967,15 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
               title: t('router.containerMonitor'),
               icon: 'vi-carbon:dashboard'
             }
+          },
+          {
+            path: 'config',
+            component: () => import('@/views/Teacher/Containers/Config.vue'),
+            name: 'ContainerConfig',
+            meta: {
+              title: '容器配置',
+              icon: 'vi-carbon:settings'
+            }
           }
         ]
       }

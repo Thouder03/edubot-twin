@@ -86,3 +86,21 @@ export interface ContainerMonitorListResponse {
   total: number
   list: ContainerMonitorInfo[]
 }
+
+// ─── 容器全局默认资源配置 ────────────────────────────────────
+
+/** 仿真容器全局默认资源配置 */
+export interface ContainerDefaultConfig {
+  id: number
+  cpu_limit: number
+  memory_limit_mb: number
+  shm_size_mb: number
+  updated_at: string
+}
+
+/** 更新容器全局默认资源配置请求（字段均可选） */
+export interface ContainerDefaultConfigUpdate {
+  cpu_limit?: number
+  memory_limit_mb?: number
+  shm_size_mb?: number
+}
