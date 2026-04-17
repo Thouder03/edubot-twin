@@ -1,11 +1,27 @@
 <script setup lang="ts">
 import { Form, FormSchema } from '@/components/Form'
 import { useForm } from '@/hooks/web/useForm'
-import { reactive, ref } from 'vue'
+import { PropType, reactive, ref } from 'vue'
 import { useValidator } from '@/hooks/web/useValidator'
 import { ElMessage, ElMessageBox, ElDivider } from 'element-plus'
+import request from '@/axios'
+import { getTokenApi } from '@/api/login'
 
-const { required } = useValidator()
+interface PersonalUserInfo {
+  id: number
+  username: string
+  realName: string
+  email: string
+}
+
+const props = defineProps({
+  userInfo: {
+    type: Object as PropType<PersonalUserInfo | undefined>,
+    default: () => undefined
+  }
+})
+
+const { required, lengthRange } = useValidator()
 
 const formSchema = reactive<FormSchema[]>([
   {
@@ -44,6 +60,7 @@ const rules = reactive({
   password: [required()],
   newPassword: [
     required(),
+    lengthRange({ min: 6, max: 50, message: '密码长度需在6-50位之间' }),
     {
       asyncValidator: async (_, val, callback) => {
         const formData = await getFormData()
@@ -90,7 +107,26 @@ const save = async () => {
       .then(async () => {
         try {
           saveLoading.value = true
-          // 这里可以调用修改密码的接口
+          if (!props.userInfo?.id) {
+            ElMessage.error('未获取到用户信息，暂无法修改密码')
+            return
+          }
+
+          const formData = await getFormData<{ password: string; newPassword: string }>()
+
+          const verifyRes = await getTokenApi({
+            username: props.userInfo.username,
+            password: formData.password
+          })
+          if (!verifyRes?.data?.access_token) {
+            ElMessage.error('旧密码错误')
+            return
+          }
+
+          await request.put({
+            url: `/api/v1/students/${props.userInfo.id}`,
+            data: { password: formData.newPassword }
+          })
           ElMessage.success('修改成功')
         } catch (error) {
           console.log(error)
@@ -106,5 +142,5 @@ const save = async () => {
 <template>
   <Form :rules="rules" @register="formRegister" :schema="formSchema" />
   <ElDivider />
-  <BaseButton type="primary" @click="save">确认修改</BaseButton>
+  <BaseButton type="primary" :loading="saveLoading" @click="save">确认修改</BaseButton>
 </template>

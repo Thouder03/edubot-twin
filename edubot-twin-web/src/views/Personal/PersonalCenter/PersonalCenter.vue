@@ -1,28 +1,73 @@
 <script setup lang="ts">
 import { ContentWrap } from '@/components/ContentWrap'
-import { ref, unref } from 'vue'
+import { onMounted, ref, unref } from 'vue'
 import { ElDivider, ElImage, ElTag, ElTabPane, ElTabs, ElButton, ElMessage } from 'element-plus'
 import defaultAvatar from '@/assets/imgs/avatar.jpg'
 import UploadAvatar from './components/UploadAvatar.vue'
 import { Dialog } from '@/components/Dialog'
 import EditInfo from './components/EditInfo.vue'
 import EditPassword from './components/EditPassword.vue'
+import { getUserInfoByTokenApi } from '@/api/login'
+import { useUserStore } from '@/store/modules/user'
 
-const userInfo = ref()
-const fetchDetailUserApi = async () => {
-  // 这里可以调用接口获取用户信息
-  const data = {
-    id: 1,
-    username: 'admin',
-    realName: 'admin',
-    phoneNumber: '18888888888',
-    email: '502431556@qq.com',
-    avatarUrl: '',
-    roleList: ['超级管理员']
-  }
-  userInfo.value = data
+interface PersonalUserInfo {
+  id: number
+  username: string
+  realName: string
+  email: string
+  avatarUrl: string
+  roleList: string[]
 }
-fetchDetailUserApi()
+
+interface UserInfoApiData {
+  id?: number
+  username?: string
+  real_name?: string | null
+  realName?: string | null
+  email?: string | null
+  role_code?: string | null
+  roleId?: string | null
+  role?: string | null
+}
+
+const userStore = useUserStore()
+
+const roleNameMap: Record<string, string> = {
+  admin: '超级管理员',
+  teacher: '教师',
+  student: '学生',
+  test: '测试账号'
+}
+
+const userInfo = ref<PersonalUserInfo>()
+
+const normalizeUserInfo = (raw: UserInfoApiData): PersonalUserInfo => {
+  const roleCode = raw.role_code || raw.role || 'student'
+  return {
+    id: raw.id ?? 0,
+    username: raw.username ?? '',
+    realName: raw.real_name ?? raw.realName ?? '',
+    email: raw.email ?? '',
+    avatarUrl: '',
+    roleList: [roleNameMap[roleCode] || roleCode]
+  }
+}
+
+const fetchDetailUserApi = async () => {
+  const token = userStore.getToken
+  if (!token) {
+    return
+  }
+
+  const res = await getUserInfoByTokenApi(token)
+  if (res?.data) {
+    userInfo.value = normalizeUserInfo(res.data as UserInfoApiData)
+  }
+}
+
+onMounted(() => {
+  fetchDetailUserApi()
+})
 
 const activeName = ref('first')
 
@@ -74,11 +119,6 @@ const saveAvatar = async () => {
       </div>
       <ElDivider />
       <div class="flex justify-between items-center">
-        <div>手机号码：</div>
-        <div>{{ userInfo?.phoneNumber ?? '-' }}</div>
-      </div>
-      <ElDivider />
-      <div class="flex justify-between items-center">
         <div>用户邮箱：</div>
         <div>{{ userInfo?.email ?? '-' }}</div>
       </div>
@@ -99,10 +139,10 @@ const saveAvatar = async () => {
     <ContentWrap title="基本资料" class="flex-[3] ml-20px">
       <ElTabs v-model="activeName">
         <ElTabPane label="基本信息" name="first">
-          <EditInfo :user-info="userInfo" />
+          <EditInfo :user-info="userInfo" @updated="fetchDetailUserApi" />
         </ElTabPane>
         <ElTabPane label="修改密码" name="second">
-          <EditPassword />
+          <EditPassword :user-info="userInfo" />
         </ElTabPane>
       </ElTabs>
     </ContentWrap>

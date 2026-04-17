@@ -2,33 +2,51 @@
 import { FormSchema, Form } from '@/components/Form'
 import { useForm } from '@/hooks/web/useForm'
 import { useValidator } from '@/hooks/web/useValidator'
-import { reactive, ref, watch } from 'vue'
+import { PropType, reactive, ref, watch } from 'vue'
 import { ElDivider, ElMessage, ElMessageBox } from 'element-plus'
+import request from '@/axios'
+
+interface PersonalUserInfo {
+  id: number
+  username: string
+  realName: string
+  email: string
+}
 
 const props = defineProps({
   userInfo: {
-    type: Object,
-    default: () => ({})
+    type: Object as PropType<PersonalUserInfo | undefined>,
+    default: () => undefined
   }
 })
 
-const { required, phone, maxlength, email } = useValidator()
+const emit = defineEmits<{
+  updated: []
+}>()
+
+const { email } = useValidator()
 
 const formSchema = reactive<FormSchema[]>([
+  {
+    field: 'username',
+    label: '账号',
+    component: 'Input',
+    colProps: {
+      span: 24
+    },
+    componentProps: {
+      disabled: true
+    }
+  },
   {
     field: 'realName',
     label: '昵称',
     component: 'Input',
     colProps: {
       span: 24
-    }
-  },
-  {
-    field: 'phoneNumber',
-    label: '手机号码',
-    component: 'Input',
-    colProps: {
-      span: 24
+    },
+    componentProps: {
+      disabled: true
     }
   },
   {
@@ -42,8 +60,6 @@ const formSchema = reactive<FormSchema[]>([
 ])
 
 const rules = reactive({
-  realName: [required(), maxlength(50)],
-  phoneNumber: [phone()],
   email: [email()]
 })
 
@@ -53,7 +69,7 @@ const { setValues, getElFormExpose } = formMethods
 watch(
   () => props.userInfo,
   (value) => {
-    setValues(value)
+    setValues(value ?? {})
   },
   {
     immediate: true,
@@ -76,8 +92,17 @@ const save = async () => {
       .then(async () => {
         try {
           saveLoading.value = true
-          // 这里可以调用修改用户信息接口
+          if (!props.userInfo?.id) {
+            ElMessage.error('未获取到用户信息，暂无法保存')
+            return
+          }
+          const formData = await formMethods.getFormData<{ email?: string }>()
+          const payload: { email?: string } = {
+            email: formData.email?.trim() || undefined
+          }
+          await request.put({ url: `/api/v1/students/${props.userInfo.id}`, data: payload })
           ElMessage.success('修改成功')
+          emit('updated')
         } catch (error) {
           console.log(error)
         } finally {
