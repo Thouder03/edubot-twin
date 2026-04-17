@@ -67,6 +67,7 @@ async def get_grade_preview(
     student_id: Optional[int] = Query(default=None, description="按学生 ID 筛选"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    best_only: bool = Query(default=False, description="只显示每学生每考试客观分最高的一条"),
     _teacher_id: int = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -76,6 +77,7 @@ async def get_grade_preview(
         student_id=student_id,
         page=page,
         page_size=page_size,
+        best_only=best_only,
     )
     items = [_build_grade_preview_item(r) for r in rows]
     return ApiResponse(

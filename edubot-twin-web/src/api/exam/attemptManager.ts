@@ -50,13 +50,14 @@ export interface DeleteAbnormalResponse {
 
 // ─── API 函数 ────────────────────────────────────────────────────────────────
 
-/** 获取考试结果复核列表（每学生每考试最高分视图） */
+/** 获取考试结果复核列表 */
 export const getExamReviewListApi = (params?: {
   exam_id?: number
   review_status?: string
   sort?: string
   page?: number
   page_size?: number
+  best_only?: boolean
 }): Promise<IResponse<ExamReviewListResponse>> =>
   request.get({ url: `${TEACHER_BASE}/exam-review-list`, params })
 

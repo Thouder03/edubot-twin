@@ -77,6 +77,11 @@ onMounted(load)
             {{ row.objective_score ?? '-' }}
           </template>
         </ElTableColumn>
+        <ElTableColumn label="教师评分" width="90" align="right">
+          <template #default="{ row }">
+            {{ row.manual_score ?? '-' }}
+          </template>
+        </ElTableColumn>
         <ElTableColumn label="最终分" width="90" align="right">
           <template #default="{ row }">
             {{ row.final_score ?? '-' }}

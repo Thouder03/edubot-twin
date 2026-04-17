@@ -249,12 +249,10 @@ async def list_attempts_for_teacher(
     status: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
+    best_only: bool = False,
 ) -> tuple[list[ExamAttempt], int]:
-    """教师端分页查询运行记录"""
-    query = select(ExamAttempt).order_by(ExamAttempt.created_at.desc())
-    count_query = select(func.count()).select_from(ExamAttempt)
-
-    conditions = []
+    """教师端分页查询运行记录；best_only=True 时每 (student, exam) 只取客观分最高的一条"""
+    conditions: list = []
     if exam_id is not None:
         conditions.append(ExamAttempt.exam_id == exam_id)
     if student_id is not None:
@@ -262,9 +260,32 @@ async def list_attempts_for_teacher(
     if status is not None:
         conditions.append(ExamAttempt.status == status)
 
-    if conditions:
-        query = query.where(and_(*conditions))
-        count_query = count_query.where(and_(*conditions))
+    if best_only:
+        score_expr = func.coalesce(ExamAttempt.objective_score, -1.0)
+        inner = (
+            select(
+                ExamAttempt.id,
+                func.row_number()
+                .over(
+                    partition_by=[ExamAttempt.student_id, ExamAttempt.exam_id],
+                    order_by=[score_expr.desc(), ExamAttempt.created_at.desc()],
+                )
+                .label("rn"),
+            )
+        )
+        if conditions:
+            inner = inner.where(and_(*conditions))
+        inner = inner.subquery()
+        best_ids_q = select(inner.c.id).where(inner.c.rn == 1)
+
+        query = select(ExamAttempt).where(ExamAttempt.id.in_(best_ids_q)).order_by(ExamAttempt.created_at.desc())
+        count_query = select(func.count()).select_from(ExamAttempt).where(ExamAttempt.id.in_(best_ids_q))
+    else:
+        query = select(ExamAttempt).order_by(ExamAttempt.created_at.desc())
+        count_query = select(func.count()).select_from(ExamAttempt)
+        if conditions:
+            query = query.where(and_(*conditions))
+            count_query = count_query.where(and_(*conditions))
 
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
@@ -478,43 +499,60 @@ async def list_best_attempts_per_student(
     sort: str = "review_pending_first",
     page: int = 1,
     page_size: int = 20,
+    best_only: bool = True,
 ) -> tuple[list[tuple], int]:
-    """每学生每考试最高分视图（仅 completed/reviewed），返回 (ExamAttempt, exam_name) 行列表"""
+    """
+    复核列表视图（仅 completed/reviewed），返回 (ExamAttempt, exam_name) 行列表。
+    best_only=True（默认）：每学生每考试只取客观分最高的一条；
+    best_only=False：返回所有 completed/reviewed 尝试。
+    """
     from app.models.exam import Exam  # 避免循环导入
 
     score_expr = func.coalesce(ExamAttempt.objective_score, -1.0)
 
-    # 内层子查询：对每 (student_id, exam_id) 按分数降序+时间降序排序，取 row_number
     base_conds: list = [ExamAttempt.status.in_(_BEST_STATUSES)]
     if exam_id is not None:
         base_conds.append(ExamAttempt.exam_id == exam_id)
 
-    inner = (
-        select(
-            ExamAttempt.id,
-            func.row_number()
-            .over(
-                partition_by=[ExamAttempt.student_id, ExamAttempt.exam_id],
-                order_by=[score_expr.desc(), ExamAttempt.created_at.desc()],
+    if best_only:
+        # 内层子查询：对每 (student_id, exam_id) 按分数降序+时间降序排序，取 row_number=1
+        inner = (
+            select(
+                ExamAttempt.id,
+                func.row_number()
+                .over(
+                    partition_by=[ExamAttempt.student_id, ExamAttempt.exam_id],
+                    order_by=[score_expr.desc(), ExamAttempt.created_at.desc()],
+                )
+                .label("rn"),
             )
-            .label("rn"),
+            .where(and_(*base_conds))
+        ).subquery()
+
+        best_ids_q = select(inner.c.id).where(inner.c.rn == 1)
+
+        q = (
+            select(ExamAttempt, Exam.name.label("exam_name"))
+            .join(Exam, ExamAttempt.exam_id == Exam.id)
+            .where(ExamAttempt.id.in_(best_ids_q))
         )
-        .where(and_(*base_conds))
-    ).subquery()
-
-    best_ids_q = select(inner.c.id).where(inner.c.rn == 1)
-
-    # 主查询 JOIN Exam 获取 exam_name
-    q = (
-        select(ExamAttempt, Exam.name.label("exam_name"))
-        .join(Exam, ExamAttempt.exam_id == Exam.id)
-        .where(ExamAttempt.id.in_(best_ids_q))
-    )
-    count_q = (
-        select(func.count())
-        .select_from(ExamAttempt)
-        .where(ExamAttempt.id.in_(best_ids_q))
-    )
+        count_q = (
+            select(func.count())
+            .select_from(ExamAttempt)
+            .where(ExamAttempt.id.in_(best_ids_q))
+        )
+    else:
+        # 所有 completed/reviewed 尝试
+        q = (
+            select(ExamAttempt, Exam.name.label("exam_name"))
+            .join(Exam, ExamAttempt.exam_id == Exam.id)
+            .where(and_(*base_conds))
+        )
+        count_q = (
+            select(func.count())
+            .select_from(ExamAttempt)
+            .where(and_(*base_conds))
+        )
 
     # 按 review_status 筛选
     if review_status == "pending":
@@ -645,10 +683,12 @@ async def list_grade_preview_attempts(
     student_id: Optional[int] = None,
     page: int = 1,
     page_size: int = 20,
+    best_only: bool = False,
 ) -> tuple[list[tuple], int]:
     """
     教师端成绩预览：查询 completed/reviewed 状态的尝试，支持考试/学生筛选，
     返回 (ExamAttempt, exam_name, student_username, student_real_name) 行列表。
+    best_only=True：每学生每考试只取客观分最高的一条。
     """
     from app.models.exam import Exam  # 避免循环导入
     from app.models.student import User
@@ -659,25 +699,49 @@ async def list_grade_preview_attempts(
     if student_id is not None:
         conds.append(ExamAttempt.student_id == student_id)
 
-    q = (
-        select(
-            ExamAttempt,
-            Exam.name.label("exam_name"),
-            User.username.label("student_username"),
-            User.real_name.label("student_real_name"),
+    def _base_q(id_filter=None):
+        q = (
+            select(
+                ExamAttempt,
+                Exam.name.label("exam_name"),
+                User.username.label("student_username"),
+                User.real_name.label("student_real_name"),
+            )
+            .join(Exam, ExamAttempt.exam_id == Exam.id)
+            .join(User, ExamAttempt.student_id == User.id)
+            .order_by(ExamAttempt.created_at.desc())
         )
-        .join(Exam, ExamAttempt.exam_id == Exam.id)
-        .join(User, ExamAttempt.student_id == User.id)
-        .where(and_(*conds))
-        .order_by(ExamAttempt.created_at.desc())
-    )
-    count_q = (
-        select(func.count())
-        .select_from(ExamAttempt)
-        .join(Exam, ExamAttempt.exam_id == Exam.id)
-        .join(User, ExamAttempt.student_id == User.id)
-        .where(and_(*conds))
-    )
+        return q.where(ExamAttempt.id.in_(id_filter)) if id_filter is not None else q.where(and_(*conds))
+
+    def _base_count_q(id_filter=None):
+        q = (
+            select(func.count())
+            .select_from(ExamAttempt)
+            .join(Exam, ExamAttempt.exam_id == Exam.id)
+            .join(User, ExamAttempt.student_id == User.id)
+        )
+        return q.where(ExamAttempt.id.in_(id_filter)) if id_filter is not None else q.where(and_(*conds))
+
+    if best_only:
+        score_expr = func.coalesce(ExamAttempt.objective_score, -1.0)
+        inner = (
+            select(
+                ExamAttempt.id,
+                func.row_number()
+                .over(
+                    partition_by=[ExamAttempt.student_id, ExamAttempt.exam_id],
+                    order_by=[score_expr.desc(), ExamAttempt.created_at.desc()],
+                )
+                .label("rn"),
+            )
+            .where(and_(*conds))
+        ).subquery()
+        best_ids_q = select(inner.c.id).where(inner.c.rn == 1)
+        q = _base_q(best_ids_q)
+        count_q = _base_count_q(best_ids_q)
+    else:
+        q = _base_q()
+        count_q = _base_count_q()
 
     total_result = await db.execute(count_q)
     total = total_result.scalar_one()

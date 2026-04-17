@@ -15,6 +15,7 @@ export interface StudentGradeSummaryItem {
   exam_code: string
   best_attempt_id: number
   objective_score: number | null
+  manual_score: number | null
   final_score: number | null
   pass: boolean | null
   summary: string | null
@@ -27,6 +28,7 @@ export interface StudentAttemptGradeDetailItem {
   attempt_id: number
   status: string
   objective_score: number | null
+  manual_score: number | null
   final_score: number | null
   pass: boolean | null
   summary: string | null
@@ -44,5 +46,7 @@ export interface StudentAttemptGradeDetailItem {
 export const getMyGradeSummaryApi = (): Promise<IResponse<StudentGradeSummaryItem[]>> =>
   request.get({ url: '/api/v1/students/my-grade-summary' })
 
-export const getMyGradeDetailApi = (examId: number): Promise<IResponse<StudentAttemptGradeDetailItem[]>> =>
+export const getMyGradeDetailApi = (
+  examId: number
+): Promise<IResponse<StudentAttemptGradeDetailItem[]>> =>
   request.get({ url: `/api/v1/students/exams/${examId}/my-grade-detail` })

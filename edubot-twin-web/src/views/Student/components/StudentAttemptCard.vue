@@ -66,6 +66,7 @@ function getCustomEntries(cf: Record<string, unknown> | null) {
     <!-- 分数行 -->
     <div class="attempt-card__scores">
       <span>客观分：<strong>{{ item.objective_score ?? '-' }}</strong></span>
+      <span class="ml-4">教师评分：<strong>{{ item.manual_score ?? '-' }}</strong></span>
       <span class="ml-4">最终分：<strong>{{ item.final_score ?? '-' }}</strong></span>
       <span class="ml-4">
         Pass：

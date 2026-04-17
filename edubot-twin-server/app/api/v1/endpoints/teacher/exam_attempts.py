@@ -176,6 +176,7 @@ async def list_all_attempts(
     student_id: Optional[int] = Query(default=None),
     exam_id: Optional[int] = Query(default=None),
     status_filter: Optional[str] = Query(default=None, alias="status"),
+    best_only: bool = Query(default=False, description="只显示每学生每考试客观分最高的一条"),
     _user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -186,6 +187,7 @@ async def list_all_attempts(
         status=status_filter,
         page=page,
         page_size=page_size,
+        best_only=best_only,
     )
 
     items = []
@@ -299,6 +301,7 @@ async def list_exam_review(
     sort: str = Query(default="review_pending_first"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    best_only: bool = Query(default=True, description="只显示每学生每考试客观分最高的一条"),
     _user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -309,6 +312,7 @@ async def list_exam_review(
         sort=sort,
         page=page,
         page_size=page_size,
+        best_only=best_only,
     )
 
     items: list[ExamReviewListItem] = []

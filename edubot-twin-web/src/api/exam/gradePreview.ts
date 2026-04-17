@@ -47,6 +47,7 @@ export interface GradePreviewQueryParams {
   student_id?: number
   page?: number
   page_size?: number
+  best_only?: boolean
 }
 
 // ─── API 函数 ────────────────────────────────────────────────────────────────

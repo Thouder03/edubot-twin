@@ -935,18 +935,18 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
               canTo: true,
               activeMenu: '/teacher/exams/list'
             }
-          },
-          // 第16期：成绩预览
-          {
-            path: 'grade-preview',
-            component: () => import('@/views/Teacher/Exams/TeacherGradePreview.vue'),
-            name: 'TeacherGradePreview',
-            meta: {
-              title: '成绩预览',
-              icon: 'vi-carbon:chart-bar'
-            }
           }
         ]
+      },
+      // 第16期：成绩预览（一级菜单）
+      {
+        path: 'grade-preview',
+        component: () => import('@/views/Teacher/Exams/TeacherGradePreview.vue'),
+        name: 'TeacherGradePreview',
+        meta: {
+          title: '成绩预览',
+          icon: 'vi-carbon:chart-bar'
+        }
       },
       {
         path: 'containers',

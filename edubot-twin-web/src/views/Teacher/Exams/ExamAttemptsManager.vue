@@ -11,6 +11,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ElButton,
+  ElSwitch,
   ElTable,
   ElTableColumn,
   ElTag,
@@ -42,6 +43,7 @@ async function loadExamOptions() {
 // ─── 筛选状态 ─────────────────────────────────────────────────────────────────
 const filterExamId = ref<number | undefined>(undefined)
 const filterStatus = ref('')
+const bestOnly = ref(true)
 const page = ref(1)
 const pageSize = ref(20)
 
@@ -56,7 +58,8 @@ async function load() {
   try {
     const params: Record<string, unknown> = {
       page: page.value,
-      page_size: pageSize.value
+      page_size: pageSize.value,
+      best_only: bestOnly.value
     }
     if (filterExamId.value !== undefined) params.exam_id = filterExamId.value
     if (filterStatus.value) params.status = filterStatus.value
@@ -194,7 +197,7 @@ onMounted(() => {
 <template>
   <ContentWrap title="考试尝试管理">
     <!-- 筛选栏 -->
-    <div class="flex gap-3 mb-4 flex-wrap">
+    <div class="flex gap-3 mb-4 flex-wrap items-center">
       <ElSelect
         v-model="filterExamId"
         placeholder="考试：全部"
@@ -218,6 +221,11 @@ onMounted(() => {
         <ElOption label="评测中" value="running" />
         <ElOption label="准备中" value="pending" />
       </ElSelect>
+
+      <div class="flex items-center gap-2 ml-2">
+        <ElSwitch v-model="bestOnly" @change="onSearch" />
+        <span class="text-13px text-#606266">只显示考试最高客观成绩</span>
+      </div>
 
       <ElButton type="primary" @click="onSearch">查询</ElButton>
     </div>
@@ -259,9 +267,19 @@ onMounted(() => {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="客观分" width="80">
+      <ElTableColumn label="客观分" width="80" align="right">
         <template #default="{ row }">
           {{ row.objective_score ?? '-' }}
+        </template>
+      </ElTableColumn>
+      <ElTableColumn label="教师评分" width="80" align="right">
+        <template #default="{ row }">
+          {{ row.manual_score ?? '-' }}
+        </template>
+      </ElTableColumn>
+      <ElTableColumn label="最终分" width="80" align="right">
+        <template #default="{ row }">
+          {{ row.final_score ?? '-' }}
         </template>
       </ElTableColumn>
       <ElTableColumn label="复核状态" width="100">

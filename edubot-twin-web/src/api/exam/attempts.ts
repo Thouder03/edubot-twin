@@ -306,6 +306,7 @@ export const getAllAttemptsApi = (params?: {
   student_id?: number
   exam_id?: number
   status?: string
+  best_only?: boolean
 }): Promise<IResponse<AttemptListResponse>> =>
   request.get({ url: `${TEACHER_BASE}/exam-attempts`, params })
 

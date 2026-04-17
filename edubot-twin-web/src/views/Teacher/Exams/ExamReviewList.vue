@@ -12,6 +12,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ElButton,
+  ElSwitch,
   ElTable,
   ElTableColumn,
   ElTag,
@@ -37,6 +38,7 @@ async function loadExamOptions() {
 const filterExamId = ref<number | undefined>(undefined)
 const filterReviewStatus = ref('')
 const sort = ref('review_pending_first')
+const bestOnly = ref(false)
 const page = ref(1)
 const pageSize = ref(20)
 
@@ -51,7 +53,8 @@ async function load() {
     const params: Record<string, unknown> = {
       page: page.value,
       page_size: pageSize.value,
-      sort: sort.value
+      sort: sort.value,
+      best_only: bestOnly.value
     }
     if (filterExamId.value !== undefined) params.exam_id = filterExamId.value
     if (filterReviewStatus.value) params.review_status = filterReviewStatus.value
@@ -105,7 +108,7 @@ onMounted(() => {
 <template>
   <ContentWrap title="考试结果复核列表">
     <!-- 筛选栏 -->
-    <div class="flex gap-3 mb-4 flex-wrap">
+    <div class="flex gap-3 mb-4 flex-wrap items-center">
       <ElSelect
         v-model="filterExamId"
         placeholder="考试：全部"
@@ -134,6 +137,11 @@ onMounted(() => {
         <ElOption label="最新创建在前" value="created_at_desc" />
       </ElSelect>
 
+      <div class="flex items-center gap-2 ml-2">
+        <ElSwitch v-model="bestOnly" @change="onSearch" />
+        <span class="text-13px text-#606266">只显示考试最高客观成绩</span>
+      </div>
+
       <ElButton type="primary" @click="onSearch">查询</ElButton>
     </div>
 
@@ -149,6 +157,11 @@ onMounted(() => {
       <ElTableColumn label="客观分" width="90" align="right">
         <template #default="{ row }">
           {{ row.objective_score ?? '-' }}
+        </template>
+      </ElTableColumn>
+      <ElTableColumn label="教师评分" width="90" align="right">
+        <template #default="{ row }">
+          {{ row.manual_score ?? '-' }}
         </template>
       </ElTableColumn>
       <ElTableColumn label="最终分" width="90" align="right">

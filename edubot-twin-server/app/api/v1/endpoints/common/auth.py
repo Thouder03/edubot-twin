@@ -198,8 +198,8 @@ async def get_user_routes(role: str):
             "/teacher/exams/attempts/:attempt_id/submission",
             "/teacher/exams/attempts",
             "/teacher/exams/review-list",
-            # 第16期：教师成绩预览
-            "/teacher/exams/grade-preview",
+            # 第16期：教师成绩预览（一级菜单）
+            "/teacher/grade-preview",
         ],
         "admin": [
             "/dashboard",

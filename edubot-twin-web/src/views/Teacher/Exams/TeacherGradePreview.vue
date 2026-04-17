@@ -9,6 +9,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ElButton,
+  ElSwitch,
   ElSelect,
   ElOption,
   ElTable,
@@ -34,6 +35,7 @@ async function loadExamOptions() {
 // ─── 筛选状态 ─────────────────────────────────────────────────────────────────
 const filterExamId = ref<number | undefined>(undefined)
 const filterStudentId = ref<number | undefined>(undefined)
+const bestOnly = ref(false)
 const page = ref(1)
 const pageSize = ref(20)
 
@@ -48,6 +50,7 @@ async function load() {
     const params: Record<string, unknown> = {
       page: page.value,
       page_size: pageSize.value,
+      best_only: bestOnly.value,
     }
     if (filterExamId.value !== undefined) params.exam_id = filterExamId.value
     if (filterStudentId.value !== undefined) params.student_id = filterStudentId.value
@@ -111,6 +114,11 @@ onMounted(() => {
         <ElOption v-for="e in examOptions" :key="e.id" :label="e.name" :value="e.id" />
       </ElSelect>
 
+      <div class="flex items-center gap-2 ml-2">
+        <ElSwitch v-model="bestOnly" @change="onSearch" />
+        <span class="text-13px text-#606266">只显示考试最高客观成绩</span>
+      </div>
+
       <ElButton type="primary" @click="onSearch">查询</ElButton>
     </div>
 
@@ -136,6 +144,9 @@ onMounted(() => {
       <ElTableColumn label="考试" prop="exam_name" min-width="140" show-overflow-tooltip />
       <ElTableColumn label="客观分" width="90" align="right">
         <template #default="{ row }">{{ row.objective_score ?? '-' }}</template>
+      </ElTableColumn>
+      <ElTableColumn label="教师评分" width="90" align="right">
+        <template #default="{ row }">{{ row.manual_score ?? '-' }}</template>
       </ElTableColumn>
       <ElTableColumn label="最终分" width="90" align="right">
         <template #default="{ row }">{{ row.final_score ?? '-' }}</template>

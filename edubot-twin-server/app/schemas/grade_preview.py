@@ -64,6 +64,7 @@ class StudentGradeSummaryItem(BaseModel):
     exam_code: str
     best_attempt_id: int
     objective_score: Optional[float] = None
+    manual_score: Optional[float] = None
     final_score: Optional[float] = None
     pass_: Optional[bool] = Field(None, alias="pass")
     # summary 截断 200 字（后端截断，不在 Schema 层处理）
@@ -81,6 +82,7 @@ class StudentAttemptGradeDetailItem(BaseModel):
     attempt_id: int
     status: str
     objective_score: Optional[float] = None
+    manual_score: Optional[float] = None
     final_score: Optional[float] = None
     pass_: Optional[bool] = Field(None, alias="pass")
     summary: Optional[str] = None
