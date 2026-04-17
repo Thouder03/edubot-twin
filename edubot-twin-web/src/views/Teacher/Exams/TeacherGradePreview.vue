@@ -35,7 +35,7 @@ async function loadExamOptions() {
 // ─── 筛选状态 ─────────────────────────────────────────────────────────────────
 const filterExamId = ref<number | undefined>(undefined)
 const filterStudentId = ref<number | undefined>(undefined)
-const bestOnly = ref(false)
+const bestOnly = ref(true)
 const page = ref(1)
 const pageSize = ref(20)
 
@@ -158,11 +158,16 @@ onMounted(() => {
           <span v-else>-</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="复核" width="100" align="center">
+      <ElTableColumn label="复核状态" width="100" align="center">
         <template #default="{ row }">
-          <ElTag :type="REVIEW_TYPE[row.review_status] ?? 'info'" size="small">
+          <ElTag
+            v-if="row.review_status && row.review_status !== 'not_required'"
+            :type="REVIEW_TYPE[row.review_status] ?? 'info'"
+            size="small"
+          >
             {{ REVIEW_LABEL[row.review_status] ?? row.review_status }}
           </ElTag>
+          <span v-else>-</span>
         </template>
       </ElTableColumn>
       <ElTableColumn label="评语摘要" min-width="160" show-overflow-tooltip>

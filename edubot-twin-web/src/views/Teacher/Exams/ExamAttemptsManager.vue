@@ -43,7 +43,7 @@ async function loadExamOptions() {
 // ─── 筛选状态 ─────────────────────────────────────────────────────────────────
 const filterExamId = ref<number | undefined>(undefined)
 const filterStatus = ref('')
-const bestOnly = ref(true)
+const bestOnly = ref(false)
 const page = ref(1)
 const pageSize = ref(20)
 
@@ -260,7 +260,7 @@ onMounted(() => {
           {{ examOptions.find((e) => e.id === row.exam_id)?.name ?? `#${row.exam_id}` }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="状态" width="110">
+      <ElTableColumn label="状态" width="110" align="center">
         <template #default="{ row }">
           <ElTag :type="STATUS_TYPE[row.status] ?? 'info'">
             {{ STATUS_LABEL[row.status] ?? row.status }}
@@ -282,7 +282,7 @@ onMounted(() => {
           {{ row.final_score ?? '-' }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="复核状态" width="100">
+      <ElTableColumn label="复核状态" width="100" align="center">
         <template #default="{ row }">
           <ElTag
             v-if="row.review_status && row.review_status !== 'not_required'"

@@ -38,7 +38,7 @@ async function loadExamOptions() {
 const filterExamId = ref<number | undefined>(undefined)
 const filterReviewStatus = ref('')
 const sort = ref('review_pending_first')
-const bestOnly = ref(false)
+const bestOnly = ref(true)
 const page = ref(1)
 const pageSize = ref(20)
 
@@ -178,9 +178,14 @@ onMounted(() => {
       </ElTableColumn>
       <ElTableColumn label="复核状态" width="110" align="center">
         <template #default="{ row }">
-          <ElTag :type="REVIEW_TYPE[row.review_status] ?? 'info'" size="small">
+          <ElTag
+            v-if="row.review_status && row.review_status !== 'not_required'"
+            :type="REVIEW_TYPE[row.review_status] ?? 'info'"
+            size="small"
+          >
             {{ REVIEW_LABEL[row.review_status] ?? row.review_status }}
           </ElTag>
+          <span v-else>-</span>
         </template>
       </ElTableColumn>
       <ElTableColumn label="创建时间" min-width="160">
