@@ -6,7 +6,7 @@
 
 安全约束（SDD §9）：
 - 单 attempt 快照上限 100MB
-- 快照目录权限 700（只有后端进程可读）
+- 快照目录权限 750（所有者全权，同组可读）
 
 submission_paths 字段（第14期新增）：
 - 由 sidecar_policy_json.submission_paths 驱动
@@ -200,7 +200,7 @@ def create_code_snapshot(
     target = _get_submission_path(attempt_id)
     try:
         target.mkdir(parents=True, exist_ok=True)
-        target.chmod(0o700)
+        target.chmod(0o750)
     except OSError as e:
         raise SnapshotError(f"创建快照目录失败: {e}") from e
 
@@ -235,7 +235,7 @@ def create_code_snapshot(
     artifacts = get_artifacts_path(attempt_id)
     try:
         artifacts.mkdir(parents=True, exist_ok=True)
-        artifacts.chmod(0o700)
+        artifacts.chmod(0o750)
     except OSError as e:
         logger.warning(f"创建 artifacts 目录失败（非致命）: {e}")
 
