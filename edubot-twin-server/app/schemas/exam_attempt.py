@@ -299,7 +299,7 @@ class TeacherAttemptListItemSchema(BaseModel):
     ended_at: Optional[datetime] = None
     duration_ms: Optional[int] = None
     error_code: Optional[str] = None
-    review_status: str
+    review_status: Optional[str] = None
     manual_score: Optional[float] = None
     final_score: Optional[float] = None
     created_at: datetime
@@ -317,7 +317,7 @@ class TeacherAttemptFullSchema(AttemptBaseSchema):
     """
     student: AttemptStudentInfo
     exam: AttemptExamInfo
-    review_status: str
+    review_status: Optional[str] = None
     manual_score: Optional[float] = None
     final_score: Optional[float] = None
     breakdown_json: Optional[dict] = None

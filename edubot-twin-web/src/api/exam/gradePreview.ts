@@ -26,7 +26,7 @@ export interface GradePreviewItem {
   pass: boolean | null
   summary: string | null
   teacher_comment: string | null
-  review_status: string
+  review_status: string | null
   /** result_json 去掉 artifacts / metrics 后的固定字段 */
   result_json_display: Record<string, unknown> | null
   /** 从 result_json.metrics 单独提取 */

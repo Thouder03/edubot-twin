@@ -27,7 +27,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.core.final_score_calculator import calculate_final_score, validate_override_allowed
+from app.core.final_score_calculator import (
+    calculate_final_score,
+    get_scoring_mode,
+    validate_override_allowed,
+)
 from app.core.security import get_current_user_id, get_current_teacher
 from app.core.workspace_snapshot import get_artifacts_path
 from app.crud import exam_attempt as crud_attempt
@@ -95,7 +99,15 @@ async def _get_exam_info(db: AsyncSession, exam_id: int) -> AttemptExamInfo:
     return AttemptExamInfo(exam_id=exam_id, name=f"exam_{exam_id}", exam_mode="unknown")
 
 
+def _is_objective_only_attempt(attempt: ExamAttempt) -> bool:
+    scoring_policy = attempt.attempt_scoring_policy_json or {}
+    return get_scoring_mode(scoring_policy) == "objective_only"
+
+
 def _build_teacher_full(attempt, student: AttemptStudentInfo, exam: AttemptExamInfo) -> TeacherAttemptFullSchema:
+    final_score = attempt.objective_score if _is_objective_only_attempt(attempt) else attempt.final_score
+    review_status = None if _is_objective_only_attempt(attempt) else attempt.review_status.value
+
     return TeacherAttemptFullSchema(
         attempt_id=attempt.id,
         exam_id=attempt.exam_id,
@@ -114,9 +126,9 @@ def _build_teacher_full(attempt, student: AttemptStudentInfo, exam: AttemptExamI
         updated_at=attempt.updated_at,
         student=student,
         exam=exam,
-        review_status=attempt.review_status.value,
+        review_status=review_status,
         manual_score=attempt.manual_score,
-        final_score=attempt.final_score,
+        final_score=final_score,
         breakdown_json=attempt.breakdown_json,
         teacher_comment=attempt.teacher_comment,
         artifact_index_json=attempt.artifact_index_json or {},

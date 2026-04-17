@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.final_score_calculator import get_scoring_mode
 from app.core.security import get_current_user_id
 from app.crud import exam_attempt as crud_attempt
 from app.crud import exam as crud_exam
@@ -69,8 +70,16 @@ async def _get_exam_info(db: AsyncSession, exam_id: int) -> AttemptExamInfo:
     return AttemptExamInfo(exam_id=exam_id, name=f"exam_{exam_id}", exam_mode="unknown")
 
 
+def _is_objective_only_attempt(attempt) -> bool:
+    scoring_policy = attempt.attempt_scoring_policy_json or {}
+    return get_scoring_mode(scoring_policy) == "objective_only"
+
+
 def _build_teacher_full(attempt, student: AttemptStudentInfo, exam: AttemptExamInfo) -> TeacherAttemptFullSchema:
     """构建教师端完整详情 Schema"""
+    final_score = attempt.objective_score if _is_objective_only_attempt(attempt) else attempt.final_score
+    review_status = None if _is_objective_only_attempt(attempt) else attempt.review_status.value
+
     return TeacherAttemptFullSchema(
         attempt_id=attempt.id,
         exam_id=attempt.exam_id,
@@ -89,9 +98,9 @@ def _build_teacher_full(attempt, student: AttemptStudentInfo, exam: AttemptExamI
         updated_at=attempt.updated_at,
         student=student,
         exam=exam,
-        review_status=attempt.review_status.value,
+        review_status=review_status,
         manual_score=attempt.manual_score,
-        final_score=attempt.final_score,
+        final_score=final_score,
         breakdown_json=attempt.breakdown_json,
         teacher_comment=attempt.teacher_comment,
         artifact_index_json=attempt.artifact_index_json or {},
@@ -105,6 +114,9 @@ def _build_teacher_full(attempt, student: AttemptStudentInfo, exam: AttemptExamI
 
 
 def _build_list_item(attempt, student: AttemptStudentInfo) -> TeacherAttemptListItemSchema:
+    final_score = attempt.objective_score if _is_objective_only_attempt(attempt) else attempt.final_score
+    review_status = None if _is_objective_only_attempt(attempt) else attempt.review_status.value
+
     return TeacherAttemptListItemSchema(
         attempt_id=attempt.id,
         exam_id=attempt.exam_id,
@@ -116,9 +128,9 @@ def _build_list_item(attempt, student: AttemptStudentInfo) -> TeacherAttemptList
         ended_at=attempt.ended_at,
         duration_ms=attempt.duration_ms,
         error_code=attempt.error_code,
-        review_status=attempt.review_status.value,
+        review_status=review_status,
         manual_score=attempt.manual_score,
-        final_score=attempt.final_score,
+        final_score=final_score,
         created_at=attempt.created_at,
     )
 
@@ -331,9 +343,13 @@ async def list_exam_review(
                 ended_at=attempt.ended_at,
                 duration_ms=attempt.duration_ms,
                 error_code=attempt.error_code,
-                review_status=attempt.review_status.value,
+                review_status=None if _is_objective_only_attempt(attempt) else attempt.review_status.value,
                 manual_score=attempt.manual_score,
-                final_score=attempt.final_score,
+                final_score=(
+                    attempt.objective_score
+                    if _is_objective_only_attempt(attempt)
+                    else attempt.final_score
+                ),
                 created_at=attempt.created_at,
             )
         )

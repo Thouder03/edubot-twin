@@ -135,7 +135,7 @@ export interface TeacherAttemptListItem {
   ended_at: string | null
   duration_ms: number | null
   error_code: string | null
-  review_status: string
+  review_status: string | null
   manual_score: number | null
   final_score: number | null
   created_at: string
@@ -145,7 +145,7 @@ export interface TeacherAttemptListItem {
 export interface TeacherAttemptFull extends AttemptDetail {
   student: AttemptStudentInfo
   exam: AttemptExamInfo
-  review_status: string
+  review_status: string | null
   manual_score: number | null
   final_score: number | null
   breakdown_json: Record<string, unknown> | null

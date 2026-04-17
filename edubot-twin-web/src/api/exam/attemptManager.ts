@@ -26,7 +26,7 @@ export interface ExamReviewListItem {
   ended_at: string | null
   duration_ms: number | null
   error_code: string | null
-  review_status: string
+  review_status: string | null
   manual_score: number | null
   final_score: number | null
   created_at: string

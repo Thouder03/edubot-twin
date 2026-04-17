@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.final_score_calculator import get_scoring_mode
 from app.core.security import get_current_teacher
 from app.crud import exam_attempt as crud_attempt
 from app.db.database import get_db
@@ -20,6 +21,11 @@ from app.schemas.grade_preview import GradePreviewItem, GradePreviewListResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _is_objective_only_attempt(attempt) -> bool:
+    scoring_policy = attempt.attempt_scoring_policy_json or {}
+    return get_scoring_mode(scoring_policy) == "objective_only"
 
 
 def _build_grade_preview_item(row) -> GradePreviewItem:
@@ -38,6 +44,9 @@ def _build_grade_preview_item(row) -> GradePreviewItem:
         if isinstance(raw_metrics, dict):
             metrics = raw_metrics
 
+    final_score = attempt.objective_score if _is_objective_only_attempt(attempt) else attempt.final_score
+    review_status = None if _is_objective_only_attempt(attempt) else attempt.review_status.value
+
     return GradePreviewItem(
         attempt_id=attempt.id,
         exam_id=attempt.exam_id,
@@ -50,11 +59,11 @@ def _build_grade_preview_item(row) -> GradePreviewItem:
         status=attempt.status.value,
         objective_score=attempt.objective_score,
         manual_score=attempt.manual_score,
-        final_score=attempt.final_score,
+        final_score=final_score,
         **{"pass": attempt.pass_},
         summary=attempt.summary,
         teacher_comment=attempt.teacher_comment,
-        review_status=attempt.review_status.value,
+        review_status=review_status,
         result_json_display=result_json_display,
         metrics=metrics,
         custom_fields=attempt.custom_fields_json,

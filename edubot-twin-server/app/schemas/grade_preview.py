@@ -33,7 +33,7 @@ class GradePreviewItem(BaseModel):
     pass_: Optional[bool] = Field(None, alias="pass")
     summary: Optional[str] = None
     teacher_comment: Optional[str] = None
-    review_status: str
+    review_status: Optional[str] = None
     # result_json 去掉 artifacts / metrics 键后的内容（后端负责剔除）
     result_json_display: Optional[dict[str, Any]] = None
     # metrics 单独提取，供前端「指标」区块使用
