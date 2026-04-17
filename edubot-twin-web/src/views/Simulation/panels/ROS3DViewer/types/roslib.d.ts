@@ -30,6 +30,8 @@ declare module 'roslib' {
     queue_length?: number
     /** 队列大小 */
     queue_size?: number
+    /** 传输压缩格式：'cbor' | 'cbor-raw' | 'png' | 'none' */
+    compression?: string
   }
 
   export class Topic<T = any> extends EventEmitter {

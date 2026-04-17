@@ -134,6 +134,38 @@ watch(
 // ---------- 模板引用 ----------
 const canvasContainer = ref<HTMLElement>()
 
+// ---------- ROS Topic 流控配置 ----------
+/**
+ * 根据消息类型返回 rosbridge 服务端流控参数。
+ * throttle_rate: 服务端限制推送间隔（ms），直接减少序列化次数。
+ * queue_length:  服务端消息缓冲队列大小，设为 1 表示只保留最新消息。
+ * compression:   传输编码，cbor 为二进制格式，比 JSON 体积更小、序列化更快。
+ */
+function getTopicOptions(schemaName: string): {
+  throttle_rate: number
+  queue_length: number
+  compression: string
+} {
+  // 图像类：数据量大，5Hz + cbor
+  if (['sensor_msgs/Image', 'sensor_msgs/CompressedImage'].includes(schemaName)) {
+    return { throttle_rate: 200, queue_length: 1, compression: 'cbor' }
+  }
+  // 点云 / 激光雷达：大消息，10Hz + cbor
+  if (['sensor_msgs/PointCloud2', 'sensor_msgs/LaserScan'].includes(schemaName)) {
+    return { throttle_rate: 100, queue_length: 1, compression: 'cbor' }
+  }
+  // 地图类：变化慢，1Hz + cbor
+  if (['nav_msgs/OccupancyGrid', 'nav_msgs/GridCells'].includes(schemaName)) {
+    return { throttle_rate: 1000, queue_length: 1, compression: 'cbor' }
+  }
+  // 路径：变化较慢，2Hz + cbor
+  if (['nav_msgs/Path'].includes(schemaName)) {
+    return { throttle_rate: 500, queue_length: 1, compression: 'cbor' }
+  }
+  // 其余可视化消息（Marker、Pose、PoseArray 等），10Hz + cbor
+  return { throttle_rate: 100, queue_length: 1, compression: 'cbor' }
+}
+
 // ---------- ROS TF 订阅桥接 ----------
 let tfSubscriptions: RosTopic[] = []
 
@@ -161,7 +193,11 @@ function subscribeTfTopics() {
     const rosTopic = new RosTopic({
       ros,
       name: topicDef.name,
-      messageType: topicDef.type
+      messageType: topicDef.type,
+      // TF 是所有坐标变换的根基，不做限速；cbor 降低序列化开销（TF 消息含大量浮点数）
+      throttle_rate: 0,
+      queue_length: 1,
+      compression: 'cbor'
     })
 
     rosTopic.subscribe((msg: any) => {
@@ -183,7 +219,9 @@ function subscribeTfTopics() {
   const clockTopic = new RosTopic({
     ros,
     name: '/clock',
-    messageType: 'rosgraph_msgs/Clock'
+    messageType: 'rosgraph_msgs/Clock',
+    queue_length: 1,
+    compression: 'cbor'
   })
   clockTopic.subscribe((msg: any) => {
     const now = BigInt(Date.now()) * 1_000_000n
@@ -268,7 +306,8 @@ function updateSubscriptions(configTopics: Record<string, any> = {}) {
       const rosTopic = new RosTopic({
         ros,
         name: topic.name,
-        messageType: topic.schemaName
+        messageType: topic.schemaName,
+        ...getTopicOptions(topic.schemaName)
       })
 
       rosTopic.subscribe((msg: any) => {
