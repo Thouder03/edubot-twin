@@ -26,10 +26,17 @@ def _build_grade_preview_item(row) -> GradePreviewItem:
     """将 CRUD 查询行（attempt, exam_name, student_username, student_real_name）转换为 Schema"""
     attempt, exam_name, student_username, student_real_name = row
 
-    # result_json 去掉 artifacts 键（后端负责剔除）
+    # result_json 去掉 artifacts / metrics 键后作为展示数据；metrics 单独提取
     result_json_display: Optional[dict] = None
+    metrics: Optional[dict] = None
     if attempt.result_json:
-        result_json_display = {k: v for k, v in attempt.result_json.items() if k != "artifacts"}
+        result_json_display = {
+            k: v for k, v in attempt.result_json.items()
+            if k not in ("artifacts", "metrics")
+        }
+        raw_metrics = attempt.result_json.get("metrics")
+        if isinstance(raw_metrics, dict):
+            metrics = raw_metrics
 
     return GradePreviewItem(
         attempt_id=attempt.id,
@@ -49,6 +56,7 @@ def _build_grade_preview_item(row) -> GradePreviewItem:
         teacher_comment=attempt.teacher_comment,
         review_status=attempt.review_status.value,
         result_json_display=result_json_display,
+        metrics=metrics,
         custom_fields=attempt.custom_fields_json,
         started_at=attempt.started_at,
         ended_at=attempt.ended_at,

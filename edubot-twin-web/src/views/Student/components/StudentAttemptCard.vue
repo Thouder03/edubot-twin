@@ -6,6 +6,7 @@
  */
 import { ElButton, ElTag } from 'element-plus'
 import type { StudentAttemptGradeDetailItem } from '@/api/student/grades'
+import MetricsKvTable from '@/components/Grade/MetricsKvTable.vue'
 
 defineProps<{
   item: StudentAttemptGradeDetailItem
@@ -44,11 +45,6 @@ function formatDate(iso: string | null): string {
 function formatDuration(ms: number | null): string {
   if (ms == null) return '-'
   return `${Math.round(ms / 1000)}s`
-}
-
-function getCustomEntries(cf: Record<string, unknown> | null) {
-  if (!cf) return []
-  return Object.entries(cf)
 }
 </script>
 
@@ -93,17 +89,22 @@ function getCustomEntries(cf: Record<string, unknown> | null) {
       </div>
     </div>
 
+    <!-- 指标 -->
+    <div v-if="item.metrics" class="attempt-card__section">
+      <div class="attempt-card__section-title">📈 指标</div>
+      <div class="attempt-card__comment attempt-card__comment--metrics">
+        <MetricsKvTable :metrics="item.metrics" />
+      </div>
+    </div>
+
     <!-- 自定义字段 -->
-    <div v-if="getCustomEntries(item.custom_fields).length > 0" class="attempt-card__section">
-      <div class="attempt-card__section-title">自定义字段</div>
-      <div class="attempt-card__custom-fields">
-        <span
-          v-for="[k, v] in getCustomEntries(item.custom_fields)"
-          :key="k"
-          class="custom-field-item"
-        >
-          {{ k }}: <strong>{{ v }}</strong>
-        </span>
+    <div
+      v-if="item.custom_fields && Object.keys(item.custom_fields).length > 0"
+      class="attempt-card__section"
+    >
+      <div class="attempt-card__section-title">📋 自定义字段</div>
+      <div class="attempt-card__comment attempt-card__comment--metrics">
+        <MetricsKvTable :metrics="item.custom_fields" />
       </div>
     </div>
 
@@ -170,17 +171,9 @@ function getCustomEntries(cf: Record<string, unknown> | null) {
   border-radius: 4px;
   padding: 8px 12px;
 }
-.attempt-card__custom-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 13px;
-}
-.custom-field-item {
-  background: #f0f2f5;
-  border-radius: 4px;
-  padding: 2px 8px;
-  color: #606266;
+.attempt-card__comment--metrics {
+  background: transparent;
+  padding: 4px 0;
 }
 .attempt-card__footer {
   display: flex;

@@ -113,6 +113,7 @@ async def get_my_grade_summary(
         teacher_comment = attempt.teacher_comment
         if teacher_comment and len(teacher_comment) > 200:
             teacher_comment = teacher_comment[:200] + "…"
+        raw_metrics = attempt.result_json.get("metrics") if attempt.result_json else None
         items.append(
             StudentGradeSummaryItem(
                 exam_id=attempt.exam_id,
@@ -125,6 +126,8 @@ async def get_my_grade_summary(
                 **{"pass": attempt.pass_},
                 summary=summary,
                 teacher_comment=teacher_comment,
+                metrics=raw_metrics if isinstance(raw_metrics, dict) else None,
+                custom_fields=attempt.custom_fields_json,
                 status=attempt.status.value,
                 ended_at=attempt.ended_at,
             )
@@ -154,6 +157,12 @@ async def get_my_grade_detail(
     attempts = await crud_attempt.list_grade_detail_for_student(
         db, student_id=current_user_id, exam_id=exam_id
     )
+    def _extract_metrics(result_json):
+        if not isinstance(result_json, dict):
+            return None
+        m = result_json.get("metrics")
+        return m if isinstance(m, dict) else None
+
     items = [
         StudentAttemptGradeDetailItem(
             attempt_id=a.id,
@@ -164,6 +173,7 @@ async def get_my_grade_detail(
             **{"pass": a.pass_},
             summary=a.summary,
             teacher_comment=a.teacher_comment,
+            metrics=_extract_metrics(a.result_json),
             custom_fields=a.custom_fields_json,
             has_code_snapshot=a.submission_snapshot_path is not None,
             started_at=a.started_at,

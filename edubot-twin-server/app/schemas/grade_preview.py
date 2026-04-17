@@ -21,7 +21,7 @@ from app.schemas.exam_attempt import AttemptStudentInfo
 
 
 class GradePreviewItem(BaseModel):
-    """教师成绩预览列表条目（含 result_json_display、custom_fields）"""
+    """教师成绩预览列表条目（含 result_json_display、metrics、custom_fields）"""
     attempt_id: int
     exam_id: int
     exam_name: str
@@ -34,8 +34,10 @@ class GradePreviewItem(BaseModel):
     summary: Optional[str] = None
     teacher_comment: Optional[str] = None
     review_status: str
-    # result_json 去掉 artifacts 键后的完整内容（后端负责剔除，禁止前端自行过滤）
+    # result_json 去掉 artifacts / metrics 键后的内容（后端负责剔除）
     result_json_display: Optional[dict[str, Any]] = None
+    # metrics 单独提取，供前端「指标」区块使用
+    metrics: Optional[dict[str, Any]] = None
     custom_fields: Optional[dict[str, Any]] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
@@ -70,6 +72,8 @@ class StudentGradeSummaryItem(BaseModel):
     # summary 截断 200 字（后端截断，不在 Schema 层处理）
     summary: Optional[str] = None
     teacher_comment: Optional[str] = None
+    metrics: Optional[dict[str, Any]] = None
+    custom_fields: Optional[dict[str, Any]] = None
     status: str
     ended_at: Optional[datetime] = None
 
@@ -87,6 +91,7 @@ class StudentAttemptGradeDetailItem(BaseModel):
     pass_: Optional[bool] = Field(None, alias="pass")
     summary: Optional[str] = None
     teacher_comment: Optional[str] = None
+    metrics: Optional[dict[str, Any]] = None
     custom_fields: Optional[dict[str, Any]] = None
     # 前端根据此字段决定是否显示"查看代码"按钮
     has_code_snapshot: bool

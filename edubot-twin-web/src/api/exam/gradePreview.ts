@@ -27,7 +27,10 @@ export interface GradePreviewItem {
   summary: string | null
   teacher_comment: string | null
   review_status: string
+  /** result_json 去掉 artifacts / metrics 后的固定字段 */
   result_json_display: Record<string, unknown> | null
+  /** 从 result_json.metrics 单独提取 */
+  metrics: Record<string, unknown> | null
   custom_fields: Record<string, unknown> | null
   started_at: string | null
   ended_at: string | null

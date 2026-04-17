@@ -1,33 +1,27 @@
 <script setup lang="ts">
 /**
- * GradeResultExpand - 教师成绩预览行展开面板（第16期）
+ * GradeResultExpand - 教师成绩预览行展开面板（第16期，第17期重构）
  *
- * 左侧：固定字段（来自 result_json_display，按 RESULT_JSON_FIELD_LABELS 显示中文名）
- * 右侧：custom_fields（键名直接显示，不翻译）
+ * 三区并排：
+ *   左  ── 固定字段（result_json_display，已去掉 artifacts / metrics）
+ *   中  ── 指标（metrics 独立字段，使用 MetricsKvTable）
+ *   右  ── 自定义字段（custom_fields）
  */
 import type { GradePreviewItem } from '@/api/exam/gradePreview'
 import { getFieldLabel } from '@/constants/resultJsonLabels'
+import MetricsKvTable from '@/components/Grade/MetricsKvTable.vue'
 
 const props = defineProps<{
   row: GradePreviewItem
 }>()
 
-/** 从 result_json_display 中提取固定字段和 metrics */
+/** result_json_display 中的固定字段（已不含 metrics / custom_fields） */
 function getFixedFields(): Array<{ label: string; value: unknown }> {
   const data = props.row.result_json_display
   if (!data) return []
-  const fields: Array<{ label: string; value: unknown }> = []
-  for (const [k, v] of Object.entries(data)) {
-    if (k === 'metrics' || k === 'custom_fields') continue
-    fields.push({ label: getFieldLabel(k), value: v })
-  }
-  // metrics 子字段平铺展示
-  if (data.metrics && typeof data.metrics === 'object') {
-    for (const [k, v] of Object.entries(data.metrics as Record<string, unknown>)) {
-      fields.push({ label: getFieldLabel(k, true), value: v })
-    }
-  }
-  return fields
+  return Object.entries(data)
+    .filter(([k]) => k !== 'custom_fields')
+    .map(([k, v]) => ({ label: getFieldLabel(k), value: v }))
 }
 
 function getCustomFields(): Array<{ key: string; value: unknown }> {
@@ -47,13 +41,16 @@ function formatValue(v: unknown): string {
 
 <template>
   <div class="grade-expand px-4 py-3 bg-#f8f9fa rounded">
-    <div v-if="!row.result_json_display && !row.custom_fields" class="text-#909399 text-13px">
+    <div
+      v-if="!row.result_json_display && !row.metrics && !row.custom_fields"
+      class="text-#909399 text-13px"
+    >
       暂无评测数据
     </div>
     <div v-else class="flex gap-6">
       <!-- 固定字段 -->
       <div class="flex-1">
-        <div class="text-12px font-600 color-#606266 mb-2">📊 固定字段</div>
+        <div class="section-title">📊 固定字段</div>
         <table class="kv-table" v-if="getFixedFields().length > 0">
           <tbody>
             <tr v-for="item in getFixedFields()" :key="item.label">
@@ -65,9 +62,15 @@ function formatValue(v: unknown): string {
         <div v-else class="text-#bbb text-12px">无固定字段</div>
       </div>
 
+      <!-- 指标 -->
+      <div class="flex-1">
+        <div class="section-title">📈 指标</div>
+        <MetricsKvTable :metrics="row.metrics" />
+      </div>
+
       <!-- 自定义字段 -->
       <div class="flex-1">
-        <div class="text-12px font-600 color-#606266 mb-2">📋 自定义字段</div>
+        <div class="section-title">📋 自定义字段</div>
         <table class="kv-table" v-if="getCustomFields().length > 0">
           <tbody>
             <tr v-for="item in getCustomFields()" :key="item.key">
@@ -83,6 +86,12 @@ function formatValue(v: unknown): string {
 </template>
 
 <style scoped>
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 6px;
+}
 .kv-table {
   width: 100%;
   border-collapse: collapse;

@@ -65,6 +65,7 @@ declare module 'vue' {
     LockPage: typeof import('./src/components/UserInfo/src/components/LockPage.vue')['default']
     Logo: typeof import('./src/components/Logo/src/Logo.vue')['default']
     Menu: typeof import('./src/components/Menu/src/Menu.vue')['default']
+    MetricsKvTable: typeof import('./src/components/Grade/MetricsKvTable.vue')['default']
     MonacoEditor: typeof import('./src/components/Monaco/MonacoEditor.vue')['default']
     Permission: typeof import('./src/components/Permission/src/Permission.vue')['default']
     Qrcode: typeof import('./src/components/Qrcode/src/Qrcode.vue')['default']

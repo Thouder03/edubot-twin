@@ -20,6 +20,8 @@ export interface StudentGradeSummaryItem {
   pass: boolean | null
   summary: string | null
   teacher_comment: string | null
+  metrics: Record<string, unknown> | null
+  custom_fields: Record<string, unknown> | null
   status: string
   ended_at: string | null
 }
@@ -33,6 +35,7 @@ export interface StudentAttemptGradeDetailItem {
   pass: boolean | null
   summary: string | null
   teacher_comment: string | null
+  metrics: Record<string, unknown> | null
   custom_fields: Record<string, unknown> | null
   has_code_snapshot: boolean
   started_at: string | null
