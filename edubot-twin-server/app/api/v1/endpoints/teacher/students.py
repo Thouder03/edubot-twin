@@ -1,22 +1,88 @@
 """
 教师端 - 学生管理 API
 """
+import csv
+import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.core.security import get_current_teacher
 from app.schemas.common import ApiResponse
 from app.schemas.student import (
-    StudentCreate, StudentUpdate, StudentResponse, StudentListResponse
+    ImportFailedRow, StudentCreate, StudentImportResult,
+    StudentUpdate, StudentResponse, StudentListResponse,
 )
 from app.crud import student as student_crud
 from app.crud import container as container_crud
 from app.core.docker_client import get_docker_client
 
 router = APIRouter()
+
+
+@router.post(
+    "/import",
+    response_model=ApiResponse[StudentImportResult],
+    summary="批量导入学生（CSV）"
+)
+async def import_students(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(get_current_teacher)
+):
+    """批量导入学生账号。CSV 格式：username,password,real_name,email,role_code。
+    password 缺省为用户名，role_code 缺省为 student。逐行处理，部分失败不影响已成功行。
+    """
+    raw = await file.read()
+    # 兼容 UTF-8 BOM
+    text = raw.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text))
+
+    failed: list[ImportFailedRow] = []
+    success = 0
+    row_num = 0
+
+    for row_num, row in enumerate(reader, start=1):
+        username = (row.get("username") or "").strip()
+        if not username:
+            failed.append(ImportFailedRow(row=row_num, username="", error="username 不能为空"))
+            continue
+
+        password = (row.get("password") or "").strip() or username
+        real_name = (row.get("real_name") or "").strip() or None
+        email_raw = (row.get("email") or "").strip() or None
+        role_code = (row.get("role_code") or "").strip() or "student"
+
+        try:
+            student_data = StudentCreate(
+                username=username,
+                password=password,
+                real_name=real_name,
+                email=email_raw,
+                role_code=role_code,
+            )
+        except Exception as e:
+            failed.append(ImportFailedRow(row=row_num, username=username, error=str(e)))
+            continue
+
+        existing = await student_crud.get_student_by_username(db, username)
+        if existing:
+            failed.append(ImportFailedRow(row=row_num, username=username, error="用户名已存在"))
+            continue
+
+        try:
+            await student_crud.create_student(db, student_data)
+            success += 1
+        except Exception as e:
+            failed.append(ImportFailedRow(row=row_num, username=username, error=str(e)))
+
+    return ApiResponse(data=StudentImportResult(
+        total=row_num,
+        success=success,
+        failed=failed,
+    ))
 
 
 @router.get(

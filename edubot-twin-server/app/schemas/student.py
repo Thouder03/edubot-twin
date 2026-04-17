@@ -57,3 +57,19 @@ StudentCreate = UserCreate
 StudentUpdate = UserUpdate
 StudentResponse = UserResponse
 StudentListResponse = UserListResponse
+
+
+class ImportFailedRow(BaseModel):
+    """批量导入中单行失败的详情。"""
+
+    row: int = Field(..., description="数据行号（从 1 开始，不含标题行）")
+    username: str
+    error: str
+
+
+class StudentImportResult(BaseModel):
+    """批量导入结果。"""
+
+    total: int
+    success: int
+    failed: List[ImportFailedRow]

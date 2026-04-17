@@ -8,6 +8,7 @@ import { getStudentListApi, deleteStudentApi } from '@/api/teacher'
 import type { StudentInfo } from '@/api/teacher/types'
 import { ElMessage, ElMessageBox, ElButton, ElInput, ElForm, ElFormItem, ElTag } from 'element-plus'
 import Write from './components/Write.vue'
+import ImportDialog from './components/ImportDialog.vue'
 import { Dialog } from '@/components/Dialog'
 
 // ─── 搜索表单状态 ─────────────────────────────────────────────
@@ -206,6 +207,9 @@ const onSubmit = () => {
   dialogVisible.value = false
   getList()
 }
+
+// ─── 批量导入 ─────────────────────────────────────────────────
+const importDialogVisible = ref(false)
 </script>
 
 <template>
@@ -231,6 +235,7 @@ const onSubmit = () => {
     <!-- 工具栏 -->
     <div class="mb-10px flex items-center gap-10px">
       <ElButton type="primary" @click="AddAction">新增用户</ElButton>
+      <ElButton type="success" @click="importDialogVisible = true">批量导入</ElButton>
       <ElButton type="danger" @click="batchDelete">批量删除</ElButton>
     </div>
 
@@ -245,6 +250,9 @@ const onSubmit = () => {
       @register="tableRegister"
     />
   </ContentWrap>
+
+  <!-- 批量导入对话框 -->
+  <ImportDialog v-model="importDialogVisible" @done="getList" />
 
   <!-- 新增/编辑对话框 -->
   <Dialog v-model="dialogVisible" :title="dialogTitle">

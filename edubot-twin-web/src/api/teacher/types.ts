@@ -42,6 +42,22 @@ export interface StudentUpdateRequest {
   role_code?: string
 }
 
+// ─── 批量导入 ────────────────────────────────────────────────
+
+/** 导入失败行详情 */
+export interface ImportFailedRow {
+  row: number
+  username: string
+  error: string
+}
+
+/** 批量导入结果 */
+export interface StudentImportResult {
+  total: number
+  success: number
+  failed: ImportFailedRow[]
+}
+
 // ─── 容器监控 ────────────────────────────────────────────────
 
 /** 容器运行状态枚举 */

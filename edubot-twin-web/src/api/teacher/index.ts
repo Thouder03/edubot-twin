@@ -7,6 +7,7 @@ import type {
   StudentUpdateRequest,
   StudentListResponse,
   StudentInfo,
+  StudentImportResult,
   ContainerMonitorListResponse
 } from './types'
 
@@ -42,6 +43,17 @@ export const updateStudentApi = (
 /** 删除单个学生 */
 export const deleteStudentApi = (id: number): Promise<IResponse<any>> => {
   return request.delete({ url: `/api/v1/teachers/students/${id}` })
+}
+
+/** 批量导入学生（CSV 文件） */
+export const importStudentsApi = (file: File): Promise<IResponse<StudentImportResult>> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post({
+    url: '/api/v1/teachers/students/import',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
 }
 
 // ─── 容器监控 API ────────────────────────────────────────────
