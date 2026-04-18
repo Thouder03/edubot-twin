@@ -391,6 +391,17 @@ function navigateToHome() {
 
 // ─── beforeunload 拦截 ────────────────────────────────────
 function handleBeforeUnload(event: BeforeUnloadEvent) {
+  // 页面在后台或失焦时，忽略 beforeunload 拦截
+  // 解决浏览器后台回收/恢复标签时误弹“重新加载站点”确认框
+  if (document.visibilityState !== 'visible' || !document.hasFocus()) {
+    return
+  }
+
+  // 通过顶部返回按钮离开时已走业务确认，这里不再二次拦截
+  if (skipStopOnExit) {
+    return
+  }
+
   // 现代浏览器标准规范
   event.preventDefault()
   // 兼容 Safari 及某些旧版浏览器

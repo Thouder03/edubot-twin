@@ -269,6 +269,12 @@ function hasDirtyFiles() {
 }
 
 function onBeforeUnload(e: BeforeUnloadEvent) {
+  // 后台标签被浏览器回收/恢复时，不弹未保存拦截
+  // 仅在当前标签可见且聚焦时才执行拦截
+  if (document.visibilityState !== 'visible' || !document.hasFocus()) {
+    return
+  }
+
   if (hasDirtyFiles()) {
     e.preventDefault()
     e.returnValue = ''
