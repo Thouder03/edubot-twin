@@ -199,7 +199,7 @@ onMounted(() => {
             size="small"
             @click="goReview(row)"
           >
-            {{ row.review_status === 'reviewed' ? '查看' : '复核' }}
+            {{ row.review_status === 'reviewed' ? '详情' : '复核' }}
           </ElButton>
         </template>
       </ElTableColumn>

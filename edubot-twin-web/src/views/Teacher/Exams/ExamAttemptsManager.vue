@@ -302,16 +302,8 @@ onMounted(() => {
       </ElTableColumn>
       <ElTableColumn label="操作" width="120" fixed="right">
         <template #default="{ row }">
-          <ElButton
-            v-if="row.status === 'completed' || row.status === 'reviewed'"
-            type="primary"
-            link
-            size="small"
-            @click="goReview(row)"
-          >
-            复核
-          </ElButton>
-          <ElButton v-else type="danger" link size="small" @click="handleSingleDelete(row)">
+          <ElButton type="primary" link size="small" @click="goReview(row)"> 详情 </ElButton>
+          <ElButton type="danger" link size="small" @click="handleSingleDelete(row)">
             删除
           </ElButton>
         </template>
