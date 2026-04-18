@@ -13,7 +13,32 @@
 from datetime import datetime
 from typing import Optional, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# 容器镜像中不可覆盖的保留路径（挂载到这些路径或其父路径会导致 Docker 启动失败）
+_IMAGE_RESERVED_PATHS = ("/home/ubuntu20/gzweb",)
+_BLOCKED_EXACT_PATHS = frozenset({"/", "/home", "/home/ubuntu20"})
+
+
+def _validate_container_target_dir(v: str) -> str:
+    v = v.strip()
+    if not v.startswith("/"):
+        raise ValueError("容器目标目录必须为绝对路径（以 / 开头）")
+    if v in _BLOCKED_EXACT_PATHS:
+        raise ValueError(
+            f"'{v}' 会覆盖容器关键目录，请使用更具体的路径（如 /home/ubuntu20/catkin_ws）"
+        )
+    for reserved in _IMAGE_RESERVED_PATHS:
+        if v == reserved or v.startswith(reserved.rstrip("/") + "/"):
+            raise ValueError(
+                f"'{v}' 是容器镜像的保留路径，请使用其他路径（如 /home/ubuntu20/catkin_ws）"
+            )
+        if reserved.startswith(v.rstrip("/") + "/"):
+            raise ValueError(
+                f"'{v}' 是容器镜像保留路径 '{reserved}' 的父目录，"
+                f"挂载到此路径会导致 Docker 启动失败。请使用更具体的子路径（如 /home/ubuntu20/catkin_ws）"
+            )
+    return v
 
 
 # ─── 文件清单 ──────────────────────────────────────────────────────────────────
@@ -300,6 +325,11 @@ class EnvBundleCreate(BaseModel):
         description="学生对环境文件的访问权限",
     )
 
+    @field_validator("container_target_dir")
+    @classmethod
+    def check_container_target_dir(cls, v: str) -> str:
+        return _validate_container_target_dir(v)
+
 
 class EnvBundleResponse(BaseModel):
     """环境包详情响应体"""
@@ -336,6 +366,13 @@ class EnvBundleUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, max_length=128)
     container_target_dir: Optional[str] = Field(default=None, max_length=255)
     access_level: Optional[Literal["readonly", "readwrite", "hidden"]] = None
+
+    @field_validator("container_target_dir")
+    @classmethod
+    def check_container_target_dir(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return _validate_container_target_dir(v)
 
 
 class EnvBundleDryRunByVersionRequest(BaseModel):

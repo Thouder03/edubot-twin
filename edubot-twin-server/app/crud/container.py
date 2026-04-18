@@ -69,7 +69,14 @@ async def create_container(
         container.last_heartbeat_at = datetime.utcnow()
     except (DockerConnectionError, Exception) as e:
         container.status = ContainerStatus.ERROR
-        container.error_message = str(e)
+        error_str = str(e)
+        if "read-only file system" in error_str:
+            container.error_message = (
+                f"容器目标目录与镜像保留路径冲突（read-only file system）。"
+                f"请将容器目标目录改为 /home/ubuntu20/catkin_ws 等可写路径。原始错误：{error_str}"
+            )
+        else:
+            container.error_message = error_str
 
     container.updated_at = datetime.utcnow()
     await db.commit()

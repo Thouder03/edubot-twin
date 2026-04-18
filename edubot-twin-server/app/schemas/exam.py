@@ -6,7 +6,9 @@
 from datetime import datetime
 from typing import Optional, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.experiment import _validate_container_target_dir
 
 
 # ─── 考试定义 Schema ──────────────────────────────────────────────────────────
@@ -92,6 +94,11 @@ class ExamEnvSnapshotCreateRequest(BaseModel):
         description="容器内挂载目标目录",
     )
 
+    @field_validator("container_target_dir")
+    @classmethod
+    def check_container_target_dir(cls, v: str) -> str:
+        return _validate_container_target_dir(v)
+
 
 class ExamEnvSnapshotCopyRequest(BaseModel):
     """从实验环境复制请求体"""
@@ -133,6 +140,13 @@ class ExamEnvSnapshotUpdateRequest(BaseModel):
     """更新快照请求体"""
     name: Optional[str] = Field(default=None, max_length=128)
     container_target_dir: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("container_target_dir")
+    @classmethod
+    def check_container_target_dir(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return _validate_container_target_dir(v)
 
 
 # ─── 考试文件快照 Schema ──────────────────────────────────────────────────────

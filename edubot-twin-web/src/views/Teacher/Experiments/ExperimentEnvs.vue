@@ -568,7 +568,17 @@ const startDryRun = async () => {
           <div class="settings-area">
             <div class="settings-header">基本设置</div>
             <ElForm :model="settingsForm" label-position="top" class="pa-12px">
-              <ElFormItem label="容器目标目录">
+              <ElFormItem>
+                <template #label>
+                  <span>容器目标目录</span>
+                  <ElTooltip
+                    content="环境文件在容器内的挂载路径。不能使用 /home/ubuntu20、/home/ubuntu20/gzweb 等镜像保留路径，推荐使用 /home/ubuntu20/catkin_ws"
+                    placement="top"
+                    :show-after="300"
+                  >
+                    <span class="ml-4px color-#909399 cursor-help text-12px">(?)</span>
+                  </ElTooltip>
+                </template>
                 <ElInput
                   v-model="settingsForm.container_target_dir"
                   placeholder="/home/ubuntu20/catkin_ws"
@@ -652,7 +662,16 @@ const startDryRun = async () => {
       <ElFormItem label="环境包名称" required>
         <ElInput v-model="createForm.name" placeholder="例如：导航环境" />
       </ElFormItem>
-      <ElFormItem label="容器目标目录">
+      <ElFormItem>
+        <template #label>
+          <span>容器目标目录</span>
+          <ElTooltip
+            content="环境文件在容器内的挂载路径。不能使用 /home/ubuntu20、/home/ubuntu20/gzweb 等镜像保留路径，推荐使用 /home/ubuntu20/catkin_ws"
+            placement="top"
+          >
+            <span class="ml-4px color-#909399 cursor-help text-12px">(?)</span>
+          </ElTooltip>
+        </template>
         <ElInput v-model="createForm.container_target_dir" placeholder="/home/ubuntu20/catkin_ws" />
       </ElFormItem>
     </ElForm>
