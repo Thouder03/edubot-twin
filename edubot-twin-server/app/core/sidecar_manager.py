@@ -161,6 +161,8 @@ def build_docker_config(attempt, rosbridge_port: Optional[int] = None) -> Sideca
         "RUNTIME_POLICY_JSON": json.dumps(runtime_policy),
         "ROSBRIDGE_URL": f"ws://localhost:{rosbridge_port or 9090}",
         "SIM_CONTAINER_NAME": attempt.sim_container_docker_id or "",
+        # 容器以 uid=1000 运行，pip --user 需要可写的 HOME
+        "HOME": "/tmp",
     }
 
     # network_mode：共享主仿真容器 network namespace
@@ -234,9 +236,9 @@ def _docker_wait_container(container_id: str, timeout_seconds: int) -> tuple[int
         container = client.containers.get(container_id)
         result = container.wait(timeout=timeout_seconds)
         exit_code = result.get("StatusCode", -1)
-        # 获取最后 1000 字符的 stderr
+        # 获取最后 1000 字符的 stdout+stderr（evaluate.py 用 print 输出到 stdout）
         try:
-            logs = container.logs(stdout=False, stderr=True, tail=100)
+            logs = container.logs(stdout=True, stderr=True, tail=100)
             stderr = logs.decode("utf-8", errors="replace")[-1000:]
         except Exception:
             stderr = ""
