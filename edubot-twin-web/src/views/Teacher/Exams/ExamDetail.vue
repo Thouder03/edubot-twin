@@ -48,11 +48,11 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
       { name: 'max_duration_ms', desc: '考试时限（毫秒），默认 600000（10分钟）' },
       { name: 'max_attempts', desc: '学生最多可尝试次数，默认 3' },
       { name: 'allow_debug_before_start', desc: '开始考试前是否允许调试仿真环境，默认 true' },
-      { name: 'image', desc: '启动考试容器的镜像' },
-      { name: 'launch_args', desc: '考试环境中 roslaunch 的启动参数' },
+      { name: 'image', desc: '运行镜像，默认 gzweb_sim:v1' },
+      { name: 'launch_args', desc: 'ROS 启动参数（JSON 字典），默认 {}' },
       {
         name: 'highest_objective_only',
-        desc: '仅保留一个客观分最高的非错误尝试，低分尝试会被删除'
+        desc: '仅保留一个客观分最高的非错误尝试，低分尝试会被删除，默认 false'
       }
     ]
   },
@@ -61,9 +61,8 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
     fields: [
       {
         name: 'lock_panels_during_exam',
-        desc: '考试进行中是否锁定面板操作，默认 false（第13期生效）'
-      },
-      { name: 'allowed_panels', desc: '允许显示的面板列表（第13期生效）' }
+        desc: '考试进行中是否锁定面板操作，默认 false'
+      }
     ]
   },
   scoring_policy: {
@@ -71,15 +70,15 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
     fields: [
       {
         name: 'scoring_mode',
-        desc: 'objective_only（纯客观分，自动核算 final_score）或 mixed（需人工评分后才核算）'
+        desc: 'objective_only（纯客观分）或 mixed（混合评分，默认）'
       },
       {
         name: 'manual_score_ratio',
-        desc: '人工评分占比（%，仅 mixed 模式生效），客观分占比 = 100 - 该值'
+        desc: '人工评分占比（%，仅 mixed 生效），默认 0'
       },
       { name: 'pass_threshold', desc: '及格线（0-100），默认 60' },
       { name: 'allow_override_objective', desc: '是否允许教师覆盖客观分，默认 false' },
-      { name: 'allow_override_pass_flag', desc: '是否允许教师覆盖 pass 标记，默认 false' }
+      { name: 'allow_override_pass_flag', desc: '是否允许教师覆盖及格状态，默认 false' }
     ]
   },
   sidecar_policy: {
@@ -90,11 +89,11 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
       { name: 'memory_limit_mb', desc: '内存上限（MB），默认 512' },
       {
         name: 'submission_paths',
-        desc: '评测文件路径列表，支持精确路径和通配符（如 ["catkin_ws/src/*", "*.py"]）'
+        desc: '评测需要同步的文件路径列表，支持 ["catkin_ws/src/*"] 等，默认 []'
       },
       { name: 'eval_script_id', desc: '关联测评脚本 ID（自动同步）' },
-      { name: 'env_snapshot_id', desc: '考试环境快照 ID（自动同步）' },
-      { name: 'file_snapshot_id', desc: '考试文件快照 ID（自动同步）' }
+      { name: 'env_snapshot_id', desc: '关联考试环境快照 ID（自动同步）' },
+      { name: 'file_snapshot_id', desc: '关联考试文件快照 ID（自动同步）' }
     ]
   }
 }

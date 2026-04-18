@@ -45,17 +45,19 @@ async def create_exam(
             "launch_args": {}
         },
         panel_policy_json={
-            "lock_panels_during_exam": False,
-            "allowed_panels": ["ROS3DViewer", "WorkspacePanel", "ContainerTerminal", "RosoutPanel"]
+            "lock_panels_during_exam": False
         },
         scoring_policy_json={
+            "scoring_mode": "objective_only",
             "pass_threshold": 60,
-            "scoring_mode": "objective_only"
+            "allow_override_objective": False,
+            "allow_override_pass_flag": False
         },
         sidecar_policy_json={
             "image": "sidecar-runner:v1",
             "cpu_limit": 1.0,
             "memory_limit_mb": 512,
+            "submission_paths": [],
             "eval_script_id": None,
             "env_snapshot_id": None,
             "file_snapshot_id": None
