@@ -43,8 +43,8 @@ MAX_TOTAL_SIZE = 100 * 1024 * 1024     # 100 MB
 # ─── 工具函数 ───────────────────────────────────────────────────────────────
 
 def get_workspace(student_id: int) -> Path:
-    """返回学生工作区根目录"""
-    return path_policy.STUDENTS_DATA_ROOT / str(student_id) / "workspace"
+    """返回学生工作区根目录（绝对路径，与 validate_path 的 resolve 结果一致）"""
+    return (path_policy.STUDENTS_DATA_ROOT / str(student_id) / "workspace").resolve()
 
 
 def validate_path(workspace: Path, user_path: str) -> Path:

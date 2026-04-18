@@ -195,7 +195,8 @@ async def create_container(
 
         # 教师自定义启动脚本（来自 env_bundle.storage_root/startup.sh）
         if startup_script_path and os.path.exists(startup_script_path):
-            volumes[startup_script_path] = {
+            abs_startup = str(Path(startup_script_path).resolve())
+            volumes[abs_startup] = {
                 "bind": CONTAINER_STARTUP_SCRIPT,
                 "mode": "ro",
             }
@@ -211,7 +212,8 @@ async def create_container(
         # 额外环境文件 Volume（env_bundle 文件）
         if env_volumes:
             for host_path, container_path in env_volumes.items():
-                volumes[host_path] = {"bind": container_path, "mode": "ro"}
+                abs_host = str(Path(host_path).resolve())
+                volumes[abs_host] = {"bind": container_path, "mode": "ro"}
                 logger.info(f"环境文件 Volume 挂载: {host_path} → {container_path}")
 
         labels = {
