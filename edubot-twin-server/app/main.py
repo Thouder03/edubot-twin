@@ -270,7 +270,7 @@ async def _orphan_container_reconcile_once() -> dict[str, int]:
                         level="WARNING",
                     )
                     stats["db_corrected"] += 1
-                elif docker_status in ("exited", "dead"):
+                elif docker_status in ("exited", "dead") and c.status != ContainerStatus.STOPPED:
                     c.status = ContainerStatus.STOPPED
                     c.updated_at = datetime.utcnow()
                     log_container_event(
