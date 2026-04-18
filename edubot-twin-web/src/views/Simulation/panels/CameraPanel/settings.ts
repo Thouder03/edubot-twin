@@ -7,7 +7,7 @@ export interface CameraConfig {
 }
 
 export const DEFAULT_CONFIG: CameraConfig = {
-  topic: '/camera/rgb/image_raw/compressed',
+  topic: '/image_raw/compressed',
   throttleMs: 33,
   staleTimeoutMs: 1500
 }
@@ -21,7 +21,7 @@ export function buildNodes(config: CameraConfig): SettingsTreeNodes {
           label: '图像 Topic',
           input: 'string',
           value: config.topic,
-          placeholder: '/camera/rgb/image_raw/compressed'
+          placeholder: '/image_raw/compressed'
         }
       }
     },

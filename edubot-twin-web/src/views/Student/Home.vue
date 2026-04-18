@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useDesign } from '@/hooks/web/useDesign'
+import { useStorage } from '@/hooks/web/useStorage'
 import {
   ElCard,
   ElRow,
@@ -11,7 +12,7 @@ import {
   ElOption
 } from 'element-plus'
 import { BaseButton } from '@/components/Button'
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getStudentHomeDataApi } from '@/api/student'
 import { getAvailableExperimentsApi } from '@/api/experiment'
@@ -32,8 +33,17 @@ const pendingExams = ref(0)
 // 未读消息数据
 const unreadMessages = ref(0)
 
+const { getStorage, setStorage } = useStorage('localStorage')
+const SELECTED_VERSION_KEY = 'student-home-selected-version-id'
+
 const availableVersions = ref<StudentAvailableVersionItem[]>([])
-const selectedVersionId = ref<string>('')
+const selectedVersionId = ref<string>(getStorage(SELECTED_VERSION_KEY) || '')
+
+watch(selectedVersionId, (val) => {
+  if (val) {
+    setStorage(SELECTED_VERSION_KEY, val)
+  }
+})
 
 const selectedVersion = computed(() => {
   const id = Number(selectedVersionId.value)
@@ -58,7 +68,11 @@ const getAvailableVersions = async () => {
   try {
     const res = await getAvailableExperimentsApi()
     availableVersions.value = res?.data || []
-    if (!selectedVersionId.value && availableVersions.value.length > 0) {
+    // 检查恢复的选中 ID 是否在可用列表中
+    const isValid = availableVersions.value.some(
+      (v) => String(v.version_id) === selectedVersionId.value
+    )
+    if ((!selectedVersionId.value || !isValid) && availableVersions.value.length > 0) {
       selectedVersionId.value = String(availableVersions.value[0].version_id)
     }
   } catch (error) {
