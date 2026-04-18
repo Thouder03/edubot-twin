@@ -1,20 +1,10 @@
 <script setup lang="ts">
 import { useDesign } from '@/hooks/web/useDesign'
 import { useStorage } from '@/hooks/web/useStorage'
-import {
-  ElCard,
-  ElRow,
-  ElCol,
-  ElSkeleton,
-  ElLoading,
-  ElMessage,
-  ElSelect,
-  ElOption
-} from 'element-plus'
+import { ElLoading, ElMessage, ElSelect, ElOption } from 'element-plus'
 import { BaseButton } from '@/components/Button'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getStudentHomeDataApi } from '@/api/student'
 import { getAvailableExperimentsApi } from '@/api/experiment'
 import type { StudentAvailableVersionItem } from '@/api/experiment/types'
 import { startContainerUnified } from '@/views/Simulation/composables/useContainerStart'
@@ -26,12 +16,6 @@ const router = useRouter()
 
 // 加载状态
 const loading = ref(true)
-
-// 待完成考试数据
-const pendingExams = ref(0)
-
-// 未读消息数据
-const unreadMessages = ref(0)
 
 const { getStorage, setStorage } = useStorage('localStorage')
 const SELECTED_VERSION_KEY = 'student-home-selected-version-id'
@@ -51,19 +35,6 @@ const selectedVersion = computed(() => {
   return availableVersions.value.find((item) => item.version_id === id) || null
 })
 
-// 获取学生首页数据
-const getHomeData = async () => {
-  try {
-    const res = await getStudentHomeDataApi()
-    if (res?.data) {
-      pendingExams.value = res.data.pendingExams
-      unreadMessages.value = res.data.unreadMessages
-    }
-  } catch (error) {
-    console.error('获取学生首页数据失败:', error)
-  }
-}
-
 const getAvailableVersions = async () => {
   try {
     const res = await getAvailableExperimentsApi()
@@ -79,16 +50,6 @@ const getAvailableVersions = async () => {
     console.error('获取实验版本失败:', error)
     ElMessage.error('获取实验版本失败，请稍后重试')
   }
-}
-
-// TODO: 点击待完成考试卡片
-const handleExamCardClick = () => {
-  console.log('TODO: 跳转到待完成考试列表页面')
-}
-
-// TODO: 点击未读消息卡片
-const handleMessageCardClick = () => {
-  console.log('TODO: 跳转到未读消息列表页面')
 }
 
 function openSimulationPage(version: StudentAvailableVersionItem) {
@@ -182,7 +143,7 @@ const handleStartExam = () => {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([getHomeData(), getAvailableVersions()])
+    await Promise.all([getAvailableVersions()])
   } finally {
     loading.value = false
   }
@@ -196,7 +157,7 @@ onMounted(async () => {
         <ElCard shadow="hover" class="status-card">
           <ElSkeleton :loading="loading" animated :rows="2">
             <template #default>
-              <div :class="`${prefixCls}__item flex justify-between`" @click="handleExamCardClick">
+              <div :class="`${prefixCls}__item flex justify-between`">
                 <div>
                   <div
                     :class="`${prefixCls}__item--icon ${prefixCls}__item--exam p-16px inline-block rounded-6px`"
@@ -208,7 +169,7 @@ onMounted(async () => {
                   <div :class="`${prefixCls}__item--text text-16px text-gray-500 text-right`">
                     待完成考试
                   </div>
-                  <div class="text-20px font-700 text-right">{{ pendingExams }}</div>
+                  <div class="text-20px font-700 text-right">999</div>
                 </div>
               </div>
             </template>
@@ -220,10 +181,7 @@ onMounted(async () => {
         <ElCard shadow="hover" class="status-card">
           <ElSkeleton :loading="loading" animated :rows="2">
             <template #default>
-              <div
-                :class="`${prefixCls}__item flex justify-between`"
-                @click="handleMessageCardClick"
-              >
+              <div :class="`${prefixCls}__item flex justify-between`">
                 <div>
                   <div
                     :class="`${prefixCls}__item--icon ${prefixCls}__item--message p-16px inline-block rounded-6px`"
@@ -235,7 +193,7 @@ onMounted(async () => {
                   <div :class="`${prefixCls}__item--text text-16px text-gray-500 text-right`">
                     未读消息
                   </div>
-                  <div class="text-20px font-700 text-right">{{ unreadMessages }}</div>
+                  <div class="text-20px font-700 text-right">666</div>
                 </div>
               </div>
             </template>
