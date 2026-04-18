@@ -4,7 +4,14 @@
 路由前缀：/api/v1/students/terminal
 """
 import asyncio
+import fcntl
+import json
 import logging
+import os
+import pty
+import signal
+import struct
+import termios
 from collections import defaultdict, deque
 from typing import Deque, Optional
 
@@ -64,6 +71,7 @@ async def _ensure_student_dir_permissions(container_id: str) -> None:
         raise RuntimeError(output or "set experiment permissions failed")
 
 
+
 @router.websocket("/ws")
 async def terminal_ws(
     websocket: WebSocket,
@@ -75,6 +83,7 @@ async def terminal_ws(
 
     鉴权：token 放在 query string 中（WebSocket 规范限制）。
     建连后，双向透传学生容器的 docker exec 会话。
+    支持 JSON resize 消息同步 PTY 尺寸：{"type": "resize", "cols": N, "rows": N}
 
     root=1：以容器 root 用户（uid=0）执行，仅限 is_shadow=True 的 Shadow 学生（Dry Run 模式）。
     """
@@ -174,43 +183,49 @@ async def terminal_ws(
         f"[Terminal] 会话开始: student={student_id}, container={container_id[:12]}, client={client}"
     )
 
-    # ── 5. 启动 docker exec ──────────────────────────────────────
-    import shlex
-    safe_container_id = shlex.quote(container_id)
-    proc: Optional[asyncio.subprocess.Process] = None
-
+    # ── 5. 创建 PTY 并启动 docker exec ──────────────────────────────
     if use_root:
-        # Root 模式（仅 Shadow 学生/Dry Run）：uid=0，工作目录 /
         exec_user = "0"
         exec_workdir = "/"
         exec_home = "/root"
         exec_ps1_user = "root"
     else:
-        # 普通模式：uid=1000（student 用户）
         exec_user = "1000"
         exec_workdir = "/home/student"
         exec_home = "/home/student"
         exec_ps1_user = safe_terminal_username
 
+    master_fd, slave_fd = pty.openpty()
+    # 设置初始尺寸（80x24），客户端连接后会立即发 resize 消息同步真实尺寸
+    fcntl.ioctl(master_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+
+    shell_cmd = (
+        "source /opt/ros/noetic/setup.bash 2>/dev/null; "
+        "source /home/ubuntu20/catkin_ws/devel/setup.bash 2>/dev/null; "
+        f"export PS1='{exec_ps1_user}@\\h: \\w\\$ '; "
+        "exec /bin/bash --noprofile --norc -i"
+    )
+
+    proc: Optional[asyncio.subprocess.Process] = None
     try:
         proc = await asyncio.create_subprocess_exec(
-            "script",
-            "-qc",
-            f"docker exec -it -u {exec_user} -w {exec_workdir} "
-            f"-e TERM=xterm -e USER={exec_ps1_user} -e LOGNAME={exec_ps1_user} "
-            f"-e HOME={exec_home} "
-            f"{safe_container_id} /bin/bash -lc \""
-            f"source /opt/ros/noetic/setup.bash && "
-            f"source /home/ubuntu20/catkin_ws/devel/setup.bash && "
-            f"export PS1='{exec_ps1_user}@\\h: \\w\\$ ' && "
-            f"exec /bin/bash --noprofile --norc -i"
-            f"\"",
-            "/dev/null",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+            "docker", "exec", "-it",
+            "-u", exec_user,
+            "-w", exec_workdir,
+            "-e", "TERM=xterm-256color",
+            "-e", f"USER={exec_ps1_user}",
+            "-e", f"LOGNAME={exec_ps1_user}",
+            "-e", f"HOME={exec_home}",
+            container_id,
+            "/bin/bash", "-lc", shell_cmd,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            close_fds=True,
         )
     except FileNotFoundError:
+        os.close(slave_fd)
+        os.close(master_fd)
         logger.error(
             f"[Terminal] docker exec 启动失败: Docker CLI 不存在, student={student_id}, "
             f"container={container_id[:12]}, client={client}"
@@ -219,6 +234,8 @@ async def terminal_ws(
         await websocket.close()
         return
     except Exception as e:
+        os.close(slave_fd)
+        os.close(master_fd)
         logger.error(
             f"[Terminal] docker exec 启动失败: student={student_id}, container={container_id[:12]}, "
             f"client={client}, error={e}"
@@ -227,65 +244,94 @@ async def terminal_ws(
         await websocket.close()
         return
 
+    # 父进程关闭 slave_fd（子进程已继承，父进程不需要）
+    os.close(slave_fd)
+
     # ── 6. 双向透传 ──────────────────────────────────────────────
-    async def read_from_docker():
-        """从 docker stdout 读数据 → 发到 WebSocket"""
+    loop = asyncio.get_running_loop()
+    output_queue: asyncio.Queue[bytes] = asyncio.Queue()
+
+    def _on_master_readable() -> None:
+        try:
+            data = os.read(master_fd, 4096)
+            loop.call_soon_threadsafe(output_queue.put_nowait, data)
+        except OSError:
+            # slave_fd 已关闭（进程退出），通知读协程退出
+            loop.call_soon_threadsafe(output_queue.put_nowait, b"")
+
+    loop.add_reader(master_fd, _on_master_readable)
+
+    async def read_from_pty() -> None:
+        """PTY master → WebSocket"""
         try:
             while True:
-                if proc.stdout is None:
-                    break
-                data = await proc.stdout.read(4096)
+                data = await output_queue.get()
                 if not data:
                     break
                 if websocket.client_state == WebSocketState.CONNECTED:
                     await websocket.send_bytes(data)
         except Exception as e:
-            logger.warning(f"[Terminal] read_from_docker 异常: {e}")
+            logger.warning(f"[Terminal] read_from_pty 异常: {e}")
 
-    async def write_to_docker():
-        """从 WebSocket 收数据 → 写到 docker stdin"""
+    async def write_to_pty() -> None:
+        """WebSocket → PTY master，兼容 JSON resize 消息"""
         try:
             while True:
                 data = await websocket.receive()
                 if data["type"] == "websocket.disconnect":
                     break
                 raw = data.get("bytes") or (data.get("text") or "").encode()
-                if raw and proc.stdin and not proc.stdin.is_closing():
-                    proc.stdin.write(raw)
-                    await proc.stdin.drain()
+                if not raw:
+                    continue
+
+                # 仅当数据以 '{' 开头时才尝试解析 resize 消息
+                # 避免用户输入的数字/字母被 json.loads 解析成非 dict 类型导致 AttributeError 断连
+                if raw[0:1] == b"{":
+                    try:
+                        msg = json.loads(raw.decode("utf-8"))
+                        if isinstance(msg, dict) and msg.get("type") == "resize":
+                            cols = max(1, int(msg.get("cols", 80)))
+                            rows = max(1, int(msg.get("rows", 24)))
+                            fcntl.ioctl(
+                                master_fd, termios.TIOCSWINSZ,
+                                struct.pack("HHHH", rows, cols, 0, 0),
+                            )
+                            if proc is not None and proc.returncode is None:
+                                try:
+                                    proc.send_signal(signal.SIGWINCH)
+                                except ProcessLookupError:
+                                    pass
+                            continue
+                    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+                        pass
+
+                try:
+                    os.write(master_fd, raw)
+                except OSError:
+                    break
         except WebSocketDisconnect:
             pass
         except Exception as e:
-            logger.warning(f"[Terminal] write_to_docker 异常: {e}")
+            logger.warning(f"[Terminal] write_to_pty 异常: {e}")
 
-    # 并发运行双向透传
-    # 注意：不能简单 FIRST_COMPLETED 后直接杀进程。
-    # 在部分场景（如 catkin_make 长输出）read_task 可能先异常/暂时结束，
-    # 若此时容器内 shell 仍存活，直接 kill 会导致“执行中途断连”。
-    read_task = asyncio.create_task(read_from_docker())
-    write_task = asyncio.create_task(write_to_docker())
+    read_task = asyncio.create_task(read_from_pty())
+    write_task = asyncio.create_task(write_to_pty())
 
-    while True:
-        done, pending = await asyncio.wait(
-            [read_task, write_task],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+    done, _ = await asyncio.wait(
+        [read_task, write_task],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
 
-        # 客户端侧断开或写入协程结束：结束会话
-        if write_task in done:
-            break
-
-        # 输出协程结束：如果进程还活着，重建 read_task 继续透传
-        if read_task in done:
-            if proc.returncode is None and websocket.client_state == WebSocketState.CONNECTED:
-                read_task = asyncio.create_task(read_from_docker())
-                continue
-            break
-
-    # 清理
     for task in (read_task, write_task):
         if not task.done():
             task.cancel()
+
+    # 清理 PTY
+    loop.remove_reader(master_fd)
+    try:
+        os.close(master_fd)
+    except OSError:
+        pass
 
     if proc.returncode is None:
         try:

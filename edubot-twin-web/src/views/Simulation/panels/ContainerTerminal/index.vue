@@ -89,6 +89,10 @@ function connectWs() {
   ws.onopen = () => {
     wsConnected.value = true
     terminal?.write('\r\n\x1b[32m[终端已连接]\x1b[0m\r\n')
+    // 连接后立即同步当前终端尺寸，对齐后端 PTY
+    if (terminal && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }))
+    }
   }
 
   ws.onmessage = (event) => {
@@ -182,6 +186,14 @@ function initTerminal() {
     if (isTerminalDisabled.value) return
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(data)
+    }
+  })
+
+  // 终端尺寸变化 → 通知后端同步 PTY 尺寸
+  terminal.onResize(({ cols, rows }) => {
+    const currentWs = ws
+    if (currentWs && currentWs.readyState === WebSocket.OPEN) {
+      currentWs.send(JSON.stringify({ type: 'resize', cols, rows }))
     }
   })
 
@@ -388,7 +400,6 @@ onBeforeUnmount(() => {
   }
 
   &__xterm {
-    padding: 4px;
     overflow: hidden;
     flex: 1;
 
