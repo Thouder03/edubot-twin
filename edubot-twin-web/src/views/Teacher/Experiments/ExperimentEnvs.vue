@@ -121,7 +121,6 @@ const handleEnvBundleDblClick = async (bundle: EnvBundleListItem) => {
   selectedEnvBundle.value = bundle
   settingsForm.value.container_target_dir =
     (bundle as any).container_target_dir || '/home/ubuntu20/catkin_ws'
-  settingsForm.value.access_level = (bundle as any).access_level || 'readonly'
   viewMode.value = 'tree'
   workspace.clearSelection()
   // 关闭旧标签页
@@ -202,15 +201,13 @@ onBeforeRouteLeave(async (_to, _from, next) => {
 // ─── 基本设置 ─────────────────────────────────────────────────────────────────
 
 const settingsForm = ref({
-  container_target_dir: '/home/ubuntu20/catkin_ws',
-  access_level: 'readonly' as 'readonly' | 'readwrite' | 'hidden'
+  container_target_dir: '/home/ubuntu20/catkin_ws'
 })
 
 watch(selectedEnvBundle, (bundle) => {
   if (bundle) {
     settingsForm.value.container_target_dir =
       (bundle as any).container_target_dir || '/home/ubuntu20/catkin_ws'
-    settingsForm.value.access_level = (bundle as any).access_level || 'readonly'
   }
 })
 
@@ -220,8 +217,7 @@ const handleSaveSettings = async () => {
   savingSettings.value = true
   try {
     await patchEnvBundleApi(selectedEnvBundle.value.env_bundle_id, {
-      container_target_dir: settingsForm.value.container_target_dir,
-      access_level: settingsForm.value.access_level
+      container_target_dir: settingsForm.value.container_target_dir
     })
     ElMessage.success('基本设置已保存')
     await fetchEnvBundles()
@@ -336,15 +332,13 @@ const handleDeleteBundle = async (bundle: EnvBundleListItem) => {
 const createDialogVisible = ref(false)
 const createForm = ref({
   name: '',
-  container_target_dir: '/home/ubuntu20/catkin_ws',
-  access_level: 'readonly' as 'readonly' | 'readwrite' | 'hidden'
+  container_target_dir: '/home/ubuntu20/catkin_ws'
 })
 
 const openCreateDialog = () => {
   createForm.value = {
     name: '',
-    container_target_dir: '/home/ubuntu20/catkin_ws',
-    access_level: 'readonly'
+    container_target_dir: '/home/ubuntu20/catkin_ws'
   }
   createDialogVisible.value = true
 }
@@ -357,8 +351,7 @@ const submitCreateBundle = async () => {
   try {
     await createEnvBundleApi({
       name: createForm.value.name.trim(),
-      container_target_dir: createForm.value.container_target_dir,
-      access_level: createForm.value.access_level
+      container_target_dir: createForm.value.container_target_dir
     })
     ElMessage.success('环境包创建成功（已自动生成 startup.sh 模板）')
     createDialogVisible.value = false
@@ -581,13 +574,6 @@ const startDryRun = async () => {
                   placeholder="/home/ubuntu20/catkin_ws"
                 />
               </ElFormItem>
-              <ElFormItem label="学生访问权限">
-                <ElSelect v-model="settingsForm.access_level" style="width: 100%">
-                  <ElOption label="只读 (readonly)" value="readonly" />
-                  <ElOption label="读写 (readwrite)" value="readwrite" />
-                  <ElOption label="隐藏 (hidden)" value="hidden" />
-                </ElSelect>
-              </ElFormItem>
               <ElFormItem>
                 <ElButton
                   type="primary"
@@ -640,7 +626,7 @@ const startDryRun = async () => {
     <div class="exp-envs-statusbar">
       <template v-if="viewMode === 'list'">共 {{ envBundles.length }} 个环境包</template>
       <template v-else>
-        {{ selectedEnvBundle?.name }} | 访问权限：{{ settingsForm.access_level }}
+        {{ selectedEnvBundle?.name }}
         <span v-if="editor.getDirtyPaths().length > 0" class="statusbar-dirty">
           ● {{ editor.getDirtyPaths().length }} 个文件未保存
         </span>
@@ -668,13 +654,6 @@ const startDryRun = async () => {
       </ElFormItem>
       <ElFormItem label="容器目标目录">
         <ElInput v-model="createForm.container_target_dir" placeholder="/home/ubuntu20/catkin_ws" />
-      </ElFormItem>
-      <ElFormItem label="学生访问权限">
-        <ElSelect v-model="createForm.access_level" style="width: 100%">
-          <ElOption label="只读 (readonly)" value="readonly" />
-          <ElOption label="读写 (readwrite)" value="readwrite" />
-          <ElOption label="隐藏 (hidden)" value="hidden" />
-        </ElSelect>
       </ElFormItem>
     </ElForm>
     <template #footer>

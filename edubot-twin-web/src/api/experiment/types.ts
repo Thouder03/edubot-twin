@@ -212,7 +212,6 @@ export interface BundleFileUploadResponse {
 export interface EnvBundleCreateRequest {
   name: string
   container_target_dir: string
-  access_level: 'readonly' | 'readwrite' | 'hidden'
 }
 
 export interface EnvBundleListItem {
@@ -228,7 +227,6 @@ export interface EnvBundleListResponse {
 }
 
 export interface EnvBundleDetail extends EnvBundleListItem {
-  access_level: 'readonly' | 'readwrite' | 'hidden'
   file_count: number
   total_size_bytes: number
   storage_root: string
