@@ -103,7 +103,7 @@ const handleRepublish = async (row: ExamListItem) => {
 
 const handleDelete = async (row: ExamListItem) => {
   await ElMessageBox.confirm(
-    `确认删除考试「${row.name}」吗？此操作不可撤销。仅归档状态的考试可删除。`,
+    `确认删除考试「${row.name}」吗？此操作不可撤销。仅草稿或归档状态的考试可删除。`,
     '删除确认',
     { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' }
   )
@@ -114,8 +114,11 @@ const handleDelete = async (row: ExamListItem) => {
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
     const detail = err?.response?.data?.detail
-    if (detail === 'EXAM_DELETE_REQUIRES_ARCHIVED') {
-      ElMessage.error('仅归档状态的考试可删除，请先归档')
+    if (
+      detail === 'EXAM_DELETE_REQUIRES_ARCHIVED' ||
+      detail === 'EXAM_DELETE_REQUIRES_ARCHIVED_OR_DRAFT'
+    ) {
+      ElMessage.error('仅草稿或归档状态的考试可删除，请先归档')
     } else {
       ElMessage.error('删除失败：' + (detail || '未知错误'))
     }
@@ -188,7 +191,7 @@ const crudSchemas = reactive<CrudSchema[]>([
                 重新发布
               </ElButton>
             )}
-            {data.row.status === 'archived' && (
+            {(data.row.status === 'archived' || data.row.status === 'draft') && (
               <ElButton link type="danger" onClick={() => handleDelete(data.row)}>
                 删除
               </ElButton>

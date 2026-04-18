@@ -182,9 +182,9 @@ async def update_exam(
 
 
 async def delete_exam(db: AsyncSession, *, exam: Exam) -> None:
-    """删除考试（第11期仅允许删除 archived 状态）"""
-    if exam.status != ExamStatus.ARCHIVED:
-        raise ValueError("EXAM_DELETE_REQUIRES_ARCHIVED")
+    """删除考试（仅允许删除 archived 或 draft 状态）"""
+    if exam.status not in (ExamStatus.ARCHIVED, ExamStatus.DRAFT):
+        raise ValueError("EXAM_DELETE_REQUIRES_ARCHIVED_OR_DRAFT")
 
     await db.delete(exam)
     await db.commit()
