@@ -168,7 +168,6 @@ async def get_user_routes(role: str):
     # 定义角色路由映射
     role_routes = {
         "student": [
-            "/student",
             "/student/home",
             "/student/files",
             "/student/editor",
@@ -178,7 +177,6 @@ async def get_user_routes(role: str):
             "/student/grades/:exam_id/attempt/:attempt_id/code",
         ],
         "teacher": [
-            "/teacher",
             "/teacher/home",
             "/teacher/students",
             "/teacher/containers",
@@ -218,9 +216,7 @@ async def get_user_routes(role: str):
             "/components/table",
             "/components/table/default-table",
             "/components/table/use-table",
-            "/student",
             "/student/home",
-            "/teacher",
             "/teacher/home",
             "/teacher/students",
             "/teacher/containers",

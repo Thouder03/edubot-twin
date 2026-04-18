@@ -23,7 +23,11 @@ router.beforeEach(async (to, from, next) => {
       if (permissionStore.getAddRouters.length > 0) {
         const firstRoute = permissionStore.getAddRouters[0]
         if (firstRoute.children && firstRoute.children.length > 0) {
-          next({ path: firstRoute.path + '/' + firstRoute.children[0].path, replace: true })
+          const childPath = firstRoute.children[0].path
+          next({
+            path: childPath ? `${firstRoute.path}/${childPath}` : firstRoute.path,
+            replace: true
+          })
         } else {
           next({ path: firstRoute.path, replace: true })
         }
@@ -36,7 +40,11 @@ router.beforeEach(async (to, from, next) => {
           if (permissionStore.getAddRouters.length > 0) {
             const firstRoute = permissionStore.getAddRouters[0]
             if (firstRoute.children && firstRoute.children.length > 0) {
-              next({ path: firstRoute.path + '/' + firstRoute.children[0].path, replace: true })
+              const childPath = firstRoute.children[0].path
+              next({
+                path: childPath ? `${firstRoute.path}/${childPath}` : firstRoute.path,
+                replace: true
+              })
             } else {
               next({ path: firstRoute.path, replace: true })
             }

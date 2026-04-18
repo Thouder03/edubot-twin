@@ -749,286 +749,256 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
       }
     ]
   },
+  // ── 教师端路由（各页面提升为一级菜单）──────────────────────────────────────
   {
-    path: '/teacher',
+    path: '/teacher/home',
     component: Layout,
-    redirect: '/teacher/home',
-    name: 'Teacher',
-    meta: {
-      title: t('router.teacher'),
-      icon: 'vi-carbon:user-role',
-      alwaysShow: true
-    },
+    name: 'TeacherHomeWrap',
+    meta: {},
     children: [
       {
-        path: 'home',
+        path: '',
         component: () => import('@/views/Teacher/Home.vue'),
         name: 'TeacherHome',
-        meta: {
-          title: t('router.teacherHome'),
-          icon: 'vi-carbon:home',
-          noCache: true
-        }
-      },
-      {
-        path: 'students',
-        component: () => import('@/views/Teacher/Students/Student.vue'),
-        name: 'TeacherStudents',
-        meta: {
-          title: t('router.studentManagement'),
-          icon: 'vi-carbon:user-multiple'
-        }
-      },
-      {
-        path: 'experiments',
-        component: getParentLayout(),
-        redirect: '/teacher/experiments/list',
-        name: 'TeacherExperiments',
-        meta: {
-          title: t('router.teacherExperiments'),
-          icon: 'vi-carbon:chemistry',
-          alwaysShow: true
-        },
-        children: [
-          {
-            path: 'list',
-            component: () => import('@/views/Teacher/Experiments/ExperimentList.vue'),
-            name: 'TeacherExperimentList',
-            meta: {
-              title: '实验列表',
-              icon: 'vi-carbon:list'
-            }
-          },
-          {
-            path: ':id/detail',
-            component: () => import('@/views/Teacher/Experiments/ExperimentDetail.vue'),
-            name: 'TeacherExperimentDetail',
-            meta: {
-              title: '版本管理',
-              noTagsView: true,
-              noCache: true,
-              hidden: true,
-              canTo: true,
-              activeMenu: '/teacher/experiments/list'
-            }
-          },
-          {
-            path: 'files',
-            component: () => import('@/views/Teacher/Experiments/ExperimentFiles.vue'),
-            name: 'TeacherExperimentFiles',
-            meta: {
-              title: '实验文件',
-              icon: 'vi-carbon:folder'
-            }
-          },
-          {
-            path: 'environments',
-            component: () => import('@/views/Teacher/Experiments/ExperimentEnvs.vue'),
-            name: 'TeacherExperimentEnvs',
-            meta: {
-              title: '实验环境',
-              icon: 'vi-carbon:settings'
-            }
-          }
-        ]
-      },
-      {
-        path: 'exams',
-        component: getParentLayout(),
-        redirect: '/teacher/exams/list',
-        name: 'TeacherExams',
-        meta: {
-          title: '考试管理',
-          icon: 'vi-carbon:exam-mode',
-          alwaysShow: true
-        },
-        children: [
-          {
-            path: 'list',
-            component: () => import('@/views/Teacher/Exams/ExamList.vue'),
-            name: 'TeacherExamList',
-            meta: {
-              title: '考试列表',
-              icon: 'vi-carbon:list'
-            }
-          },
-          {
-            path: ':id/detail',
-            component: () => import('@/views/Teacher/Exams/ExamDetail.vue'),
-            name: 'TeacherExamDetail',
-            meta: {
-              title: '考试详情',
-              noTagsView: true,
-              noCache: true,
-              hidden: true,
-              canTo: true,
-              activeMenu: '/teacher/exams/list'
-            }
-          },
-          {
-            path: 'envs',
-            component: () => import('@/views/Teacher/Exams/ExamEnvs.vue'),
-            name: 'TeacherExamEnvs',
-            meta: {
-              title: '考试环境',
-              icon: 'vi-carbon:settings'
-            }
-          },
-          {
-            path: 'files',
-            component: () => import('@/views/Teacher/Exams/ExamFiles.vue'),
-            name: 'TeacherExamFiles',
-            meta: {
-              title: '考试文件',
-              icon: 'vi-carbon:folder'
-            }
-          },
-          {
-            path: 'eval-scripts',
-            component: () => import('@/views/Teacher/Exams/ExamEvalScripts.vue'),
-            name: 'TeacherExamEvalScripts',
-            meta: {
-              title: '测评脚本',
-              icon: 'vi-carbon:script'
-            }
-          },
-          {
-            path: 'attempts',
-            component: () => import('@/views/Teacher/Exams/ExamAttemptsManager.vue'),
-            name: 'TeacherExamAttemptsManager',
-            meta: {
-              title: '尝试管理',
-              icon: 'vi-carbon:task-settings'
-            }
-          },
-          {
-            path: 'review-list',
-            component: () => import('@/views/Teacher/Exams/ExamReviewList.vue'),
-            name: 'TeacherExamReviewList',
-            meta: {
-              title: '复核列表',
-              icon: 'vi-carbon:review'
-            }
-          },
-          {
-            path: 'attempts/:attempt_id/review',
-            component: () => import('@/views/Teacher/Exams/ExamAttemptReview.vue'),
-            name: 'TeacherExamAttemptReview',
-            meta: {
-              title: '考试复核',
-              noTagsView: true,
-              noCache: true,
-              hidden: true,
-              canTo: true,
-              activeMenu: '/teacher/exams/list'
-            }
-          },
-          {
-            path: 'attempts/:attempt_id/submission',
-            component: () => import('@/views/Teacher/Exams/ExamAttemptSubmission.vue'),
-            name: 'TeacherExamAttemptSubmission',
-            meta: {
-              title: '查看提交代码',
-              noTagsView: true,
-              noCache: true,
-              hidden: true,
-              canTo: true,
-              activeMenu: '/teacher/exams/list'
-            }
-          }
-        ]
-      },
-      // 第16期：成绩预览（一级菜单）
-      {
-        path: 'grade-preview',
-        component: () => import('@/views/Teacher/Exams/TeacherGradePreview.vue'),
-        name: 'TeacherGradePreview',
-        meta: {
-          title: '成绩预览',
-          icon: 'vi-carbon:chart-bar'
-        }
-      },
-      {
-        path: 'containers',
-        component: getParentLayout(),
-        redirect: '/teacher/containers/monitor',
-        name: 'TeacherContainers',
-        meta: {
-          title: t('router.containerManagement'),
-          icon: 'vi-carbon:container-software',
-          alwaysShow: true
-        },
-        children: [
-          {
-            path: 'monitor',
-            component: () => import('@/views/Teacher/Containers/Monitor.vue'),
-            name: 'ContainerMonitor',
-            meta: {
-              title: t('router.containerMonitor'),
-              icon: 'vi-carbon:dashboard'
-            }
-          },
-          {
-            path: 'config',
-            component: () => import('@/views/Teacher/Containers/Config.vue'),
-            name: 'ContainerConfig',
-            meta: {
-              title: '容器配置',
-              icon: 'vi-carbon:settings'
-            }
-          }
-        ]
+        meta: { title: t('router.teacherHome'), icon: 'vi-carbon:home', noCache: true }
       }
     ]
   },
   {
-    path: '/student',
+    path: '/teacher/students',
     component: Layout,
-    redirect: '/student/home',
-    name: 'Student',
+    name: 'TeacherStudentsWrap',
     meta: {},
     children: [
       {
-        path: 'home',
-        component: () => import('@/views/Student/Home.vue'),
-        name: 'StudentHome',
+        path: '',
+        component: () => import('@/views/Teacher/Students/Student.vue'),
+        name: 'TeacherStudents',
+        meta: { title: t('router.studentManagement'), icon: 'vi-carbon:user-multiple' }
+      }
+    ]
+  },
+  {
+    path: '/teacher/experiments',
+    component: Layout,
+    name: 'TeacherExperiments',
+    meta: {
+      title: t('router.teacherExperiments'),
+      icon: 'vi-carbon:chemistry',
+      alwaysShow: true
+    },
+    children: [
+      {
+        path: 'list',
+        component: () => import('@/views/Teacher/Experiments/ExperimentList.vue'),
+        name: 'TeacherExperimentList',
+        meta: { title: '实验列表', icon: 'vi-carbon:list' }
+      },
+      {
+        path: ':id/detail',
+        component: () => import('@/views/Teacher/Experiments/ExperimentDetail.vue'),
+        name: 'TeacherExperimentDetail',
         meta: {
-          title: t('router.studentHome'),
-          icon: 'vi-carbon:home',
+          title: '版本管理',
+          noTagsView: true,
           noCache: true,
-          affix: true
+          hidden: true,
+          canTo: true,
+          activeMenu: '/teacher/experiments/list'
         }
       },
       {
         path: 'files',
+        component: () => import('@/views/Teacher/Experiments/ExperimentFiles.vue'),
+        name: 'TeacherExperimentFiles',
+        meta: { title: '实验文件', icon: 'vi-carbon:folder' }
+      },
+      {
+        path: 'environments',
+        component: () => import('@/views/Teacher/Experiments/ExperimentEnvs.vue'),
+        name: 'TeacherExperimentEnvs',
+        meta: { title: '实验环境', icon: 'vi-carbon:settings' }
+      }
+    ]
+  },
+  {
+    path: '/teacher/exams',
+    component: Layout,
+    name: 'TeacherExams',
+    meta: { title: '考试管理', icon: 'vi-carbon:exam-mode', alwaysShow: true },
+    children: [
+      {
+        path: 'list',
+        component: () => import('@/views/Teacher/Exams/ExamList.vue'),
+        name: 'TeacherExamList',
+        meta: { title: '考试列表', icon: 'vi-carbon:list' }
+      },
+      {
+        path: ':id/detail',
+        component: () => import('@/views/Teacher/Exams/ExamDetail.vue'),
+        name: 'TeacherExamDetail',
+        meta: {
+          title: '考试详情',
+          noTagsView: true,
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/teacher/exams/list'
+        }
+      },
+      {
+        path: 'envs',
+        component: () => import('@/views/Teacher/Exams/ExamEnvs.vue'),
+        name: 'TeacherExamEnvs',
+        meta: { title: '考试环境', icon: 'vi-carbon:settings' }
+      },
+      {
+        path: 'files',
+        component: () => import('@/views/Teacher/Exams/ExamFiles.vue'),
+        name: 'TeacherExamFiles',
+        meta: { title: '考试文件', icon: 'vi-carbon:folder' }
+      },
+      {
+        path: 'eval-scripts',
+        component: () => import('@/views/Teacher/Exams/ExamEvalScripts.vue'),
+        name: 'TeacherExamEvalScripts',
+        meta: { title: '测评脚本', icon: 'vi-carbon:script' }
+      },
+      {
+        path: 'attempts',
+        component: () => import('@/views/Teacher/Exams/ExamAttemptsManager.vue'),
+        name: 'TeacherExamAttemptsManager',
+        meta: { title: '尝试管理', icon: 'vi-carbon:task-settings' }
+      },
+      {
+        path: 'review-list',
+        component: () => import('@/views/Teacher/Exams/ExamReviewList.vue'),
+        name: 'TeacherExamReviewList',
+        meta: { title: '复核列表', icon: 'vi-carbon:review' }
+      },
+      {
+        path: 'attempts/:attempt_id/review',
+        component: () => import('@/views/Teacher/Exams/ExamAttemptReview.vue'),
+        name: 'TeacherExamAttemptReview',
+        meta: {
+          title: '考试复核',
+          noTagsView: true,
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/teacher/exams/list'
+        }
+      },
+      {
+        path: 'attempts/:attempt_id/submission',
+        component: () => import('@/views/Teacher/Exams/ExamAttemptSubmission.vue'),
+        name: 'TeacherExamAttemptSubmission',
+        meta: {
+          title: '查看提交代码',
+          noTagsView: true,
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/teacher/exams/list'
+        }
+      }
+    ]
+  },
+  {
+    path: '/teacher/grade-preview',
+    component: Layout,
+    name: 'TeacherGradePreviewWrap',
+    meta: {},
+    children: [
+      {
+        path: '',
+        component: () => import('@/views/Teacher/Exams/TeacherGradePreview.vue'),
+        name: 'TeacherGradePreview',
+        meta: { title: '成绩预览', icon: 'vi-carbon:chart-bar' }
+      }
+    ]
+  },
+  {
+    path: '/teacher/containers',
+    component: Layout,
+    name: 'TeacherContainers',
+    meta: {
+      title: t('router.containerManagement'),
+      icon: 'vi-carbon:container-software',
+      alwaysShow: true
+    },
+    children: [
+      {
+        path: 'monitor',
+        component: () => import('@/views/Teacher/Containers/Monitor.vue'),
+        name: 'ContainerMonitor',
+        meta: { title: t('router.containerMonitor'), icon: 'vi-carbon:dashboard' }
+      },
+      {
+        path: 'config',
+        component: () => import('@/views/Teacher/Containers/Config.vue'),
+        name: 'ContainerConfig',
+        meta: { title: '容器配置', icon: 'vi-carbon:settings' }
+      }
+    ]
+  },
+  // ── 学生端路由（各页面提升为一级菜单）──────────────────────────────────────
+  {
+    path: '/student/home',
+    component: Layout,
+    name: 'StudentHomeWrap',
+    meta: {},
+    children: [
+      {
+        path: '',
+        component: () => import('@/views/Student/Home.vue'),
+        name: 'StudentHome',
+        meta: { title: t('router.studentHome'), icon: 'vi-carbon:home', noCache: true, affix: true }
+      }
+    ]
+  },
+  {
+    path: '/student/files',
+    component: Layout,
+    name: 'StudentFilesWrap',
+    meta: {},
+    children: [
+      {
+        path: '',
         component: () => import('@/views/Student/FileManager.vue'),
         name: 'StudentFileManager',
-        meta: {
-          title: '文件管理',
-          icon: 'vi-carbon:folder'
-        }
-      },
+        meta: { title: '文件管理', icon: 'vi-carbon:folder' }
+      }
+    ]
+  },
+  {
+    path: '/student/editor',
+    component: Layout,
+    name: 'StudentEditorWrap',
+    meta: {},
+    children: [
       {
-        path: 'editor',
+        path: '',
         component: () => import('@/views/Student/CodeEditor.vue'),
         name: 'StudentCodeEditor',
-        meta: {
-          title: '代码编辑器',
-          icon: 'vi-carbon:code'
-        }
-      },
-      // 第16期：学生成绩预览
+        meta: { title: '代码编辑器', icon: 'vi-carbon:code' }
+      }
+    ]
+  },
+  {
+    path: '/student/grades',
+    component: Layout,
+    name: 'StudentGradesWrap',
+    meta: {},
+    children: [
       {
-        path: 'grades',
+        path: '',
         component: () => import('@/views/Student/Grades.vue'),
         name: 'StudentGrades',
-        meta: {
-          title: '我的成绩',
-          icon: 'vi-carbon:certificate'
-        }
+        meta: { title: '我的成绩', icon: 'vi-carbon:certificate' }
       },
       {
-        path: 'grades/:exam_id',
+        path: ':exam_id',
         component: () => import('@/views/Student/StudentGradeDetail.vue'),
         name: 'StudentGradeDetail',
         meta: {
@@ -1041,7 +1011,7 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         }
       },
       {
-        path: 'grades/:exam_id/attempt/:attempt_id/code',
+        path: ':exam_id/attempt/:attempt_id/code',
         component: () => import('@/views/Student/StudentAttemptCodeView.vue'),
         name: 'StudentAttemptCodeView',
         meta: {
