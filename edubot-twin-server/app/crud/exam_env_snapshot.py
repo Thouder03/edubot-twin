@@ -14,11 +14,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam, ExamEnvSnapshot
+from app.core import path_policy
 
 logger = logging.getLogger(__name__)
-
-# 考试环境快照存储基路径
-EXAM_ENV_SNAPSHOTS_BASE_DIR = Path("data/exam_env_snapshots").resolve()
 
 
 async def create_env_snapshot(
@@ -46,7 +44,7 @@ async def create_env_snapshot(
     await db.refresh(snapshot)
 
     # 基于 ID 确定 storage_root
-    storage_root = str(EXAM_ENV_SNAPSHOTS_BASE_DIR / str(snapshot.id))
+    storage_root = str(path_policy.EXAM_ENV_SNAPSHOTS_BASE_DIR / str(snapshot.id))
     snapshot.storage_root = storage_root
     Path(storage_root).mkdir(parents=True, exist_ok=True)
     await db.commit()

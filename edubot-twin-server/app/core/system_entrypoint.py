@@ -14,19 +14,18 @@ import stat
 from pathlib import Path
 from typing import Optional
 
+from app.core import path_policy
+
 logger = logging.getLogger(__name__)
 
-# 系统常驻启动脚本存放目录（宿主机，平台维护）
-SYSTEM_SCRIPTS_DIR = Path("data/system").resolve()
-SYSTEM_ENTRYPOINT_PATH = SYSTEM_SCRIPTS_DIR / "system_entrypoint.sh"
+SYSTEM_ENTRYPOINT_PATH = path_policy.SYSTEM_SCRIPTS_DIR / "system_entrypoint.sh"
 
 # 教师启动脚本在容器内的固定挂载路径
 CONTAINER_STARTUP_SCRIPT = "/tmp/startup.sh"
 # 系统常驻启动脚本在容器内的固定挂载路径
 CONTAINER_SYSTEM_ENTRYPOINT = "/tmp/system_entrypoint.sh"
 
-# Sidecar 文件服务宿主机路径和容器内路径
-SIDECAR_SCRIPT_HOST = Path("data/system/agent/mini_file_server.py").resolve()
+# Sidecar 文件服务容器内路径
 SIDECAR_SCRIPT_CONTAINER = "/opt/edubot/agent/mini_file_server.py"
 # Sidecar 监听端口（容器内，仅 Docker bridge 网络可达）
 SIDECAR_PORT = 8010
@@ -149,7 +148,7 @@ def ensure_system_entrypoint() -> Path:
 
     :returns: 脚本文件的绝对路径
     """
-    SYSTEM_SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+    path_policy.SYSTEM_SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
 
     SYSTEM_ENTRYPOINT_PATH.write_text(SYSTEM_ENTRYPOINT_TEMPLATE, encoding="utf-8")
     SYSTEM_ENTRYPOINT_PATH.chmod(
@@ -157,7 +156,7 @@ def ensure_system_entrypoint() -> Path:
     )
     logger.debug(f"系统常驻启动脚本已同步: {SYSTEM_ENTRYPOINT_PATH}")
 
-    return SYSTEM_ENTRYPOINT_PATH
+    return SYSTEM_ENTRYPOINT_PATH.resolve()
 
 
 def create_env_bundle_startup_script(storage_root: str) -> None:
@@ -196,7 +195,7 @@ def get_sidecar_volume() -> Optional[tuple[str, str]]:
 
     :returns: (host_path, container_path) 或 None
     """
-    if not SIDECAR_SCRIPT_HOST.exists():
-        logger.warning(f"Sidecar 脚本不存在: {SIDECAR_SCRIPT_HOST}，跳过挂载")
+    if not path_policy.SIDECAR_SCRIPT_HOST.exists():
+        logger.warning(f"Sidecar 脚本不存在: {path_policy.SIDECAR_SCRIPT_HOST}，跳过挂载")
         return None
-    return str(SIDECAR_SCRIPT_HOST), SIDECAR_SCRIPT_CONTAINER
+    return str(path_policy.SIDECAR_SCRIPT_HOST.resolve()), SIDECAR_SCRIPT_CONTAINER

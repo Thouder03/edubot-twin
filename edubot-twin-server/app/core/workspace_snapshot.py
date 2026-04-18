@@ -19,10 +19,9 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from app.core import path_policy
 
-# 快照存储根目录（与 crud/ 下各资源目录保持一致，使用相对路径 resolve）
-SUBMISSIONS_ROOT = Path("data/exam_submissions").resolve()
+logger = logging.getLogger(__name__)
 
 # 单快照大小上限（字节）
 MAX_SNAPSHOT_BYTES = 100 * 1024 * 1024  # 100MB
@@ -37,13 +36,12 @@ class SnapshotError(Exception):
 
 def _get_submission_path(attempt_id: int) -> Path:
     """返回 attempt 对应的快照目录路径"""
-    return SUBMISSIONS_ROOT / str(attempt_id)
+    return path_policy.EXAM_SUBMISSIONS_ROOT / str(attempt_id)
 
 
 def get_artifacts_path(attempt_id: int) -> Path:
     """返回 attempt 对应的 artifacts 目录路径"""
-    artifacts_root = Path("data/exam_artifacts").resolve()
-    return artifacts_root / str(attempt_id)
+    return path_policy.EXAM_ARTIFACTS_ROOT / str(attempt_id)
 
 
 def _calculate_dir_size(path: Path) -> int:

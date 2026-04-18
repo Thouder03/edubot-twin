@@ -31,9 +31,11 @@ from app.core.final_score_calculator import calculate_final_score, get_scoring_m
 from app.core.workspace_snapshot import SnapshotError, create_code_snapshot, get_artifacts_path
 from app.crud import exam_attempt as crud_attempt
 from app.crud import container as crud_container
-from app.crud.exam_eval_script import EXAM_EVAL_SCRIPTS_BASE_DIR
-from app.crud.exam_env_snapshot import EXAM_ENV_SNAPSHOTS_BASE_DIR
-from app.crud.exam_file_snapshot import EXAM_FILE_SNAPSHOTS_BASE_DIR
+from app.core.path_policy import (
+    EXAM_EVAL_SCRIPTS_BASE_DIR,
+    EXAM_ENV_SNAPSHOTS_BASE_DIR,
+    EXAM_FILE_SNAPSHOTS_BASE_DIR,
+)
 from app.db.database import AsyncSessionLocal
 from app.models.exam_attempt import (
     EvidenceEventType,
@@ -128,26 +130,25 @@ def build_docker_config(attempt, rosbridge_port: Optional[int] = None) -> Sideca
 
     # 学生代码快照（只读）
     if submission_path:
-        volumes[submission_path] = {"bind": "/opt/submission", "mode": "ro"}
+        volumes[str(Path(submission_path).resolve())] = {"bind": "/opt/submission", "mode": "ro"}
 
     # artifacts（读写，脚本写入 result.json）
     # 目录已由 workspace_snapshot.create_code_snapshot 创建，此处只挂载
-    artifacts_host = artifacts_path
-    volumes[artifacts_host] = {"bind": "/opt/artifacts", "mode": "rw"}
+    volumes[str(Path(artifacts_path).resolve())] = {"bind": "/opt/artifacts", "mode": "rw"}
 
     # 教师测评脚本（只读，若配置了 eval_script_id）
     if eval_script_id:
-        eval_script_path = str(EXAM_EVAL_SCRIPTS_BASE_DIR / str(eval_script_id))
+        eval_script_path = str((EXAM_EVAL_SCRIPTS_BASE_DIR / str(eval_script_id)).resolve())
         volumes[eval_script_path] = {"bind": "/opt/evaluate", "mode": "ro"}
 
     # 考试环境快照（只读，若配置了 env_snapshot_id）
     if env_snapshot_id:
-        env_path = str(EXAM_ENV_SNAPSHOTS_BASE_DIR / str(env_snapshot_id))
+        env_path = str((EXAM_ENV_SNAPSHOTS_BASE_DIR / str(env_snapshot_id)).resolve())
         volumes[env_path] = {"bind": "/opt/env", "mode": "ro"}
 
     # 考试文件快照（只读，若配置了 file_snapshot_id）
     if file_snapshot_id:
-        file_path = str(EXAM_FILE_SNAPSHOTS_BASE_DIR / str(file_snapshot_id))
+        file_path = str((EXAM_FILE_SNAPSHOTS_BASE_DIR / str(file_snapshot_id)).resolve())
         volumes[file_path] = {"bind": "/opt/files", "mode": "ro"}
 
     # 约定环境变量（SDD §7.1）
@@ -178,7 +179,7 @@ def build_docker_config(attempt, rosbridge_port: Optional[int] = None) -> Sideca
         cpu_quota=int(cpu_limit * 100000),
         mem_limit=f"{memory_mb}m",
         attempt_id=attempt_id,
-        artifacts_path=artifacts_host,
+        artifacts_path=artifacts_path,
     )
 
 

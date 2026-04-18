@@ -16,12 +16,10 @@ from typing import Any, Optional
 from docker.errors import NotFound, APIError
 
 from app.core.docker_client import get_docker_client, DockerConnectionError  # noqa: F401
+from app.core import path_policy
 
 logger = logging.getLogger(__name__)
 
-# 学生工作区根目录
-STUDENTS_DATA_DIR = Path("data/students").resolve()
-TEMPLATES_DIR = Path("data/templates/ros_packages").resolve()
 EDUBOT_NETWORK = "edubot_network"
 
 # 专用线程池：Docker 操作可能耗时较长，独立于默认线程池
@@ -49,16 +47,16 @@ def create_student_workspace(student_id: int) -> Path:
     Returns:
         工作区直径路径 (Path 对象)
     """
-    workspace = STUDENTS_DATA_DIR / str(student_id) / "workspace"
+    workspace = path_policy.STUDENTS_DATA_ROOT / str(student_id) / "workspace"
     
     # 创建标准目录结构
     for subdir in ["src", "launch", "config", "scripts"]:
         (workspace / subdir).mkdir(parents=True, exist_ok=True)
     
     # 复制模板文件（可选）
-    if TEMPLATES_DIR.exists():
+    if path_policy.TEMPLATES_DIR.exists():
         import shutil
-        for item in TEMPLATES_DIR.iterdir():
+        for item in path_policy.TEMPLATES_DIR.iterdir():
             dest = workspace / "src" / item.name
             if not dest.exists():
                 try:
@@ -180,13 +178,13 @@ async def create_container(
         volumes["/tmp/.X11-unix"] = {"bind": "/tmp/.X11-unix", "mode": "rw"}
         # 学生工作区
         if workspace_path and workspace_path.exists():
-            volumes[str(workspace_path)] = {
+            volumes[str(workspace_path.resolve())] = {
                 "bind": "/home/student/workspace",
                 "mode": "rw",
             }
         # ROS 模板目录（只读）
-        if TEMPLATES_DIR.exists():
-            volumes[str(TEMPLATES_DIR)] = {"bind": "/opt/templates", "mode": "ro"}
+        if path_policy.TEMPLATES_DIR.exists():
+            volumes[str(path_policy.TEMPLATES_DIR.resolve())] = {"bind": "/opt/templates", "mode": "ro"}
 
         # 系统常驻启动脚本（10-S1-7b）
         system_entrypoint_host = str(ensure_system_entrypoint())

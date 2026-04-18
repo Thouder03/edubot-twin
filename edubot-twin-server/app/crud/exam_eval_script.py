@@ -14,11 +14,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam, ExamEvalScript, ExamEvalScriptValidateStatus
+from app.core import path_policy
 
 logger = logging.getLogger(__name__)
-
-# 测评脚本包存储基路径
-EXAM_EVAL_SCRIPTS_BASE_DIR = Path("data/exam_eval_scripts").resolve()
 
 
 async def create_eval_script(
@@ -46,7 +44,7 @@ async def create_eval_script(
     await db.refresh(script)
 
     # 基于 ID 确定 storage_root
-    storage_root = str(EXAM_EVAL_SCRIPTS_BASE_DIR / str(script.id))
+    storage_root = str(path_policy.EXAM_EVAL_SCRIPTS_BASE_DIR / str(script.id))
     script.storage_root = storage_root
     Path(storage_root).mkdir(parents=True, exist_ok=True)
     await db.commit()

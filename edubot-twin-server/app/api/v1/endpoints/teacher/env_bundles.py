@@ -55,8 +55,7 @@ from app.services.bundle_file_service import (
     FileConflictError,
 )
 
-# 环境包存储根目录基路径
-ENV_BUNDLES_BASE_DIR = Path("data/env_bundles").resolve()
+from app.core import path_policy
 
 # startup.sh 是受保护文件，禁止删除
 PROTECTED_PATHS = {"startup.sh"}
@@ -177,7 +176,7 @@ async def create_env_bundle(
         created_by=teacher_id,
     )
     # 基于 ID 确定 storage_root 并更新
-    storage_root = str(ENV_BUNDLES_BASE_DIR / str(env_bundle.id))
+    storage_root = str(path_policy.ENV_BUNDLES_BASE_DIR / str(env_bundle.id))
     env_bundle.storage_root = storage_root
     await db.commit()
     await db.refresh(env_bundle)

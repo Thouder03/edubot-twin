@@ -30,12 +30,12 @@ from pydantic import BaseModel
 from app.schemas.common import ApiResponse
 
 from app.core.security import get_current_student_id
+from app.core import path_policy
 
 router = APIRouter()
 
 # ─── 常量 ───────────────────────────────────────────────────────────────────
 
-STUDENTS_DATA_DIR = Path("data/students").resolve()
 MAX_FILE_SIZE = 10 * 1024 * 1024       # 10 MB
 MAX_TOTAL_SIZE = 100 * 1024 * 1024     # 100 MB
 
@@ -44,7 +44,7 @@ MAX_TOTAL_SIZE = 100 * 1024 * 1024     # 100 MB
 
 def get_workspace(student_id: int) -> Path:
     """返回学生工作区根目录"""
-    return STUDENTS_DATA_DIR / str(student_id) / "workspace"
+    return path_policy.STUDENTS_DATA_ROOT / str(student_id) / "workspace"
 
 
 def validate_path(workspace: Path, user_path: str) -> Path:

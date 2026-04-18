@@ -17,6 +17,8 @@ from typing import Optional
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import path_policy
+
 from app.models.exam_attempt import (
     ExamAttempt,
     ExamAttemptStatus,
@@ -329,11 +331,11 @@ async def count_attempts_for_quota(
 
 
 def _default_submission_root(attempt_id: int) -> Path:
-    return Path("data/exam_submissions").resolve() / str(attempt_id)
+    return path_policy.EXAM_SUBMISSIONS_ROOT / str(attempt_id)
 
 
 def _default_artifacts_root(attempt_id: int) -> Path:
-    return Path("data/exam_artifacts").resolve() / str(attempt_id)
+    return path_policy.EXAM_ARTIFACTS_ROOT / str(attempt_id)
 
 
 def _safe_remove_tree(path: Path) -> None:

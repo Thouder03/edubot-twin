@@ -47,8 +47,7 @@ from app.services.bundle_file_service import (
     FileConflictError,
 )
 
-# 文件包存储根目录基路径
-FILE_BUNDLES_BASE_DIR = Path("data/file_bundles").resolve()
+from app.core import path_policy
 
 router = APIRouter()
 
@@ -94,7 +93,7 @@ async def create_file_bundle(
         raise
 
     # 基于 ID 确定 storage_root 并更新
-    storage_root = str(FILE_BUNDLES_BASE_DIR / str(bundle.id))
+    storage_root = str(path_policy.FILE_BUNDLES_BASE_DIR / str(bundle.id))
     Path(storage_root).mkdir(parents=True, exist_ok=True)
     bundle.storage_root = storage_root
     await db.commit()
