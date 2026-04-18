@@ -76,16 +76,22 @@ class ContainerStatusResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_orm_with_host(cls, obj: object) -> "ContainerStatusResponse":
-        """从 ORM 对象构建，自动计算 URL"""
-        host = os.getenv("SERVER_HOST", "localhost")
+    def from_orm_with_host(
+        cls,
+        obj: object,
+        host: Optional[str] = None,
+        gz_scheme: str = "http",
+        ros_scheme: str = "ws",
+    ) -> "ContainerStatusResponse":
+        """从 ORM 对象构建，自动计算 URL。"""
+        resolved_host = host or os.getenv("SERVER_HOST", "localhost")
         gzbridge_url = (
-            f"http://{host}:{obj.gzbridge_port}"  # type: ignore[union-attr]
+            f"{gz_scheme}://{resolved_host}:{obj.gzbridge_port}"  # type: ignore[union-attr]
             if obj.gzbridge_port  # type: ignore[union-attr]
             else None
         )
         rosbridge_url = (
-            f"ws://{host}:{obj.rosbridge_port}"  # type: ignore[union-attr]
+            f"{ros_scheme}://{resolved_host}:{obj.rosbridge_port}"  # type: ignore[union-attr]
             if obj.rosbridge_port  # type: ignore[union-attr]
             else None
         )

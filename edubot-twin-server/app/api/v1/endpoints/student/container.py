@@ -4,7 +4,7 @@
 路由前缀：/api/v1/students/container
 """
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -23,12 +23,32 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _extract_public_host_and_scheme(request: Request) -> tuple[str, str, str]:
+    """优先使用反向代理头，回退到当前请求 host/scheme。"""
+    forwarded_host = request.headers.get("x-forwarded-host", "")
+    host = (forwarded_host.split(",")[0] if forwarded_host else request.headers.get("host", "")).strip()
+
+    # host 里可能带端口（例如 127.0.0.1:3000），这里去掉端口，只保留主机名
+    if host.startswith("[") and "]" in host:
+        host = host[1 : host.index("]")]
+    elif host.count(":") == 1:
+        host = host.split(":", 1)[0]
+
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    http_proto = (forwarded_proto.split(",")[0] if forwarded_proto else request.url.scheme).strip().lower()
+    gz_scheme = "https" if http_proto == "https" else "http"
+    ros_scheme = "wss" if http_proto == "https" else "ws"
+
+    return host or "localhost", gz_scheme, ros_scheme
+
+
 @router.get(
     "/mine",
     response_model=ApiResponse[Optional[ContainerStatusResponse]],
     summary="获取当前用户的容器信息",
 )
 async def get_my_container(
+    request: Request,
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -36,7 +56,16 @@ async def get_my_container(
     container = await crud_container.get_container_by_user(db, user_id)
     if not container:
         return ApiResponse(code=0, data=None, message="尚未分配容器")
-    return ApiResponse(code=0, data=ContainerStatusResponse.from_orm_with_host(container))
+    host, gz_scheme, ros_scheme = _extract_public_host_and_scheme(request)
+    return ApiResponse(
+        code=0,
+        data=ContainerStatusResponse.from_orm_with_host(
+            container,
+            host=host,
+            gz_scheme=gz_scheme,
+            ros_scheme=ros_scheme,
+        ),
+    )
 
 
 @router.post(
@@ -85,6 +114,7 @@ async def request_container(
     summary="启动已停止的容器",
 )
 async def start_my_container(
+    request: Request,
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -92,8 +122,17 @@ async def start_my_container(
     container = await crud_container.get_container_by_user(db, user_id)
     if not container:
         return ApiResponse(code=0, data=None, message="尚未分配容器")
+    host, gz_scheme, ros_scheme = _extract_public_host_and_scheme(request)
     if container.status == ContainerStatus.RUNNING:
-        return ApiResponse(code=0, data=ContainerStatusResponse.from_orm_with_host(container))
+        return ApiResponse(
+            code=0,
+            data=ContainerStatusResponse.from_orm_with_host(
+                container,
+                host=host,
+                gz_scheme=gz_scheme,
+                ros_scheme=ros_scheme,
+            ),
+        )
     if container.status not in (ContainerStatus.STOPPED,):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -101,7 +140,15 @@ async def start_my_container(
         )
 
     container = await crud_container.start_container(db, container)
-    return ApiResponse(code=0, data=ContainerStatusResponse.from_orm_with_host(container))
+    return ApiResponse(
+        code=0,
+        data=ContainerStatusResponse.from_orm_with_host(
+            container,
+            host=host,
+            gz_scheme=gz_scheme,
+            ros_scheme=ros_scheme,
+        ),
+    )
 
 
 @router.post(
@@ -141,6 +188,7 @@ async def destroy_and_recreate(
     summary="心跳上报",
 )
 async def heartbeat(
+    request: Request,
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -157,7 +205,13 @@ async def heartbeat(
     await crud_container.update_heartbeat(db, container)
     await db.refresh(container)
 
-    data = ContainerStatusResponse.from_orm_with_host(container)
+    host, gz_scheme, ros_scheme = _extract_public_host_and_scheme(request)
+    data = ContainerStatusResponse.from_orm_with_host(
+        container,
+        host=host,
+        gz_scheme=gz_scheme,
+        ros_scheme=ros_scheme,
+    )
     data.current_version_id = container.current_version_id
     return ApiResponse(code=0, data=data)
 
@@ -168,6 +222,7 @@ async def heartbeat(
     summary="停止我的容器",
 )
 async def stop_my_container(
+    request: Request,
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -175,16 +230,27 @@ async def stop_my_container(
     container = await crud_container.get_container_by_user(db, user_id)
     if not container:
         raise HTTPException(status_code=404, detail="尚未分配容器")
+    host, gz_scheme, ros_scheme = _extract_public_host_and_scheme(request)
     if container.status != ContainerStatus.RUNNING:
         return ApiResponse(
             code=0,
-            data=ContainerStatusResponse.from_orm_with_host(container)
+            data=ContainerStatusResponse.from_orm_with_host(
+                container,
+                host=host,
+                gz_scheme=gz_scheme,
+                ros_scheme=ros_scheme,
+            ),
         )
 
     container = await crud_container.stop_container(db, container)
     return ApiResponse(
         code=0,
-        data=ContainerStatusResponse.from_orm_with_host(container)
+        data=ContainerStatusResponse.from_orm_with_host(
+            container,
+            host=host,
+            gz_scheme=gz_scheme,
+            ros_scheme=ros_scheme,
+        ),
     )
 
 

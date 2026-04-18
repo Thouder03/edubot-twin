@@ -30,10 +30,9 @@ const { t } = useI18n()
 // ---------- 面板设置集成 ----------
 const { registerPanel, unregisterPanel, updateSettingsTree, state: panelState } = usePanelState()
 
-// ---------- ROS 连接配置（从 RendererConfig.connection 读取，统一持久化）----------
-// 等价于 lichtblick 的 context.initialState 恢复逻辑
-const rosUrl = computed(() => renderer.value?.config.connection?.rosUrl ?? 'ws://localhost:9090')
-const autoConnect = computed(() => renderer.value?.config.connection?.autoConnect ?? false)
+// ---------- ROS 连接配置（从 RendererConfig.connection 同步到响应式 ref）----------
+// 注意：renderer 是 shallowRef，不能直接依赖 renderer.value.config 的深层响应式
+const rosUrl = ref('ws://localhost:9090')
 
 // ---------- Composables ----------
 const {
@@ -62,15 +61,38 @@ const {
 // 当后端分配容器后，自动将 rosbridge_url 注入 Renderer 配置，无需手动修改设置
 const containerRosUrl = inject<Ref<string | null>>('containerRosUrl', ref(null))
 
+function applyContainerRosUrl(newUrl: string | null) {
+  if (!newUrl || !renderer.value) return
+
+  const currentUrl = renderer.value.config.connection?.rosUrl
+  if (currentUrl !== newUrl) {
+    renderer.value.updateConfig((draft) => {
+      draft.connection = { ...(draft.connection ?? {}), rosUrl: newUrl } as any
+    })
+  }
+
+  // 无论 RendererConfig 是否已是该值，都要同步到响应式 rosUrl
+  // 避免“配置已正确但连接状态仍是旧 URL”的首次进入时序问题
+  if (rosUrl.value !== newUrl) {
+    rosUrl.value = newUrl
+  }
+  console.info('[ROS3D] 已自动注入容器 rosbridge_url:', newUrl)
+}
+
+// 场景1：containerRosUrl 在 renderer 就绪后变化
 watch(
   containerRosUrl,
   (newUrl) => {
-    if (newUrl && renderer.value) {
-      renderer.value.updateConfig((draft) => {
-        draft.connection = { ...(draft.connection ?? {}), rosUrl: newUrl } as any
-      })
-      console.info('[ROS3D] 已自动注入容器 rosbridge_url:', newUrl)
-    }
+    applyContainerRosUrl(newUrl)
+  },
+  { immediate: true }
+)
+
+// 场景2：containerRosUrl 已有值，但 renderer 晚于它初始化（首次进入常见）
+watch(
+  () => renderer.value,
+  () => {
+    applyContainerRosUrl(containerRosUrl.value)
   },
   { immediate: true }
 )
@@ -117,18 +139,23 @@ watch(sceneReady, (ready) => {
   r.on('configChange', (changedRenderer) => {
     currentPublishType.value = changedRenderer.config.publish?.type ?? 'pose'
     updateSubscriptions(changedRenderer.config.topics)
+
+    // renderer.config 深层字段不是 Vue 响应式，手动桥接到 rosUrl ref
+    const nextRosUrl = changedRenderer.config.connection?.rosUrl ?? 'ws://localhost:9090'
+    if (rosUrl.value !== nextRosUrl) {
+      rosUrl.value = nextRosUrl
+    }
   })
 })
 
-// 监听 configChange：当 rosUrl 变化时更新连接 URL
-// （RendererConfig 的持久化已由 useRenderer 的 debouncedSave 处理）
+// renderer 实例切换时，同步一次初始 rosUrl
 watch(
-  () => renderer.value?.config.connection?.rosUrl,
-  (newUrl) => {
-    if (newUrl) {
-      // useRosConnection 内部 watch rosUrl，自动响应
-    }
-  }
+  () => renderer.value,
+  (r) => {
+    if (!r) return
+    rosUrl.value = r.config.connection?.rosUrl ?? 'ws://localhost:9090'
+  },
+  { immediate: true }
 )
 
 // ---------- 模板引用 ----------
@@ -451,15 +478,19 @@ onMounted(() => {
   nextTick(() => {
     if (canvasContainer.value) {
       mountRenderer(canvasContainer.value)
+
+      // renderer 创建后立即再尝试一次注入（覆盖首次进入时序）
+      applyContainerRosUrl(containerRosUrl.value)
+
       // 首次生成设置树
       refreshSettingsTree()
+
+      // 自动连接必须放在 mount 后判断
+      if (renderer.value?.config.connection?.autoConnect) {
+        connect()
+      }
     }
   })
-
-  // 自动连接
-  if (autoConnect.value) {
-    connect()
-  }
 })
 
 onBeforeUnmount(() => {
