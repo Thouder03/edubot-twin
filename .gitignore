@@ -4,3 +4,5 @@ edubot.db
 edubot-twin-web/auto-imports.d.ts
 edubot-twin-web/pnpm-lock.yaml
 edubot-twin-web/components.d.ts
+logs/
+scripts/__pycache__/
