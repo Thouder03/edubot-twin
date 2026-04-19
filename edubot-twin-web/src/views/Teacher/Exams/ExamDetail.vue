@@ -62,7 +62,8 @@ const POLICY_DOCS: Record<string, { label: string; fields: { name: string; desc:
       {
         name: 'lock_panels_during_exam',
         desc: '考试进行中是否锁定面板操作，默认 false'
-      }
+      },
+      { name: 'allowed_panels', desc: '允许显示的面板列表' }
     ]
   },
   scoring_policy: {

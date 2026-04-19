@@ -23,12 +23,20 @@ import { availablePanels } from '../config/predefined-layouts'
 import SimControlBar from './SimControlBar.vue'
 import { confirmExit } from '../composables/useExitConfirm'
 
+interface PanelItem {
+  type: string
+  label: string
+}
+
 const props = defineProps<{
   examRunInfo: ExamRunInfo | null
   attempt: AttemptDetail | null
   starting: boolean
   aborting: boolean
+  panelList?: PanelItem[]
 }>()
+
+const visiblePanels = computed(() => props.panelList ?? availablePanels)
 
 const emit = defineEmits<{
   (e: 'start'): void
@@ -229,7 +237,7 @@ async function handleViewLogs(silent = false) {
         trigger="click"
         @command="
           (cmd: string) => {
-            const panel = availablePanels.find((p) => p.type === cmd)
+            const panel = visiblePanels.find((p) => p.type === cmd)
             if (panel) emit('addPanel', panel.type, panel.label)
           }
         "
@@ -240,11 +248,7 @@ async function handleViewLogs(silent = false) {
         </ElButton>
         <template #dropdown>
           <ElDropdownMenu>
-            <ElDropdownItem
-              v-for="panel in availablePanels"
-              :key="panel.type"
-              :command="panel.type"
-            >
+            <ElDropdownItem v-for="panel in visiblePanels" :key="panel.type" :command="panel.type">
               {{ panel.label }}
             </ElDropdownItem>
           </ElDropdownMenu>

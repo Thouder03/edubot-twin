@@ -27,6 +27,8 @@ interface PanelPolicy {
   keyboard_control_enabled?: boolean
   manual_restart_enabled?: boolean
   allow_debug_during_exam?: boolean
+  lock_panels_during_exam?: boolean
+  allowed_panels?: string[]
   [key: string]: unknown
 }
 
@@ -54,6 +56,11 @@ export function usePanelPolicy(
 
     const policy = panelPolicyJson.value as PanelPolicy
 
+    // allowed_panels 白名单（非空时生效）
+    const allowedPanels = policy.allowed_panels
+    const whitelist =
+      Array.isArray(allowedPanels) && allowedPanels.length > 0 ? new Set(allowedPanels) : null
+
     // 收集所有被明确 disable 的面板 key
     const disabledKeys = new Set<string>()
     for (const [policyKey, panelKey] of Object.entries(POLICY_KEY_TO_PANEL)) {
@@ -66,9 +73,9 @@ export function usePanelPolicy(
 
     const filtered: Record<string, VueComponent> = {}
     for (const [key, component] of Object.entries(fullMap)) {
-      if (!disabledKeys.has(key)) {
-        filtered[key] = component
-      }
+      if (disabledKeys.has(key)) continue
+      if (whitelist !== null && !whitelist.has(key)) continue
+      filtered[key] = component
     }
     return filtered
   })
@@ -96,7 +103,8 @@ export function usePanelPolicy(
     () =>
       isExamMode.value &&
       attempt.value !== null &&
-      ['running', 'scoring'].includes(attempt.value.status)
+      ['running', 'scoring'].includes(attempt.value.status) &&
+      !!(panelPolicyJson.value as PanelPolicy).lock_panels_during_exam
   )
 
   /**

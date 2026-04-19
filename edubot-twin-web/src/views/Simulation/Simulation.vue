@@ -65,6 +65,14 @@ const panelPolicyJson = computed<Record<string, unknown>>(
 )
 const panelPolicy = usePanelPolicy(isExamMode, examMode.attempt, panelPolicyJson)
 
+// 考试模式下"添加面板"菜单可见列表（与 filteredPanelRegistry 保持一致）
+const examPanelList = computed(() =>
+  Object.entries(panelPolicy.filteredPanelRegistry.value).map(([type, entry]) => ({
+    type,
+    label: entry.label
+  }))
+)
+
 // 向子面板提供考试锁定状态
 provide('isExamLocked', panelPolicy.isExamLocked)
 provide('allowDebugDuringExam', panelPolicy.allowDebugDuringExam)
@@ -517,6 +525,7 @@ async function handleBack(_mode: 'temporary' | 'stopAndExit') {
       :attempt="examMode.attempt.value"
       :starting="examMode.starting.value"
       :aborting="examMode.aborting.value"
+      :panel-list="examPanelList"
       @start="handleExamStart"
       @abort="handleAbort"
       @back="handleBack"
@@ -527,6 +536,7 @@ async function handleBack(_mode: 'temporary' | 'stopAndExit') {
     <SimulationHeader
       v-else
       :experiment-context="experimentContext"
+      :panel-list="isExamMode ? examPanelList : undefined"
       @layout-change="handleLayoutChange"
       @add-panel="handleAddPanel"
       @back="handleBack"

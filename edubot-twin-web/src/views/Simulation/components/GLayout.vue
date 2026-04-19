@@ -14,7 +14,8 @@ import {
   onMounted,
   onBeforeUnmount,
   nextTick,
-  type Component as VueComponent
+  type Component as VueComponent,
+  computed
 } from 'vue'
 import {
   GoldenLayout,
@@ -45,7 +46,7 @@ const emit = defineEmits<{
 
 // ---------- 组件映射 ----------
 // 优先使用父组件传入的过滤 map，否则用完整 map
-const componentMap: Record<string, VueComponent> = props.overrideComponentMap ?? buildComponentMap()
+const componentMap = computed(() => props.overrideComponentMap ?? buildComponentMap())
 
 // ---------- 状态 ----------
 const glContainerRef = ref<HTMLElement>()

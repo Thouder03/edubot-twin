@@ -45,7 +45,11 @@ async def create_exam(
             "launch_args": {}
         },
         panel_policy_json={
-            "lock_panels_during_exam": False
+            "lock_panels_during_exam": False,
+            "allowed_panels": [
+                "ROS3DViewer", "GzWebViewer", "KeyboardControl",
+                "ContainerTerminal", "WorkspacePanel", "RosoutPanel", "CameraPanel"
+            ]
         },
         scoring_policy_json={
             "scoring_mode": "objective_only",
