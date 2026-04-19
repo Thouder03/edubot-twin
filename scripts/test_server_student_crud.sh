@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 后端学生 CRUD 回归测试脚本
+# 使用方式：bash scripts/test_server_student_crud.sh
+
+cd edubot-twin-server
+../.venv/bin/python -m pytest tests/test_student_crud.py -q

@@ -3,6 +3,7 @@
 """
 import csv
 import io
+import shutil
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -18,6 +19,7 @@ from app.schemas.student import (
 from app.crud import student as student_crud
 from app.crud import container as container_crud
 from app.core.docker_client import get_docker_client
+from app.core import path_policy
 
 router = APIRouter()
 
@@ -176,14 +178,14 @@ async def delete_student(
     db: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_teacher)
 ):
-    """删除学生（级联删除容器记录，容错清理 Docker）"""
+    """删除学生（级联删除容器记录，容错清理 Docker，并强制删除学生工作区）"""
     student = await student_crud.get_student(db, student_id)
     if not student:
         raise HTTPException(status_code=404, detail="学生不存在")
-    
+
     containers = await container_crud.get_containers_by_user(db, student_id)
     docker_errors = []
-    
+
     # 容错清理 Docker 容器
     try:
         docker_client = get_docker_client()
@@ -196,16 +198,27 @@ async def delete_student(
                     docker_errors.append(f"容器 {container.container_id}: {str(e)}")
     except Exception as e:
         docker_errors.append(f"Docker 连接失败: {str(e)}")
-    
+
+    # 删除学生工作区（失败则阻断数据库删除）
+    workspace_deleted = False
+    workspace_dir = path_policy.get_student_workspace_host_dir(student_id)
+    if workspace_dir.exists():
+        try:
+            shutil.rmtree(workspace_dir)
+            workspace_deleted = True
+        except Exception as e:
+            raise ApiResponse(data=f"工作区删除失败: {str(e)}" , message=f"工作区删除失败: {str(e)}")
+
     # 数据库删除（级联删除容器记录）
     await student_crud.delete_student(db, student_id)
-    
+
     result = {
         "deleted": True,
         "student_id": student_id,
-        "containers_deleted": len(containers)
+        "containers_deleted": len(containers),
+        "workspace_deleted": workspace_deleted,
     }
     if docker_errors:
         result["docker_warnings"] = docker_errors
-    
+
     return ApiResponse(data=result)
