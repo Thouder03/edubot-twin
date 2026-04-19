@@ -311,12 +311,10 @@ async def count_attempts_for_quota(
     exam_id: int,
     runtime_policy: dict,
 ) -> int:
-    """统计消耗配额的尝试数目（包括 error）。"""
+    """统计消耗配额的尝试数目（不包括 error）。"""
     statuses = [
         ExamAttemptStatus.COMPLETED,
         ExamAttemptStatus.REVIEWED,
-        ExamAttemptStatus.ABORTED,
-        ExamAttemptStatus.ERROR,
     ]
     result = await db.execute(
         select(func.count()).select_from(ExamAttempt).where(
