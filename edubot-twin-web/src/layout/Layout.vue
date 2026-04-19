@@ -2,7 +2,6 @@
 import { computed, defineComponent, unref } from 'vue'
 import { useAppStore } from '@/store/modules/app'
 import { Backtop } from '@/components/Backtop'
-import { Setting } from '@/components/Setting'
 import { useRenderLayout } from './components/useRenderLayout'
 import { useDesign } from '@/hooks/web/useDesign'
 
@@ -19,8 +18,6 @@ const mobile = computed(() => appStore.getMobile)
 const collapse = computed(() => appStore.getCollapse)
 
 const layout = computed(() => appStore.getLayout)
-
-const hideSetting = computed(() => import.meta.env.VITE_HIDE_GLOBAL_SETTING === 'true')
 
 const handleClickOutside = () => {
   appStore.setCollapse(true)
@@ -57,8 +54,6 @@ export default defineComponent({
         {renderLayout()}
 
         <Backtop></Backtop>
-
-        {!unref(hideSetting) && <Setting></Setting>}
       </section>
     )
   }
