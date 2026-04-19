@@ -45,7 +45,9 @@ from app.models.exam_attempt import (
 logger = logging.getLogger(__name__)
 
 # 专用线程池（Sidecar Docker 操作均为同步阻塞调用）
-_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sidecar")
+# 每个 sidecar 在等待容器退出期间持续占用 1 个线程（container.wait() 阻塞），
+# 因此 max_workers 必须 >= 预期最大并发考试数，否则新考试会排队等待线程释放。
+_executor = ThreadPoolExecutor(max_workers=50, thread_name_prefix="sidecar")
 
 # Sidecar 默认镜像（可由 sidecar_policy.image 覆盖）
 DEFAULT_SIDECAR_IMAGE = "sidecar-runner:v1"
