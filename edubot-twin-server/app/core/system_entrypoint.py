@@ -122,7 +122,7 @@ fi
 
 # ── 3. 启动 rosbridge_server（后台运行）─────────────────────
 echo "[system_entrypoint] 正在启动 rosbridge (port=${ROSBRIDGE_PORT})..."
-roslaunch rosbridge_server rosbridge_websocket.launch port:=${ROSBRIDGE_PORT} &
+nice -n 10 roslaunch rosbridge_server rosbridge_websocket.launch port:=${ROSBRIDGE_PORT} &
 ROSBRIDGE_PID=$!
 sleep 2
 
