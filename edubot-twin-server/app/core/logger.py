@@ -6,16 +6,39 @@
 
 import logging
 import json
+import os
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Optional, Dict, Any
 
-# 配置日志格式
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s'
-)
+# 获取日志目录（项目根目录下的 logs/）
+# 当前文件路径：edubot-twin-server/app/core/logger.py
+# 目标路径：edubot-twin/logs/
+LOG_DIR = Path(__file__).resolve().parents[3] / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "edubot.log"
 
+# 配置日志记录器
 logger = logging.getLogger("edubot-twin")
+logger.setLevel(logging.INFO)
+
+# 避免重复配置 Handler
+if not logger.handlers:
+    # 1. 终端处理器（标准输出）
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter('%(message)s'))
+    logger.addHandler(console_handler)
+
+    # 2. 文件处理器（轮转存储，单文件最大 10MB，保留 5 个备份）
+    file_handler = RotatingFileHandler(
+        LOG_FILE,
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setFormatter(logging.Formatter('%(message)s'))
+    logger.addHandler(file_handler)
 
 
 def log_container_event(
