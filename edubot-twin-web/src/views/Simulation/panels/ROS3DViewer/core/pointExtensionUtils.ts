@@ -38,7 +38,7 @@ export type LayerSettingsPointExtension = BaseSettings &
     decayTime: number
   }
 
-const DEFAULT_POINT_SIZE = 1.5
+const DEFAULT_POINT_SIZE = 3.5
 const DEFAULT_POINT_SHAPE = 'circle'
 const DEFAULT_COLOR_MAP = 'turbo'
 const DEFAULT_FLAT_COLOR = { r: 1, g: 1, b: 1, a: 1 }

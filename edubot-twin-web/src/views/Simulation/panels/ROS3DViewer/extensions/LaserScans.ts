@@ -23,7 +23,11 @@ import {
   RenderObjectHistory,
   createPickingMaterial
 } from '../core/pointExtensionUtils'
-import { colorHasTransparency, getColorConverter } from '../core/colorMode'
+import {
+  colorFieldComputedPrefix,
+  colorHasTransparency,
+  getColorConverter
+} from '../core/colorMode'
 import { DynamicBufferGeometry } from '../core/DynamicBufferGeometry'
 import type { AnyRendererSubscription, IRenderer } from '../core/IRenderer'
 import { BaseUserData, Renderable } from '../core/Renderable'
@@ -51,7 +55,12 @@ function emptyPose(): Pose {
 
 type LayerSettingsLaserScan = LayerSettingsPointExtension
 
-const DEFAULT_SETTINGS = DEFAULT_POINT_SETTINGS
+/** LaserScan 专属默认设置：着色字段默认为 distance（colormap 模式），更直观呈现距离信息 */
+const DEFAULT_SETTINGS: LayerSettingsPointExtension = {
+  ...DEFAULT_POINT_SETTINGS,
+  colorMode: 'colormap',
+  colorField: colorFieldComputedPrefix + 'distance'
+}
 
 /** 归一化后的 LaserScan 中间表示 */
 type NormalizedLaserScan = {
