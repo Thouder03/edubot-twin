@@ -4,6 +4,7 @@
 路由前缀：/api/v1/students/container
 """
 import logging
+import os
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +25,15 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_public_host_and_scheme(request: Request) -> tuple[str, str, str]:
-    """优先使用反向代理头，回退到当前请求 host/scheme。"""
+    """优先使用反向代理头，回退到当前请求 host/scheme。
+
+    降级优先级：
+      X-Forwarded-Host > Host 请求头 > SERVER_HOST 环境变量 > "localhost"
+
+    当请求来自 localhost / 127.0.0.1（本地直连，未经代理）时，
+    认为请求头中的 host 不可用于对外 URL 构建，主动查询 SERVER_HOST，
+    避免将 ws://localhost:<port> 发给远端浏览器。
+    """
     forwarded_host = request.headers.get("x-forwarded-host", "")
     host = (forwarded_host.split(",")[0] if forwarded_host else request.headers.get("host", "")).strip()
 
@@ -39,7 +48,16 @@ def _extract_public_host_and_scheme(request: Request) -> tuple[str, str, str]:
     gz_scheme = "https" if http_proto == "https" else "http"
     ros_scheme = "wss" if http_proto == "https" else "ws"
 
-    return host or "localhost", gz_scheme, ros_scheme
+    # ── 关键修复 ──────────────────────────────────────────────────────────
+    # host 为空 / localhost / 127.0.0.1 时，均属于本地直连场景：
+    # 请求头中的 host 对远端浏览器无意义，优先使用 SERVER_HOST 环境变量。
+    # 若 SERVER_HOST 也未配置，最终才回退到 "localhost"（仅限纯本地开发）。
+    _LOCAL_HOSTS = {"", "localhost", "127.0.0.1"}
+    if host in _LOCAL_HOSTS:
+        host = os.getenv("SERVER_HOST", "localhost")
+    # ──────────────────────────────────────────────────────────────────────
+
+    return host, gz_scheme, ros_scheme
 
 
 @router.get(
