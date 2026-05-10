@@ -234,6 +234,8 @@ async function sendHeartbeat() {
     }
 
     if (status && status !== 'running') {
+      // 退出流程中容器关闭属正常，不触发弹窗
+      if (isExiting) return
       // 容器已不在运行 → 触发重新激活弹窗
       stopHeartbeat()
       handleContainerStopped()
@@ -422,6 +424,7 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
 // ---------- 局部暗色模式 ----------
 let originalDarkClass = false
 let skipStopOnExit = false
+let isExiting = false // 正在退出中，心跳不触发容器停止弹窗
 
 // ---------- 生命周期 ----------
 onMounted(async () => {
@@ -509,6 +512,8 @@ onBeforeUnmount(() => {
 async function handleBack(_mode: 'temporary' | 'stopAndExit') {
   // 通过顶部返回按钮离开时，退出策略已在 Header 内处理，避免重复 stopOnExit
   skipStopOnExit = true
+  isExiting = true
+  stopHeartbeat() // 立即停止心跳，防止容器关闭中误触发停止弹窗
   window.close()
   setTimeout(() => {
     router.push('/student/home')
