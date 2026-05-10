@@ -15,10 +15,14 @@ import {
   ElTable,
   ElTableColumn,
   ElTag,
-  ElPagination,
+  ElPagination
 } from 'element-plus'
 import { ContentWrap } from '@/components/ContentWrap'
-import { getGradePreviewApi, type GradePreviewItem, type GradePreviewQueryParams } from '@/api/exam/gradePreview'
+import {
+  getGradePreviewApi,
+  type GradePreviewItem,
+  type GradePreviewQueryParams
+} from '@/api/exam/gradePreview'
 import { getExamListApi } from '@/api/exam'
 import type { ExamListItem } from '@/api/exam/types'
 import GradeResultExpand from './components/GradeResultExpand.vue'
@@ -50,7 +54,7 @@ async function load() {
     const params: Record<string, unknown> = {
       page: page.value,
       page_size: pageSize.value,
-      best_only: bestOnly.value,
+      best_only: bestOnly.value
     }
     if (filterExamId.value !== undefined) params.exam_id = filterExamId.value
     if (filterStudentId.value !== undefined) params.student_id = filterStudentId.value
@@ -86,7 +90,7 @@ function goReview(row: GradePreviewItem) {
 const REVIEW_LABEL: Record<string, string> = { pending: '待复核', reviewed: '已复核' }
 const REVIEW_TYPE: Record<string, 'warning' | 'success'> = {
   pending: 'warning',
-  reviewed: 'success',
+  reviewed: 'success'
 }
 
 function formatDate(iso: string | null): string {
@@ -123,12 +127,7 @@ onMounted(() => {
     </div>
 
     <!-- 表格（行内展开） -->
-    <ElTable
-      v-loading="loading"
-      :data="items"
-      border
-      row-key="attempt_id"
-    >
+    <ElTable v-loading="loading" :data="items" border row-key="attempt_id">
       <ElTableColumn type="expand">
         <template #default="{ row }">
           <GradeResultExpand :row="row" />

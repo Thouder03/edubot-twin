@@ -27,8 +27,8 @@ interface SubmissionItem {
 const items = computed<SubmissionItem[]>(() => [
   {
     id: attemptId.value,
-    name: `提交代码 #${attemptId.value}`,
-  },
+    name: `提交代码 #${attemptId.value}`
+  }
 ])
 
 const buildApiPrefix = (item: SubmissionItem): string =>

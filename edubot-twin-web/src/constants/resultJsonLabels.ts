@@ -11,7 +11,7 @@ export const RESULT_JSON_FIELD_LABELS: Record<string, string> = {
   status: '评测状态',
   objective_score: '客观分',
   pass: '是否通过',
-  summary: '评测评语',
+  summary: '评测评语'
 }
 
 /**
@@ -21,7 +21,7 @@ export const RESULT_JSON_METRICS_LABELS: Record<string, string> = {
   elapsed_seconds: '运行时长（秒）',
   goal_reached: '到达目标',
   collision_count: '碰撞次数',
-  path_length: '路径长度',
+  path_length: '路径长度'
 }
 
 /**

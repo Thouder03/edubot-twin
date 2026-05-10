@@ -8,13 +8,7 @@
  */
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  ElTable,
-  ElTableColumn,
-  ElTag,
-  ElTooltip,
-  ElEmpty,
-} from 'element-plus'
+import { ElTable, ElTableColumn, ElTag, ElTooltip, ElEmpty } from 'element-plus'
 import { ContentWrap } from '@/components/ContentWrap'
 import { getMyGradeSummaryApi, type StudentGradeSummaryItem } from '@/api/student/grades'
 import MetricsKvTable from '@/components/Grade/MetricsKvTable.vue'
@@ -52,7 +46,7 @@ function truncate(text: string | null, len = 100): string {
 
 const STATUS_LABEL: Record<string, string> = {
   completed: '已完成',
-  reviewed: '已复核',
+  reviewed: '已复核'
 }
 
 onMounted(load)
@@ -146,11 +140,7 @@ onMounted(load)
             </ElTooltip>
             <span v-else class="text-#606266">{{ row.summary || '-' }}</span>
             <!-- 教师评语标记 -->
-            <ElTooltip
-              v-if="row.teacher_comment"
-              content="教师有评语，点击查看"
-              placement="top"
-            >
+            <ElTooltip v-if="row.teacher_comment" content="教师有评语，点击查看" placement="top">
               <span class="ml-1 text-#409eff cursor-pointer">📝</span>
             </ElTooltip>
           </template>

@@ -12,7 +12,11 @@
 import { ElLoading, ElMessageBox } from 'element-plus'
 import request from '@/axios'
 import { getMyContainerApi, startMyContainerApi } from '@/api/container'
-import { getSimulationTaskApi, startSimulationApi, distributeSimulationFilesApi } from '@/api/experiment'
+import {
+  getSimulationTaskApi,
+  startSimulationApi,
+  distributeSimulationFilesApi
+} from '@/api/experiment'
 import { startExamContainerApi } from '@/api/exam/attempts'
 import type { StudentSimulationTaskResponse } from '@/api/experiment/types'
 

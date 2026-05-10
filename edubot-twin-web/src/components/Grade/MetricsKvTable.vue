@@ -16,7 +16,7 @@ const entries = computed<Array<{ label: string; value: unknown }>>(() => {
   if (!props.metrics) return []
   return Object.entries(props.metrics).map(([k, v]) => ({
     label: getFieldLabel(k, true),
-    value: v,
+    value: v
   }))
 })
 

@@ -25,7 +25,7 @@ const STATUS_LABEL: Record<string, string> = {
   completed: '已完成',
   reviewed: '已复核',
   error: '评测异常',
-  aborted: '已放弃',
+  aborted: '已放弃'
 }
 const STATUS_TYPE: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
   completed: 'success',
@@ -34,7 +34,7 @@ const STATUS_TYPE: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
   aborted: 'info',
   running: 'warning',
   scoring: 'warning',
-  pending: 'info',
+  pending: 'info'
 }
 
 function formatDate(iso: string | null): string {
@@ -61,9 +61,15 @@ function formatDuration(ms: number | null): string {
 
     <!-- 分数行 -->
     <div class="attempt-card__scores">
-      <span>客观分：<strong>{{ item.objective_score ?? '-' }}</strong></span>
-      <span class="ml-4">教师评分：<strong>{{ item.manual_score ?? '-' }}</strong></span>
-      <span class="ml-4">最终分：<strong>{{ item.final_score ?? '-' }}</strong></span>
+      <span
+        >客观分：<strong>{{ item.objective_score ?? '-' }}</strong></span
+      >
+      <span class="ml-4"
+        >教师评分：<strong>{{ item.manual_score ?? '-' }}</strong></span
+      >
+      <span class="ml-4"
+        >最终分：<strong>{{ item.final_score ?? '-' }}</strong></span
+      >
       <span class="ml-4">
         Pass：
         <span v-if="item.pass === true">✅</span>

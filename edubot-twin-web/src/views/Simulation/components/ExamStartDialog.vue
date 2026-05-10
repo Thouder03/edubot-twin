@@ -49,7 +49,8 @@ function formatMinutes(ms: number): string {
         <span class="value">{{ props.examRunInfo.remaining_attempts }} 次</span>
       </div>
       <div class="warning-box">
-        ⚠ 点击确认后，平台将冻结当前代码快照并自动运行评测脚本。本次尝试将计入剩余次数（异常情况除外）。
+        ⚠
+        点击确认后，平台将冻结当前代码快照并自动运行评测脚本。本次尝试将计入剩余次数（异常情况除外）。
       </div>
     </div>
 
