@@ -1,0 +1,6 @@
+version: '3'
+services:
+  edubot:
+    build: .
+    image: sidecar-runner:v1
+    container_name: sidecar-runner

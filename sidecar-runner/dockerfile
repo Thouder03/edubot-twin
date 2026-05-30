@@ -1,0 +1,3 @@
+FROM gzweb_sim:v1
+
+RUN /usr/bin/python3 -m pip install roslibpy psutil numpy opencv-python-headless
