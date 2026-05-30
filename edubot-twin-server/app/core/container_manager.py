@@ -38,7 +38,7 @@ def create_student_workspace(student_id: int) -> Path:
     """
     初始化学生工作区目录结构。
     
-    创建工作区及其子目录，可选复制模板文件。
+    创建工作区，可选复制模板文件。
     如果工作区已存在则直接返回路径。
 
     Args:
@@ -48,16 +48,12 @@ def create_student_workspace(student_id: int) -> Path:
         工作区直径路径 (Path 对象)
     """
     workspace = path_policy.STUDENTS_DATA_ROOT / str(student_id) / "workspace"
-    
-    # 创建标准目录结构
-    for subdir in ["src", "launch", "config", "scripts"]:
-        (workspace / subdir).mkdir(parents=True, exist_ok=True)
-    
+        
     # 复制模板文件（可选）
     if path_policy.TEMPLATES_DIR.exists():
         import shutil
         for item in path_policy.TEMPLATES_DIR.iterdir():
-            dest = workspace / "src" / item.name
+            dest = workspace / item.name
             if not dest.exists():
                 try:
                     if item.is_file():
